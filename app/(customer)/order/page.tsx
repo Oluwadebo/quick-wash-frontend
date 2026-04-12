@@ -1,9 +1,10 @@
 'use client';
 
 import React from 'react';
+import { useRouter } from 'next/navigation';
 import TopAppBar from '@/components/shared/TopAppBar';
 import ReadyForPickupButton from '@/components/shared/ReadyForPickupButton';
-import { Minus, Plus, Sparkles, Shirt, ShoppingBag, Bed, CreditCard, Bolt, Info, ChevronRight, ShieldCheck } from 'lucide-react';
+import { Minus, Plus, Sparkles, Shirt, ShoppingBag, Bed, CreditCard, Bolt, Info, ChevronRight, ShieldCheck, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 
@@ -11,7 +12,7 @@ const items = [
   {
     id: 'shirts',
     name: 'Shirts & Tops',
-    desc: 'Daily Essentials • Aṣọ Òkè',
+    desc: 'Daily Essentials',
     icon: Shirt,
     basePrice: 200,
     unit: 'unit',
@@ -28,7 +29,7 @@ const items = [
   {
     id: 'trousers',
     name: 'Trousers',
-    desc: 'Denim & Chinos • Òkòtò',
+    desc: 'Denim & Chinos',
     icon: ShoppingBag,
     basePrice: 250,
     unit: 'unit',
@@ -45,30 +46,63 @@ const items = [
   {
     id: 'beddings',
     name: 'Beddings',
-    desc: 'Sheets & Covers • Aṣọ Ìbùsùn',
+    desc: 'Sheets & Covers',
     icon: Bed,
-    basePrice: 1200,
-    unit: 'set',
-    count: 1,
+    basePrice: 0,
+    unit: 'item',
+    count: 0,
     services: [
-      { name: 'Wash', price: 1200 },
-      { name: 'Steam Press', price: 1000 }
+      { name: 'Wash', price: 0 },
+      { name: 'Steam Press', price: 0 }
     ],
     selectedService: 'Wash',
-    hasStainRemover: true,
-    stainRemoverPrice: 800
+    hasStainRemover: false,
+    stainRemoverPrice: 800,
+    subItems: [
+      { id: 'bedsheet', name: 'Bedsheet', count: 1, price: 400 },
+      { id: 'duvet', name: 'Duvet', count: 0, price: 1200 },
+      { id: 'pillowcase', name: 'Pillow Case', count: 2, price: 150 },
+      { id: 'completeset', name: 'Complete Set', count: 0, price: 1800 }
+    ]
   }
 ];
 
 export default function OrderPage() {
+  const router = useRouter();
   const [cart, setCart] = React.useState(items);
   const [isPaid, setIsPaid] = React.useState(false);
   const [isPaying, setIsPaying] = React.useState(false);
+
+  // Persistence: Load from localStorage if exists
+  React.useEffect(() => {
+    const savedCart = localStorage.getItem('qw_pending_cart');
+    if (savedCart) {
+      setCart(JSON.parse(savedCart));
+    }
+  }, []);
+
+  // Save to localStorage whenever cart changes
+  React.useEffect(() => {
+    localStorage.setItem('qw_pending_cart', JSON.stringify(cart));
+  }, [cart]);
 
   const updateCount = (id: string, delta: number) => {
     setCart(prev => prev.map(item => 
       item.id === id ? { ...item, count: Math.max(0, item.count + delta) } : item
     ));
+  };
+
+  const updateSubItemCount = (itemId: string, subItemId: string, delta: number) => {
+    setCart(prev => prev.map(item => {
+      if (item.id === itemId && item.subItems) {
+        const newSubItems = item.subItems.map(si => 
+          si.id === subItemId ? { ...si, count: Math.max(0, si.count + delta) } : si
+        );
+        const newTotalCount = newSubItems.reduce((acc, si) => acc + si.count, 0);
+        return { ...item, subItems: newSubItems, count: newTotalCount };
+      }
+      return item;
+    }));
   };
 
   const updateService = (id: string, serviceName: string) => {
@@ -83,8 +117,13 @@ export default function OrderPage() {
     ));
   };
 
-  const getItemPrice = (item: typeof items[0]) => {
-    const service = item.services.find(s => s.name === item.selectedService);
+  const getItemPrice = (item: any) => {
+    if (item.subItems) {
+      const subTotal = item.subItems.reduce((acc: number, si: any) => acc + (si.count * si.price), 0);
+      const stainPrice = item.hasStainRemover ? item.stainRemoverPrice : 0;
+      return subTotal + (item.count > 0 ? stainPrice : 0);
+    }
+    const service = item.services.find((s: any) => s.name === item.selectedService);
     const servicePrice = service ? service.price : item.basePrice;
     const stainPrice = item.hasStainRemover ? item.stainRemoverPrice : 0;
     return (item.count * servicePrice) + (item.count > 0 ? stainPrice : 0);
@@ -95,7 +134,6 @@ export default function OrderPage() {
 
   const handlePayment = async () => {
     setIsPaying(true);
-    // Simulate Paystack/Payment Gateway
     await new Promise(resolve => setTimeout(resolve, 2000));
     setIsPaid(true);
     setIsPaying(false);
@@ -106,31 +144,39 @@ export default function OrderPage() {
     const orders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
     const currentUser = JSON.parse(localStorage.getItem('qw_user') || '{}');
     
+    const itemsDescription = cart.filter(i => i.count > 0).map(i => {
+      if (i.subItems) {
+        const subDesc = i.subItems.filter(si => si.count > 0).map(si => `${si.count}x ${si.name}`).join(', ');
+        return `${subDesc} (${i.selectedService})`;
+      }
+      return `${i.count}x ${i.name} (${i.selectedService})`;
+    }).join(', ');
+
     const newOrder = {
       id: Math.floor(1000 + Math.random() * 9000).toString(),
       customerName: currentUser.fullName || 'Guest',
       customerPhone: currentUser.phoneNumber,
-      items: cart.filter(i => i.count > 0).map(i => `${i.count}x ${i.name} (${i.selectedService})`).join(', '),
+      items: itemsDescription,
       totalPrice,
       status: 'Pending Pickup',
       time: 'Just now',
       color: 'bg-primary-container text-on-primary-container',
-      vendorId: 'campus-cleans', // Default for now
+      vendorId: 'campus-cleans',
       createdAt: new Date().toISOString()
     };
 
     orders.push(newOrder);
     localStorage.setItem('qw_orders', JSON.stringify(orders));
+    localStorage.removeItem('qw_pending_cart'); // Clear pending cart after order
     alert('Order placed successfully! A rider will be assigned shortly.');
     router.push('/track');
-  }, [cart, totalPrice]);
+  }, [cart, totalPrice, router]);
 
   return (
     <div className="pb-64">
       <TopAppBar showAudioToggle />
       
       <main className="pt-28 px-6 max-w-3xl mx-auto">
-        {/* ... existing header ... */}
         <header className="mb-12">
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
@@ -141,14 +187,13 @@ export default function OrderPage() {
             <span className="text-[10px] font-black uppercase tracking-widest">Premium Service Selected</span>
           </motion.div>
           <h1 className="text-[4rem] leading-[0.9] font-headline font-black text-on-surface mb-4 tracking-tighter">
-            Ẹ jẹ́ kí á bẹ̀rẹ̀.
+            Let&apos;s get started.
           </h1>
           <p className="text-on-surface-variant font-medium text-xl leading-relaxed max-w-xl">
             What are we cleaning today? Select your items and how you want them handled.
           </p>
         </header>
 
-        {/* Special Offers / Info */}
         <section className="bg-surface-container-low rounded-[2.5rem] p-8 mb-12 border border-primary/5 flex items-center justify-between gap-6">
           <div className="flex items-center gap-6">
             <div className="bg-white p-4 rounded-3xl shadow-xl text-primary">
@@ -186,22 +231,52 @@ export default function OrderPage() {
                     <p className="font-label text-xs font-bold uppercase tracking-widest text-on-surface-variant mt-1">{item.desc}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-4 bg-white p-3 rounded-[2rem] shadow-xl">
-                  <button 
-                    onClick={() => updateCount(item.id, -1)}
-                    className="w-12 h-12 flex items-center justify-center rounded-2xl bg-surface-container hover:bg-primary-container/30 transition-colors active:scale-90"
-                  >
-                    <Minus className="w-5 h-5" />
-                  </button>
-                  <span className="font-headline font-black text-2xl px-2 min-w-[2ch] text-center">{item.count}</span>
-                  <button 
-                    onClick={() => updateCount(item.id, 1)}
-                    className="w-12 h-12 flex items-center justify-center rounded-2xl bg-primary text-white hover:opacity-90 active:scale-90 transition-all shadow-lg shadow-primary/20"
-                  >
-                    <Plus className="w-5 h-5" />
-                  </button>
-                </div>
+                {!item.subItems && (
+                  <div className="flex items-center gap-4 bg-white p-3 rounded-[2rem] shadow-xl">
+                    <button 
+                      onClick={() => updateCount(item.id, -1)}
+                      className="w-12 h-12 flex items-center justify-center rounded-2xl bg-surface-container hover:bg-primary-container/30 transition-colors active:scale-90"
+                    >
+                      <Minus className="w-5 h-5" />
+                    </button>
+                    <span className="font-headline font-black text-2xl px-2 min-w-[2ch] text-center">{item.count}</span>
+                    <button 
+                      onClick={() => updateCount(item.id, 1)}
+                      className="w-12 h-12 flex items-center justify-center rounded-2xl bg-primary text-white hover:opacity-90 active:scale-90 transition-all shadow-lg shadow-primary/20"
+                    >
+                      <Plus className="w-5 h-5" />
+                    </button>
+                  </div>
+                )}
               </div>
+
+              {item.subItems && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+                  {item.subItems.map(si => (
+                    <div key={si.id} className="bg-white p-6 rounded-3xl shadow-sm border border-primary/5 flex items-center justify-between">
+                      <div>
+                        <p className="font-headline font-black text-sm">{si.name}</p>
+                        <p className="text-[10px] font-bold text-on-surface-variant">₦{si.price}</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <button 
+                          onClick={() => updateSubItemCount(item.id, si.id, -1)}
+                          className="w-8 h-8 flex items-center justify-center rounded-xl bg-surface-container active:scale-90 transition-transform"
+                        >
+                          <Minus className="w-4 h-4" />
+                        </button>
+                        <span className="font-headline font-black text-lg min-w-[1.5ch] text-center">{si.count}</span>
+                        <button 
+                          onClick={() => updateSubItemCount(item.id, si.id, 1)}
+                          className="w-8 h-8 flex items-center justify-center rounded-xl bg-primary text-white active:scale-90 transition-transform"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               <div className="flex flex-wrap gap-3 mb-8">
                 {item.services.map(service => (
@@ -215,7 +290,7 @@ export default function OrderPage() {
                         : "bg-white text-on-surface-variant hover:bg-surface-container-highest"
                     )}
                   >
-                    {service.name} (₦{service.price})
+                    {service.name} {service.price > 0 && `(₦${service.price})`}
                   </button>
                 ))}
               </div>
@@ -246,7 +321,9 @@ export default function OrderPage() {
               <div className="flex items-center justify-between pt-6 border-t border-primary/5">
                 <div className="flex items-center gap-2 text-on-surface-variant opacity-60">
                   <CreditCard className="w-5 h-5" />
-                  <span className="text-sm font-label font-bold uppercase tracking-widest">Base: ₦{item.basePrice} / {item.unit}</span>
+                  <span className="text-sm font-label font-bold uppercase tracking-widest">
+                    {item.subItems ? 'Custom Set Price' : `Base: ₦${item.basePrice} / ${item.unit}`}
+                  </span>
                 </div>
                 <div className="text-right">
                   <span className="font-headline font-black text-3xl text-primary">₦{getItemPrice(item).toLocaleString()}</span>
@@ -257,7 +334,6 @@ export default function OrderPage() {
         </div>
       </main>
 
-      {/* Non-Sticky Footer */}
       <footer className="mt-12">
         <div className="bg-white/95 backdrop-blur-3xl rounded-[3rem] px-8 pt-10 pb-12 shadow-[0_-20px_60px_rgba(0,106,40,0.05)] border border-primary/5">
           <div className="max-w-3xl mx-auto">
@@ -297,7 +373,7 @@ export default function OrderPage() {
             <div className="flex justify-center mt-6">
               <div className="flex items-center gap-2 text-[10px] font-label font-black uppercase tracking-[0.25em] text-on-surface-variant opacity-40">
                 <ShieldCheck className="w-3 h-3" />
-                Gbogbo aṣọ rẹ yoo jẹ mímọ́
+                Your clothes will be clean and fresh
               </div>
             </div>
           </div>

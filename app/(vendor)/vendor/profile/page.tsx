@@ -6,14 +6,17 @@ import { useAuth } from '@/hooks/use-auth';
 import { User, Store, Star, ReceiptText, Wallet, Settings, LogOut } from 'lucide-react';
 import { motion } from 'motion/react';
 
+import ProtectedRoute from '@/components/shared/ProtectedRoute';
+
 export default function VendorProfilePage() {
   const { user, logout } = useAuth();
   
   return (
-    <div className="pb-32">
-      <TopAppBar title="Vendor Profile" roleLabel="Vendor" />
-      
-      <main className="pt-28 px-6 max-w-2xl mx-auto">
+    <ProtectedRoute allowedRoles={['vendor']}>
+      <div className="pb-32">
+        <TopAppBar title="Vendor Profile" roleLabel="Vendor" />
+        
+        <main className="pt-28 px-6 max-w-2xl mx-auto">
         <div className="bg-surface-container-low rounded-[3rem] p-10 text-center mb-8 border border-primary/5 shadow-sm">
           <div className="w-32 h-32 rounded-[2.5rem] bg-surface-container-highest mx-auto mb-6 flex items-center justify-center border-4 border-white shadow-xl">
             <Store className="w-16 h-16 text-primary" />
@@ -62,5 +65,6 @@ export default function VendorProfilePage() {
         </div>
       </main>
     </div>
+    </ProtectedRoute>
   );
 }

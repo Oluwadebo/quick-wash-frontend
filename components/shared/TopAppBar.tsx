@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Menu, Volume2, X, User, Droplets } from 'lucide-react';
+import { Menu, Volume2, X, User, Droplets, LogOut } from 'lucide-react';
 import Link from 'next/link';
 import YorubaAudioToggle from './YorubaAudioToggle';
 import { useAuth } from '@/hooks/use-auth';
@@ -27,20 +27,21 @@ export default function TopAppBar({
   const profileLink = user?.role === 'customer' ? '/profile' : (user?.role ? `/${user.role}/profile` : '/profile');
 
   return (
-    <header className="fixed top-0 w-full z-50 bg-surface/80 backdrop-blur-2xl border-b border-primary/5">
+    <header className="fixed top-0 w-full z-50 bg-surface/80 backdrop-blur-2xl border-b-2 border-primary/10">
       <div className="flex justify-between items-center px-6 h-20 max-w-7xl mx-auto w-full">
         <div className="flex items-center gap-4">
           <Link href={homeLink} className="flex items-center gap-2 group">
             <div className="w-10 h-10 rounded-xl signature-gradient flex items-center justify-center shadow-lg group-active:scale-95 transition-transform">
               <Droplets className="text-white w-6 h-6 fill-current" />
             </div>
-            {!title && (
-              <span className="font-headline font-black text-xl tracking-tighter text-on-surface">Quick-Wash</span>
-            )}
+            <span className="font-headline font-black text-xl tracking-tighter text-on-surface hidden xs:block">Quick-Wash</span>
           </Link>
           
           {title && (
-            <h1 className="text-on-surface font-black font-headline text-xl tracking-tight">{title}</h1>
+            <div className="flex items-center gap-2">
+              <span className="h-4 w-px bg-outline-variant/30 hidden xs:block"></span>
+              <h1 className="text-on-surface font-black font-headline text-lg tracking-tight">{title}</h1>
+            </div>
           )}
         </div>
 
@@ -64,9 +65,10 @@ export default function TopAppBar({
               {user && (
                 <button 
                   onClick={logout}
-                  className="hidden md:flex items-center gap-2 px-4 py-2 rounded-xl bg-error/10 text-error font-headline font-black text-xs uppercase tracking-widest hover:bg-error/20 transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-error/10 text-error font-headline font-black text-xs uppercase tracking-widest hover:bg-error/20 transition-colors active:scale-95"
                 >
-                  Logout
+                  <LogOut className="w-4 h-4 md:hidden" />
+                  <span className="hidden md:inline">Logout</span>
                 </button>
               )}
               <Link href={profileLink}>

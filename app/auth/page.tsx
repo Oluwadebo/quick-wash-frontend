@@ -10,10 +10,11 @@ import { cn } from '@/lib/utils';
 function AuthContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { signup, login, isProcessing } = useAuth();
+  const { signup, login, isProcessing, error } = useAuth();
   
   const role = (searchParams.get('role') as UserRole) || 'customer';
   const initialIsLogin = searchParams.get('login') === 'true';
+  const message = searchParams.get('message');
   const [isLogin, setIsLogin] = useState(initialIsLogin);
   
   const [formData, setFormData] = useState({
@@ -22,7 +23,14 @@ function AuthContent() {
     password: '',
     landmark: 'Under-G',
     shopName: '',
-    vehicleType: 'Bicycle'
+    vehicleType: 'Bicycle',
+    nin: '',
+    whatsappNumber: '',
+    bankAccountName: '',
+    bankAccountNumber: '',
+    bankName: '',
+    turnaroundTime: '24hr',
+    capacity: 10
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -34,10 +42,17 @@ function AuthContent() {
         fullName: formData.fullName,
         phoneNumber: formData.phoneNumber,
         password: formData.password,
-        landmark: formData.landmark,
+        landmark: (role === 'customer' || role === 'rider') ? formData.landmark : undefined,
         role: role,
-        shopName: formData.shopName,
-        vehicleType: formData.vehicleType
+        shopName: role === 'vendor' ? formData.shopName : undefined,
+        vehicleType: role === 'rider' ? formData.vehicleType : undefined,
+        nin: role === 'rider' ? formData.nin : undefined,
+        whatsappNumber: role === 'vendor' ? formData.whatsappNumber : undefined,
+        bankAccountName: role === 'vendor' ? formData.bankAccountName : undefined,
+        bankAccountNumber: role === 'vendor' ? formData.bankAccountNumber : undefined,
+        bankName: role === 'vendor' ? formData.bankName : undefined,
+        turnaroundTime: role === 'vendor' ? formData.turnaroundTime : undefined,
+        capacity: role === 'vendor' ? Number(formData.capacity) : undefined
       });
     }
   };
@@ -75,6 +90,28 @@ function AuthContent() {
             </p>
           </div>
 
+          {message === 'pending' && (
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="mb-6 p-6 bg-primary-container text-on-primary-container rounded-[2rem] text-sm font-bold text-center border border-primary/20 shadow-sm"
+            >
+              <Sparkles className="w-8 h-8 mx-auto mb-2 text-primary" />
+              Registration submitted! <br/>
+              Please wait for admin approval before logging in.
+            </motion.div>
+          )}
+
+          {error && (
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="mb-6 p-4 bg-error-container text-on-error-container rounded-2xl text-sm font-bold text-center border border-error/20"
+            >
+              {error}
+            </motion.div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-4">
             <AnimatePresence mode="wait">
               {!isLogin && (
@@ -82,7 +119,7 @@ function AuthContent() {
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
-                  className="space-y-4"
+                  className="space-y-4 overflow-hidden"
                 >
                   <div className="relative">
                     <User className="absolute left-5 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5" />
@@ -96,7 +133,7 @@ function AuthContent() {
                     />
                   </div>
 
-                  {role === 'customer' && (
+                  {(role === 'customer' || role === 'rider') && (
                     <div className="relative">
                       <MapPin className="absolute left-5 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5" />
                       <select 
@@ -112,33 +149,105 @@ function AuthContent() {
                     </div>
                   )}
 
-                  {role === 'vendor' && (
-                    <div className="relative">
-                      <Store className="absolute left-5 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5" />
-                      <input 
-                        type="text" 
-                        placeholder="Laundry Shop Name"
-                        required={!isLogin}
-                        value={formData.shopName}
-                        onChange={(e) => setFormData({...formData, shopName: e.target.value})}
-                        className="w-full h-16 bg-surface-container-low rounded-2xl pl-14 pr-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"
-                      />
-                    </div>
+                  {role === 'rider' && (
+                    <>
+                      <div className="relative">
+                        <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5" />
+                        <input 
+                          type="text" 
+                          placeholder="NIN (National ID Number)"
+                          required={role === 'rider' && !isLogin}
+                          value={formData.nin}
+                          onChange={(e) => setFormData({...formData, nin: e.target.value})}
+                          className="w-full h-16 bg-surface-container-low rounded-2xl pl-14 pr-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"
+                        />
+                      </div>
+                      <div className="relative">
+                        <Bike className="absolute left-5 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5" />
+                        <select 
+                          value={formData.vehicleType}
+                          onChange={(e) => setFormData({...formData, vehicleType: e.target.value})}
+                          className="w-full h-16 bg-surface-container-low rounded-2xl pl-14 pr-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all appearance-none"
+                        >
+                          <option value="Bicycle">Bicycle</option>
+                          <option value="Motorcycle">Motorcycle</option>
+                          <option value="Foot">Foot</option>
+                          <option value="Car">Car</option>
+                        </select>
+                      </div>
+                    </>
                   )}
 
-                  {role === 'rider' && (
-                    <div className="relative">
-                      <Bike className="absolute left-5 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5" />
-                      <select 
-                        value={formData.vehicleType}
-                        onChange={(e) => setFormData({...formData, vehicleType: e.target.value})}
-                        className="w-full h-16 bg-surface-container-low rounded-2xl pl-14 pr-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all appearance-none"
-                      >
-                        <option value="Bicycle">Bicycle</option>
-                        <option value="Motorcycle">Motorcycle</option>
-                        <option value="Car">Car</option>
-                      </select>
-                    </div>
+                  {role === 'vendor' && (
+                    <>
+                      <div className="relative">
+                        <Store className="absolute left-5 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5" />
+                        <input 
+                          type="text" 
+                          placeholder="Laundry Shop Name"
+                          required={role === 'vendor' && !isLogin}
+                          value={formData.shopName}
+                          onChange={(e) => setFormData({...formData, shopName: e.target.value})}
+                          className="w-full h-16 bg-surface-container-low rounded-2xl pl-14 pr-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"
+                        />
+                      </div>
+                      <div className="relative">
+                        <Phone className="absolute left-5 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5" />
+                        <input 
+                          type="tel" 
+                          placeholder="WhatsApp Number"
+                          required={role === 'vendor' && !isLogin}
+                          value={formData.whatsappNumber}
+                          onChange={(e) => setFormData({...formData, whatsappNumber: e.target.value})}
+                          className="w-full h-16 bg-surface-container-low rounded-2xl pl-14 pr-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 gap-4">
+                        <input 
+                          type="text" 
+                          placeholder="Bank Account Name"
+                          required={role === 'vendor' && !isLogin}
+                          value={formData.bankAccountName}
+                          onChange={(e) => setFormData({...formData, bankAccountName: e.target.value})}
+                          className="w-full h-16 bg-surface-container-low rounded-2xl px-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"
+                        />
+                        <input 
+                          type="text" 
+                          placeholder="Bank Account Number"
+                          required={role === 'vendor' && !isLogin}
+                          value={formData.bankAccountNumber}
+                          onChange={(e) => setFormData({...formData, bankAccountNumber: e.target.value})}
+                          className="w-full h-16 bg-surface-container-low rounded-2xl px-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"
+                        />
+                        <input 
+                          type="text" 
+                          placeholder="Bank Name"
+                          required={role === 'vendor' && !isLogin}
+                          value={formData.bankName}
+                          onChange={(e) => setFormData({...formData, bankName: e.target.value})}
+                          className="w-full h-16 bg-surface-container-low rounded-2xl px-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <select 
+                          value={formData.turnaroundTime}
+                          onChange={(e) => setFormData({...formData, turnaroundTime: e.target.value})}
+                          className="w-full h-16 bg-surface-container-low rounded-2xl px-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all appearance-none"
+                        >
+                          <option value="6hr">6 Hours</option>
+                          <option value="24hr">24 Hours</option>
+                          <option value="48hr">48 Hours</option>
+                        </select>
+                        <input 
+                          type="number" 
+                          placeholder="Max Bags/Day"
+                          required={role === 'vendor' && !isLogin}
+                          value={formData.capacity}
+                          onChange={(e) => setFormData({...formData, capacity: e.target.value})}
+                          className="w-full h-16 bg-surface-container-low rounded-2xl px-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"
+                        />
+                      </div>
+                    </>
                   )}
                 </motion.div>
               )}

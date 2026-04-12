@@ -31,6 +31,40 @@ import { useAuth } from '@/hooks/use-auth';
 
 export default function RiderDashboard() {
   const { user } = useAuth();
+  const [tasks, setTasks] = React.useState<any[]>([]);
+
+  React.useEffect(() => {
+    const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
+    // Riders see orders that are 'Pending Pickup' or 'Ready for Handover'
+    const riderTasks = allOrders
+      .filter((o: any) => o.status === 'Pending Pickup' || o.status === 'Ready for Handover')
+      .map((o: any) => ({
+        id: o.id,
+        type: o.status === 'Pending Pickup' ? 'Pickup' : 'Delivery',
+        location: o.status === 'Pending Pickup' ? 'Customer Hostel' : 'Laundry Shop',
+        customer: o.customerName,
+        time: 'Now',
+        priority: o.status === 'Pending Pickup'
+      }));
+    setTasks(riderTasks);
+  }, []);
+
+  const handleTaskAction = (taskId: string, type: string) => {
+    const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
+    const updated = allOrders.map((o: any) => {
+      if (o.id === taskId) {
+        if (type === 'Pickup') {
+          return { ...o, status: 'Picked Up', color: 'bg-secondary-container text-on-secondary-container' };
+        } else {
+          return { ...o, status: 'Handover', color: 'bg-success text-white' };
+        }
+      }
+      return o;
+    });
+    localStorage.setItem('qw_orders', JSON.stringify(updated));
+    setTasks(prev => prev.filter(t => t.id !== taskId));
+    alert(`Task ${taskId} ${type === 'Pickup' ? 'picked up' : 'delivered'} successfully!`);
+  };
   
   return (
     <ProtectedRoute allowedRoles={['rider']}>
@@ -61,20 +95,22 @@ export default function RiderDashboard() {
           </header>
           {/* ... rest of the content ... */}
 
-        <section className="bg-surface-container-low rounded-[2.5rem] p-8 mb-12 flex flex-col md:flex-row items-center justify-between gap-8 border border-primary/5">
-          <div className="flex items-center gap-6">
-            <div className="w-20 h-20 rounded-full bg-primary-container flex items-center justify-center shadow-inner">
-              <Navigation className="text-primary w-10 h-10 fill-current animate-pulse" />
-            </div>
-            <div>
-              <h2 className="text-2xl font-headline font-black text-on-surface">Next Stop</h2>
-              <p className="text-on-surface-variant font-medium">Campus Cleans • Under G</p>
-            </div>
-          </div>
-          <button className="signature-gradient text-white px-10 py-5 rounded-2xl font-headline font-black text-lg shadow-xl hover:brightness-105 active:scale-95 transition-all w-full md:w-auto">
-            START NAVIGATION
-          </button>
-        </section>
+          {tasks.length > 0 && (
+            <section className="bg-surface-container-low rounded-[2.5rem] p-8 mb-12 flex flex-col md:flex-row items-center justify-between gap-8 border border-primary/5">
+              <div className="flex items-center gap-6">
+                <div className="w-20 h-20 rounded-full bg-primary-container flex items-center justify-center shadow-inner">
+                  <Navigation className="text-primary w-10 h-10 fill-current animate-pulse" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-headline font-black text-on-surface">Next Stop</h2>
+                  <p className="text-on-surface-variant font-medium">{tasks[0].location}</p>
+                </div>
+              </div>
+              <button className="signature-gradient text-white px-10 py-5 rounded-2xl font-headline font-black text-lg shadow-xl hover:brightness-105 active:scale-95 transition-all w-full md:w-auto">
+                START NAVIGATION
+              </button>
+            </section>
+          )}
 
         <section className="mb-12">
           <div className="flex items-center justify-between mb-8">
@@ -115,29 +151,50 @@ export default function RiderDashboard() {
                   <button className="p-4 rounded-2xl bg-surface-container-highest text-on-surface hover:bg-surface-variant transition-colors active:scale-90">
                     <Phone className="w-5 h-5 fill-current" />
                   </button>
-                  <button className="signature-gradient text-white p-4 rounded-2xl shadow-lg active:scale-90 transition-all">
+                  <button 
+                    onClick={() => handleTaskAction(task.id, task.type)}
+                    className="signature-gradient text-white p-4 rounded-2xl shadow-lg active:scale-90 transition-all"
+                  >
                     <ArrowRight className="w-6 h-6" />
                   </button>
                 </div>
               </motion.div>
             ))}
+            {tasks.length === 0 && (
+              <div className="py-20 text-center bg-surface-container-low rounded-[2rem] border border-dashed border-primary/20">
+                <p className="text-on-surface-variant font-headline font-bold text-xl">No tasks available right now.</p>
+              </div>
+            )}
           </div>
         </section>
 
-        <section className="bg-surface-container-lowest p-8 rounded-[2.5rem] border-2 border-dashed border-primary/20 flex flex-col items-center justify-center text-center space-y-4">
-          <div className="w-20 h-20 rounded-full bg-primary/5 flex items-center justify-center">
-            <CheckCircle className="text-primary w-10 h-10" />
-          </div>
-          <h3 className="text-2xl font-headline font-black">Handover Complete?</h3>
-          <p className="text-on-surface-variant font-medium max-w-xs">Enter the 4-digit code provided by the customer to complete this delivery.</p>
-          <div className="flex gap-2 w-full max-w-xs">
-            {[1, 2, 3, 4].map(i => (
-              <input key={i} type="text" maxLength={1} className="w-full h-16 bg-surface-container rounded-xl text-center font-headline font-black text-2xl focus:ring-4 focus:ring-primary-container outline-none transition-all" />
-            ))}
-          </div>
-          <button className="signature-gradient text-white px-10 py-5 rounded-2xl font-headline font-black text-lg shadow-xl hover:brightness-105 active:scale-95 transition-all w-full">
-            CONFIRM HANDOVER
-          </button>
+        <section className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <section className="bg-surface-container-lowest p-8 rounded-[2.5rem] border-2 border-dashed border-primary/20 flex flex-col items-center justify-center text-center space-y-4">
+            <div className="w-20 h-20 rounded-full bg-primary/5 flex items-center justify-center">
+              <CheckCircle className="text-primary w-10 h-10" />
+            </div>
+            <h3 className="text-2xl font-headline font-black">Handover Complete?</h3>
+            <p className="text-on-surface-variant font-medium max-w-xs">Enter the 4-digit code provided by the customer to complete this delivery.</p>
+            <div className="flex gap-2 w-full max-w-xs">
+              {[1, 2, 3, 4].map(i => (
+                <input key={i} type="text" maxLength={1} className="w-full h-16 bg-surface-container rounded-xl text-center font-headline font-black text-2xl focus:ring-4 focus:ring-primary-container outline-none transition-all" />
+              ))}
+            </div>
+            <button className="signature-gradient text-white px-10 py-5 rounded-2xl font-headline font-black text-lg shadow-xl hover:brightness-105 active:scale-95 transition-all w-full">
+              CONFIRM HANDOVER
+            </button>
+          </section>
+
+          <section className="bg-surface-container-lowest p-8 rounded-[2.5rem] border-2 border-dashed border-tertiary/20 flex flex-col items-center justify-center text-center space-y-4">
+            <div className="w-20 h-20 rounded-full bg-tertiary/5 flex items-center justify-center">
+              <Zap className="text-tertiary w-10 h-10 fill-current" />
+            </div>
+            <h3 className="text-2xl font-headline font-black">Report Rain</h3>
+            <p className="text-on-surface-variant font-medium max-w-xs">Notify vendors and customers that delivery might be slower due to rain.</p>
+            <button className="bg-tertiary text-on-tertiary px-10 py-5 rounded-2xl font-headline font-black text-lg shadow-xl hover:brightness-105 active:scale-95 transition-all w-full">
+              REPORT RAIN 🌧️
+            </button>
+          </section>
         </section>
       </main>
     </div>

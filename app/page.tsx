@@ -82,12 +82,18 @@ export default function LandingPage() {
             className="flex items-center justify-center gap-4 mb-12"
           >
             <div 
+              onClick={() => router.push('/')}
               onContextMenu={(e) => { e.preventDefault(); router.push('/admin'); }}
               className="w-20 h-20 rounded-[2rem] signature-gradient flex items-center justify-center shadow-2xl shadow-primary/20 cursor-pointer active:scale-95 transition-transform"
             >
               <Droplets className="text-white w-12 h-12 fill-current" />
             </div>
-            <h1 className="text-6xl font-headline font-black tracking-tighter text-on-surface">Quick-Wash</h1>
+            <h1 
+              onClick={() => router.push('/')}
+              className="text-6xl font-headline font-black tracking-tighter text-on-surface cursor-pointer"
+            >
+              Quick-Wash
+            </h1>
           </motion.div>
 
           <motion.h2 
@@ -225,7 +231,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <footer className="py-20 px-6 border-t border-primary/5">
+      <footer className="py-24 px-6 border-t-2 border-primary/10">
         <div className="max-w-7xl mx-auto flex flex-col items-center">
           <div className="flex items-center justify-center gap-3 mb-8">
             <Droplets className="text-primary w-8 h-8 fill-current" />

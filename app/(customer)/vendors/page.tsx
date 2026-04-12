@@ -7,7 +7,7 @@ import { Volume2, MapPin, Search, SlidersHorizontal, DollarSign, Zap, Star, Navi
 import { motion } from 'motion/react';
 import { cn } from '@/lib/utils';
 
-const vendors = [
+const initialVendors = [
   {
     id: 'campus-cleans',
     name: 'Campus Cleans',
@@ -50,6 +50,26 @@ const sortOptions = [
 export default function VendorSelectionPage() {
   const [selectedSort, setSelectedSort] = React.useState('highest-rated');
   const [searchQuery, setSearchQuery] = React.useState('');
+  const [vendors, setVendors] = React.useState(initialVendors);
+
+  React.useEffect(() => {
+    const allUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
+    const approvedVendors = allUsers
+      .filter((u: any) => u.role === 'vendor' && u.isApproved)
+      .map((u: any) => ({
+        id: u.phoneNumber,
+        name: u.shopName || u.fullName || 'Anonymous Vendor',
+        priceRange: '₦2,000/KG', // Default price range
+        rating: 4.5,
+        reviews: 0,
+        distance: 'Local',
+        turnaround: '24h Standard',
+        image: `https://picsum.photos/seed/${u.phoneNumber}/800/600`
+      }));
+    
+    // Merge initial vendors with approved ones from localStorage
+    setVendors([...initialVendors, ...approvedVendors]);
+  }, []);
 
   const filteredVendors = React.useMemo(() => {
     let result = [...vendors];
@@ -85,7 +105,7 @@ export default function VendorSelectionPage() {
     });
 
     return result;
-  }, [selectedSort, searchQuery]);
+  }, [selectedSort, searchQuery, vendors]);
 
   return (
     <div className="pb-32">
@@ -102,7 +122,7 @@ export default function VendorSelectionPage() {
           </motion.h2>
           <div className="flex items-center gap-3 text-primary font-semibold">
             <Volume2 className="w-6 h-6 fill-current" />
-            <p className="text-lg font-headline">Yan ibùdó ìfọṣọ rẹ.</p>
+            <p className="text-lg font-headline">Choose your laundry station.</p>
           </div>
         </header>
 

@@ -6,14 +6,17 @@ import { useAuth } from '@/hooks/use-auth';
 import { User, Bike, Star, History, Wallet, Settings, LogOut } from 'lucide-react';
 import { motion } from 'motion/react';
 
+import ProtectedRoute from '@/components/shared/ProtectedRoute';
+
 export default function RiderProfilePage() {
   const { user, logout } = useAuth();
   
   return (
-    <div className="pb-32">
-      <TopAppBar title="Rider Profile" roleLabel="Rider" />
-      
-      <main className="pt-28 px-6 max-w-2xl mx-auto">
+    <ProtectedRoute allowedRoles={['rider']}>
+      <div className="pb-32">
+        <TopAppBar title="Rider Profile" roleLabel="Rider" />
+        
+        <main className="pt-28 px-6 max-w-2xl mx-auto">
         <div className="bg-surface-container-low rounded-[3rem] p-10 text-center mb-8 border border-primary/5 shadow-sm">
           <div className="w-32 h-32 rounded-[2.5rem] bg-surface-container-highest mx-auto mb-6 flex items-center justify-center border-4 border-white shadow-xl">
             <Bike className="w-16 h-16 text-primary" />
@@ -62,5 +65,6 @@ export default function RiderProfilePage() {
         </div>
       </main>
     </div>
+    </ProtectedRoute>
   );
 }

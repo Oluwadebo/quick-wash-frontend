@@ -51,10 +51,12 @@ import ProtectedRoute from '@/components/shared/ProtectedRoute';
 
 export default function LandmarkSelectionPage() {
   const [recentOrders, setRecentOrders] = React.useState<any[]>([]);
+  const [user, setUser] = React.useState<any>(null);
 
   React.useEffect(() => {
     const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
     const currentUser = JSON.parse(localStorage.getItem('qw_user') || '{}');
+    setUser(currentUser);
     setRecentOrders(allOrders.filter((o: any) => o.customerPhone === currentUser.phoneNumber));
   }, []);
 
@@ -78,7 +80,9 @@ export default function LandmarkSelectionPage() {
               </div>
               <div>
                 <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">Your Trust Status</p>
-                <h3 className="text-2xl font-headline font-black text-on-surface">820 Points • <span className="text-tertiary">Elite</span></h3>
+                <h3 className="text-2xl font-headline font-black text-on-surface">
+                  {user?.trustPoints || 0} Points • <span className="text-tertiary">{user?.trustPoints >= 500 ? 'Elite' : 'Standard'}</span>
+                </h3>
               </div>
             </div>
             <Link href="/profile" className="p-4 rounded-2xl bg-white shadow-sm hover:bg-primary-container transition-colors">
@@ -98,7 +102,7 @@ export default function LandmarkSelectionPage() {
               {recentOrders.slice(0, 2).map((order) => (
                 <Link 
                   key={order.id} 
-                  href={`/track?id=${order.id}`}
+                  href={`/track/${order.id}`}
                   className="block bg-surface-container-low p-6 rounded-3xl border border-primary/5 hover:border-primary/20 transition-all"
                 >
                   <div className="flex justify-between items-start mb-2">
@@ -149,9 +153,9 @@ export default function LandmarkSelectionPage() {
         </section>
 
         <section className="space-y-6">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between my-8">
             <h3 className="font-label text-xs uppercase tracking-[0.2em] font-bold text-outline">Popular Landmarks</h3>
-            <span className="h-px flex-1 bg-outline-variant/20 ml-4"></span>
+            <span className="h-0.5 flex-1 bg-primary/10 ml-4"></span>
           </div>
 
           <div className="grid grid-cols-2 gap-4">

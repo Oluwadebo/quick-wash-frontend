@@ -4,6 +4,7 @@ import React from 'react';
 import TopAppBar from '@/components/shared/TopAppBar';
 import SealedBagUploader from '@/components/shared/SealedBagUploader';
 import ReadyToReceiveButton from '@/components/shared/ReadyToReceiveButton';
+import Link from 'next/link';
 import { ArrowLeft, ShieldCheck, ShoppingBag, WashingMachine, CheckCircle, MessageCircle, Shield, Package, DoorOpen, Info } from 'lucide-react';
 import { motion } from 'motion/react';
 import Image from 'next/image';
@@ -11,18 +12,40 @@ import { cn } from '@/lib/utils';
 
 export default function OrderTrackingPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = React.use(params);
-  
+  const [order, setOrder] = React.useState<any>(null);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
+    const found = allOrders.find((o: any) => o.id === resolvedParams.id);
+    setOrder(found);
+    setLoading(false);
+  }, [resolvedParams.id]);
+
+  if (loading) return <div className="pt-32 text-center font-headline font-black">Loading...</div>;
+  if (!order) return <div className="pt-32 text-center font-headline font-black">Order not found.</div>;
+
+  const steps = [
+    { id: 'Picked Up', icon: ShoppingBag, label: 'Picked up' },
+    { id: 'Washing', icon: WashingMachine, label: 'Washing' },
+    { id: 'Ready for Handover', icon: CheckCircle, label: 'Handover' },
+    { id: 'Handover', icon: DoorOpen, label: 'Delivered' }
+  ];
+
+  const currentStepIdx = steps.findIndex(s => s.id === order.status);
+  const progress = ((currentStepIdx + 1) / steps.length) * 100;
+
   return (
     <div className="pb-64">
-      <header className="fixed top-0 w-full z-50 bg-surface/80 backdrop-blur-2xl shadow-sm">
-        <div className="flex justify-between items-center px-6 h-20 w-full">
+      <header className="fixed top-0 w-full z-50 bg-surface/80 backdrop-blur-2xl border-b-2 border-primary/10">
+        <div className="flex justify-between items-center px-6 h-20 max-w-7xl mx-auto w-full">
           <div className="flex items-center gap-4">
-            <button className="hover:opacity-80 transition-opacity active:scale-95 text-on-surface bg-surface-container-low p-3 rounded-2xl">
+            <Link href="/track" className="hover:opacity-80 transition-opacity active:scale-95 text-on-surface bg-surface-container-low p-3 rounded-2xl">
               <ArrowLeft className="w-6 h-6" />
-            </button>
+            </Link>
             <div className="flex flex-col">
-              <h1 className="text-on-surface font-black font-headline text-xl tracking-tight leading-tight">Order #{resolvedParams.id || '4821'}</h1>
-              <p className="text-[10px] font-black text-primary uppercase tracking-widest">Ready for Handover</p>
+              <h1 className="text-on-surface font-black font-headline text-xl tracking-tight leading-tight">Order #{order.id}</h1>
+              <p className="text-[10px] font-black text-primary uppercase tracking-widest">{order.status}</p>
             </div>
           </div>
           <div className="h-12 w-12 rounded-2xl overflow-hidden bg-surface-container-highest relative border-2 border-primary-container shadow-lg">
@@ -43,29 +66,30 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
             <div className="absolute top-6 left-1/2 -translate-x-1/2 w-[80%] h-1.5 bg-surface-container-highest rounded-full overflow-hidden">
               <motion.div 
                 initial={{ width: 0 }}
-                animate={{ width: '100%' }}
+                animate={{ width: `${progress}%` }}
                 className="h-full bg-primary"
               />
             </div>
             
-            {[
-              { icon: ShoppingBag, label: 'Picked up' },
-              { icon: WashingMachine, label: 'Washing' },
-              { icon: CheckCircle, label: 'Handover', active: true }
-            ].map((step, i) => (
-              <div key={i} className="relative z-10 flex flex-col items-center gap-4">
-                <div className={cn(
-                  "w-14 h-14 rounded-full flex items-center justify-center transition-all duration-500",
-                  step.active ? "bg-primary text-on-primary ring-8 ring-primary-container shadow-xl" : "bg-primary text-on-primary"
-                )}>
-                  <step.icon className="w-7 h-7 fill-current" />
+            {steps.map((step, i) => {
+              const isActive = i <= currentStepIdx;
+              const isCurrent = i === currentStepIdx;
+              return (
+                <div key={i} className="relative z-10 flex flex-col items-center gap-4">
+                  <div className={cn(
+                    "w-14 h-14 rounded-full flex items-center justify-center transition-all duration-500",
+                    isActive ? "bg-primary text-on-primary" : "bg-surface-container-highest text-on-surface-variant",
+                    isCurrent && "ring-8 ring-primary-container shadow-xl"
+                  )}>
+                    <step.icon className="w-7 h-7 fill-current" />
+                  </div>
+                  <span className={cn(
+                    "font-headline text-[10px] font-black uppercase tracking-widest text-center",
+                    isActive ? "text-primary" : "text-on-surface-variant"
+                  )}>{step.label}</span>
                 </div>
-                <span className={cn(
-                  "font-headline text-[10px] font-black uppercase tracking-widest text-center",
-                  step.active ? "text-primary" : "text-on-surface-variant"
-                )}>{step.label}</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
 
