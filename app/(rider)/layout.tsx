@@ -1,0 +1,12 @@
+import BottomNav from "@/components/shared/BottomNav";
+
+export default function RiderLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-screen flex flex-col">
+      <main className="flex-grow">
+        {children}
+      </main>
+      <BottomNav />
+    </div>
+  );
+}

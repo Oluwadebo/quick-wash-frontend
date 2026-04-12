@@ -1,0 +1,74 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@theme {
+  --color-primary: #006a28;
+  --color-primary-container: #5cfd80;
+  --color-on-primary: #cfffce;
+  --color-on-primary-container: #005d22;
+  
+  --color-secondary: #4953ac;
+  --color-secondary-container: #cbceff;
+  --color-on-secondary: #f3f1ff;
+  --color-on-secondary-container: #343d96;
+  
+  --color-tertiary: #6d5a00;
+  --color-tertiary-container: #fdd400;
+  --color-on-tertiary: #fff2ce;
+  --color-on-tertiary-container: #594a00;
+  
+  --color-surface: #dcffe5;
+  --color-on-surface: #06361f;
+  --color-surface-variant: #a8ecbf;
+  --color-on-surface-variant: #39644a;
+  
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #c7fdd8;
+  --color-surface-container: #bbf6ce;
+  --color-surface-container-high: #b2f1c7;
+  --color-surface-container-highest: #a8ecbf;
+  
+  --color-outline: #548064;
+  --color-outline-variant: #89b898;
+  
+  --color-error: #b02500;
+  --color-error-container: #f95630;
+  --color-on-error: #ffefec;
+  --color-on-error-container: #520c00;
+
+  --font-headline: var(--font-headline);
+  --font-body: var(--font-headline);
+  --font-label: var(--font-label);
+}
+
+@layer base {
+  body {
+    @apply font-body;
+  }
+}
+
+@layer utilities {
+  .signature-gradient {
+    background: linear-gradient(135deg, #006a28 0%, #5cfd80 100%);
+  }
+  
+  .safety-gradient {
+    background: linear-gradient(135deg, #b02500 0%, #f95630 100%);
+  }
+
+  .kinetic-gradient {
+    background: linear-gradient(135deg, #006a28 0%, #5cfd80 100%);
+  }
+
+  .glass-nav {
+    @apply bg-surface/80 backdrop-blur-xl;
+  }
+  
+  .hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}

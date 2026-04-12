@@ -1,0 +1,8 @@
+{
+  "name": "Quick-Wash app",
+  "description": "A premium, student-focused laundry logistics platform for the modern campus.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ]
+}
