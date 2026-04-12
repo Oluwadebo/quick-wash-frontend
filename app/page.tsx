@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Droplets, User, Store, Bike, ShieldCheck, ArrowRight, Sparkles, Zap, Shield, Clock, MapPin, Star } from 'lucide-react';
 import { motion } from 'motion/react';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 
 const roles = [
   { 
@@ -44,10 +45,25 @@ const features = [
 ];
 
 export default function LandingPage() {
+  const router = useRouter();
   return (
     <div className="min-h-screen bg-surface">
       {/* Hero Section */}
       <header className="relative pt-24 pb-32 px-6 overflow-hidden">
+        <div className="absolute top-6 right-6 flex gap-4 z-50">
+          <Link 
+            href="/auth?role=customer&login=true"
+            className="px-6 py-3 bg-white/80 backdrop-blur-md rounded-xl font-headline font-black text-sm text-primary shadow-sm active:scale-95 transition-all"
+          >
+            Login
+          </Link>
+          <button 
+            onClick={() => window.scrollTo({ top: document.getElementById('roles')?.offsetTop, behavior: 'smooth' })}
+            className="px-6 py-3 signature-gradient rounded-xl font-headline font-black text-sm text-white shadow-lg active:scale-95 transition-all"
+          >
+            Sign Up
+          </button>
+        </div>
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-[600px] bg-gradient-to-b from-primary/10 to-transparent -z-10 blur-3xl" />
         
         <div className="max-w-7xl mx-auto text-center">
@@ -56,7 +72,10 @@ export default function LandingPage() {
             animate={{ opacity: 1, scale: 1 }}
             className="flex items-center justify-center gap-4 mb-12"
           >
-            <div className="w-20 h-20 rounded-[2rem] signature-gradient flex items-center justify-center shadow-2xl shadow-primary/20">
+            <div 
+              onContextMenu={(e) => { e.preventDefault(); router.push('/admin'); }}
+              className="w-20 h-20 rounded-[2rem] signature-gradient flex items-center justify-center shadow-2xl shadow-primary/20 cursor-pointer active:scale-95 transition-transform"
+            >
               <Droplets className="text-white w-12 h-12 fill-current" />
             </div>
             <h1 className="text-6xl font-headline font-black tracking-tighter text-on-surface">Quick-Wash</h1>
@@ -100,7 +119,7 @@ export default function LandingPage() {
       </header>
 
       {/* Role Selection / Signup */}
-      <section className="px-6 pb-32">
+      <section id="roles" className="px-6 pb-32">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h3 className="text-4xl font-headline font-black mb-4">Join the Network</h3>
@@ -116,7 +135,7 @@ export default function LandingPage() {
                 transition={{ delay: idx * 0.1 }}
               >
                 <Link 
-                  href={role.href}
+                  href={`/auth?role=${role.title.toLowerCase()}`}
                   className="group relative block h-full bg-surface-container-low rounded-[3rem] p-10 border border-primary/5 hover:border-primary/20 transition-all hover:shadow-2xl hover:shadow-primary/5 overflow-hidden"
                 >
                   <div className={`absolute inset-0 bg-gradient-to-br ${role.gradient} opacity-0 group-hover:opacity-100 transition-opacity`} />
@@ -197,14 +216,29 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <footer className="py-20 text-center border-t border-primary/5">
-        <div className="flex items-center justify-center gap-3 mb-8">
-          <Droplets className="text-primary w-8 h-8 fill-current" />
-          <span className="text-2xl font-headline font-black tracking-tighter">Quick-Wash</span>
+      <footer className="py-20 px-6 border-t border-primary/5">
+        <div className="max-w-7xl mx-auto flex flex-col items-center">
+          <div className="flex items-center justify-center gap-3 mb-8">
+            <Droplets className="text-primary w-8 h-8 fill-current" />
+            <span className="text-2xl font-headline font-black tracking-tighter">Quick-Wash</span>
+          </div>
+          
+          <div className="flex flex-wrap justify-center gap-8 mb-12">
+            <Link href="/contact" className="text-on-surface-variant font-bold hover:text-primary transition-colors">Contact Us</Link>
+            <Link href="/privacy" className="text-on-surface-variant font-bold hover:text-primary transition-colors">Privacy Policy</Link>
+            <Link href="/terms" className="text-on-surface-variant font-bold hover:text-primary transition-colors">Terms of Service</Link>
+            <Link 
+              href="/admin"
+              className="text-on-surface-variant font-bold hover:text-primary transition-colors opacity-10"
+            >
+              Admin
+            </Link>
+          </div>
+
+          <p className="font-label text-[10px] font-black uppercase tracking-[0.4em] text-on-surface-variant opacity-40 text-center">
+            Built for the Modern Campus • 2024
+          </p>
         </div>
-        <p className="font-label text-[10px] font-black uppercase tracking-[0.4em] text-on-surface-variant opacity-40">
-          Built for the Modern Campus • 2024
-        </p>
       </footer>
     </div>
   );
