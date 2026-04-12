@@ -2,10 +2,11 @@
 
 import React from 'react';
 import TopAppBar from '@/components/shared/TopAppBar';
-import { Bell, Settings, Verified, Droplets, Group, Sun, Handshake, Leaf, Lock, CheckCircle, Shield } from 'lucide-react';
+import { Bell, Settings, Verified, Droplets, Group, Sun, Handshake, Leaf, Lock, CheckCircle, Shield, LogOut } from 'lucide-react';
 import { motion } from 'motion/react';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/hooks/use-auth';
 
 const badges = [
   { id: 'early-bird', name: 'Early Bird', icon: Sun, color: 'bg-surface-container-high text-primary', rotate: 'rotate-3' },
@@ -15,27 +16,16 @@ const badges = [
 ];
 
 const history = [
-  { id: 1, name: 'Full Wash & Fold', date: 'Oct 24 • Delivered', price: '$14.50' },
-  { id: 2, name: 'Express Dry', date: 'Oct 18 • Delivered', price: '$6.20' }
+  { id: 1, name: 'Full Wash & Fold', date: 'Oct 24 • Delivered', price: '₦14,500' },
+  { id: 2, name: 'Express Dry', date: 'Oct 18 • Delivered', price: '₦6,200' }
 ];
 
 export default function ProfilePage() {
+  const { user, logout } = useAuth();
+
   return (
     <div className="pb-32">
-      <header className="fixed top-0 w-full z-50 bg-surface/80 backdrop-blur-xl shadow-sm flex items-center justify-between px-6 h-16">
-        <div className="flex items-center gap-2">
-          <Droplets className="text-primary w-6 h-6 fill-current" />
-          <h1 className="text-on-surface font-extrabold tracking-tight font-headline text-lg">Quick-Wash</h1>
-        </div>
-        <div className="flex items-center gap-4">
-          <button className="p-2 rounded-full hover:bg-surface-container-low transition-colors active:scale-95">
-            <Bell className="text-on-surface w-6 h-6" />
-          </button>
-          <button className="p-2 rounded-full hover:bg-surface-container-low transition-colors active:scale-95">
-            <Settings className="text-on-surface w-6 h-6" />
-          </button>
-        </div>
-      </header>
+      <TopAppBar title="My Profile" showAudioToggle />
 
       <main className="pt-24 px-6 max-w-2xl mx-auto space-y-8">
         <section className="flex items-center gap-6">
@@ -52,13 +42,19 @@ export default function ProfilePage() {
               <Verified className="w-4 h-4 fill-current" />
             </div>
           </div>
-          <div>
-            <h2 className="text-2xl font-headline font-bold tracking-tight text-on-surface">Alex Thompson</h2>
-            <p className="font-label text-sm text-on-surface-variant">Sophomore • North Campus Dorms</p>
+          <div className="flex-1">
+            <h2 className="text-2xl font-headline font-bold tracking-tight text-on-surface">{user?.fullName || 'Alex Thompson'}</h2>
+            <p className="font-label text-sm text-on-surface-variant">{user?.landmark || 'North Campus Dorms'}</p>
             <div className="mt-2 flex gap-2">
               <span className="bg-surface-container-highest text-on-surface-variant px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">Top 5% User</span>
             </div>
           </div>
+          <button 
+            onClick={logout}
+            className="p-3 rounded-2xl bg-error/5 text-error hover:bg-error/10 transition-colors active:scale-95"
+          >
+            <LogOut className="w-6 h-6" />
+          </button>
         </section>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -90,7 +86,7 @@ export default function ProfilePage() {
             <div className="bg-secondary p-6 rounded-[2rem] text-on-secondary flex flex-col justify-between overflow-hidden relative group">
               <div className="z-10">
                 <p className="font-label text-[10px] uppercase font-bold tracking-widest opacity-80">Invite Friends</p>
-                <h3 className="text-xl font-headline font-bold leading-tight mt-1">Get $10 Credit</h3>
+                <h3 className="text-xl font-headline font-bold leading-tight mt-1">Get ₦1,000 Credit</h3>
               </div>
               <button className="z-10 mt-2 bg-on-secondary text-secondary font-label font-bold text-xs py-2 px-4 rounded-xl w-max active:scale-95 transition-transform">
                 Share Code

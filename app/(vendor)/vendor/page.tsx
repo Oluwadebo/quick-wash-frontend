@@ -7,31 +7,33 @@ import { motion } from 'motion/react';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
 
-const activeOrders = [
-  {
-    id: '8821',
-    customer: 'Alex Thompson',
-    items: '8.5 KG • Express',
-    status: 'In Progress',
-    time: '2h left',
-    color: 'bg-primary-container text-on-primary-container'
-  },
-  {
-    id: '8825',
-    customer: 'Tunde Kelani',
-    items: '12 KG • Standard',
-    status: 'Pending Wash',
-    time: '5h left',
-    color: 'bg-surface-container-highest text-on-surface'
-  }
-];
+import ProtectedRoute from '@/components/shared/ProtectedRoute';
 
 export default function VendorDashboard() {
+  const { user } = useAuth();
+  const [orders, setOrders] = React.useState<any[]>([]);
+
+  React.useEffect(() => {
+    const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
+    setOrders(allOrders.filter((o: any) => o.vendorId === 'campus-cleans'));
+  }, []);
+
+  const updateOrderStatus = (orderId: string, newStatus: string) => {
+    const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
+    const updated = allOrders.map((o: any) => 
+      o.id === orderId ? { ...o, status: newStatus } : o
+    );
+    localStorage.setItem('qw_orders', JSON.stringify(updated));
+    setOrders(updated.filter((o: any) => o.vendorId === 'campus-cleans'));
+  };
+
   return (
-    <div className="pb-32">
-      <TopAppBar roleLabel="Vendor" showAudioToggle />
-      
-      <main className="pt-24 px-6 max-w-7xl mx-auto">
+    <ProtectedRoute allowedRoles={['vendor']}>
+      <div className="pb-32">
+        <TopAppBar roleLabel="Vendor" showAudioToggle />
+        
+        <main className="pt-24 px-6 max-w-7xl mx-auto">
+          {/* ... existing header ... */}
         <header className="mb-10">
           <div className="flex items-center gap-4 mb-2">
             <div className="w-12 h-12 rounded-2xl bg-primary-container flex items-center justify-center">
@@ -40,7 +42,7 @@ export default function VendorDashboard() {
             <p className="font-label text-xs font-black uppercase tracking-[0.2em] text-primary">Live Dashboard</p>
           </div>
           <h1 className="text-[3.5rem] leading-[0.95] font-headline font-black text-on-surface mb-6 tracking-tighter">
-            E káàbọ̀, Campus Cleans!
+            E káàbọ̀, {user?.shopName || 'Vendor'}!
           </h1>
           <div className="flex items-center gap-3 bg-surface-container-low p-4 rounded-2xl border border-primary/5">
             <Volume2 className="text-primary w-6 h-6 fill-current" />
@@ -54,7 +56,7 @@ export default function VendorDashboard() {
         <section className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
           <div className="bg-surface-container-lowest p-8 rounded-[2.5rem] shadow-sm border border-primary/5">
             <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Today&apos;s Earnings</p>
-            <h3 className="text-4xl font-headline font-black text-on-surface mb-4">₦42,500</h3>
+            <h3 className="text-4xl font-headline font-black text-on-surface mb-4">₦{orders.reduce((acc, o) => acc + o.totalPrice, 0).toLocaleString()}</h3>
             <div className="flex items-center gap-2 text-primary font-bold text-xs">
               <TrendingUp className="w-4 h-4" />
               <span>+12% from yesterday</span>
@@ -62,7 +64,7 @@ export default function VendorDashboard() {
           </div>
           <div className="bg-surface-container-lowest p-8 rounded-[2.5rem] shadow-sm border border-primary/5">
             <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Active Orders</p>
-            <h3 className="text-4xl font-headline font-black text-on-surface mb-4">08</h3>
+            <h3 className="text-4xl font-headline font-black text-on-surface mb-4">{orders.length.toString().padStart(2, '0')}</h3>
             <div className="flex items-center gap-2 text-on-surface-variant font-bold text-xs">
               <Clock className="w-4 h-4" />
               <span>Avg. turnaround: 4.2h</span>
@@ -87,7 +89,7 @@ export default function VendorDashboard() {
           </div>
 
           <div className="space-y-6">
-            {activeOrders.map((order, idx) => (
+            {orders.map((order, idx) => (
               <motion.div 
                 key={order.id}
                 initial={{ opacity: 0, x: -20 }}
@@ -100,7 +102,7 @@ export default function VendorDashboard() {
                 </div>
                 <div className="flex-1 text-center md:text-left">
                   <div className="flex flex-col md:flex-row md:items-center gap-2 mb-1">
-                    <h4 className="text-xl font-headline font-black text-on-surface">{order.customer}</h4>
+                    <h4 className="text-xl font-headline font-black text-on-surface">{order.customerName}</h4>
                     <span className="font-label text-[10px] font-black bg-surface-container-highest px-3 py-1 rounded-full uppercase tracking-widest">#{order.id}</span>
                   </div>
                   <p className="font-label text-xs font-bold text-on-surface-variant uppercase tracking-widest">{order.items}</p>
@@ -114,11 +116,19 @@ export default function VendorDashboard() {
                     <span className="text-xs font-bold">{order.time}</span>
                   </div>
                 </div>
-                <button className="signature-gradient text-white px-8 py-4 rounded-2xl font-headline font-black text-sm shadow-lg active:scale-95 transition-transform w-full md:w-auto">
+                <button 
+                  onClick={() => updateOrderStatus(order.id, 'Washing')}
+                  className="signature-gradient text-white px-8 py-4 rounded-2xl font-headline font-black text-sm shadow-lg active:scale-95 transition-transform w-full md:w-auto"
+                >
                   Update Status
                 </button>
               </motion.div>
             ))}
+            {orders.length === 0 && (
+              <div className="py-20 text-center bg-surface-container-low rounded-[2rem] border border-dashed border-primary/20">
+                <p className="text-on-surface-variant font-headline font-bold text-xl">No incoming orders yet.</p>
+              </div>
+            )}
           </div>
         </section>
 
@@ -147,5 +157,6 @@ export default function VendorDashboard() {
         </section>
       </main>
     </div>
+    </ProtectedRoute>
   );
 }

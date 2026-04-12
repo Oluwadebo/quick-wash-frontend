@@ -5,7 +5,17 @@ import { Bolt, Volume2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { cn } from '@/lib/utils';
 
-export default function ReadyForPickupButton() {
+interface ReadyForPickupButtonProps {
+  onClick?: () => void;
+  label?: string;
+  audioText?: string;
+}
+
+export default function ReadyForPickupButton({ 
+  onClick, 
+  label = "I'M READY FOR PICKUP",
+  audioText = "Ẹ KÚ IṢẸ́ O!"
+}: ReadyForPickupButtonProps) {
   const [isPlaying, setIsPlaying] = React.useState(false);
 
   const handleAction = () => {
@@ -13,12 +23,10 @@ export default function ReadyForPickupButton() {
     const audioEnabled = localStorage.getItem('yoruba-audio-enabled') === 'true';
     if (audioEnabled) {
       setIsPlaying(true);
-      // In a real app, you'd play an actual audio file here
-      // const audio = new Audio('/audio/ready-for-pickup.mp3');
-      // audio.play();
-      console.log('Playing Yoruba Audio: "Mo ti ṣe tán fún kíkó lọ"');
+      console.log(`Playing Yoruba Audio: "${audioText}"`);
       setTimeout(() => setIsPlaying(false), 2000);
     }
+    if (onClick) onClick();
   };
 
   return (
@@ -40,12 +48,12 @@ export default function ReadyForPickupButton() {
           className="flex items-center gap-3"
         >
           <Volume2 className="w-8 h-8 animate-bounce" />
-          <span>Ẹ KÚ IṢẸ́ O!</span>
+          <span>{audioText}</span>
         </motion.div>
       ) : (
         <>
           <Bolt className="w-8 h-8 fill-current" />
-          <span>I&apos;M READY FOR PICKUP</span>
+          <span>{label}</span>
         </>
       )}
 

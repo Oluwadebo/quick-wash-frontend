@@ -13,39 +13,57 @@ const items = [
     name: 'Shirts & Tops',
     desc: 'Daily Essentials • Aṣọ Òkè',
     icon: Shirt,
-    price: 200,
+    basePrice: 200,
     unit: 'unit',
     count: 4,
-    services: ['Wash', 'Iron', 'Wash + Iron'],
-    selectedService: 'Wash'
+    services: [
+      { name: 'Wash', price: 200 },
+      { name: 'Iron', price: 150 },
+      { name: 'Wash + Iron', price: 300 }
+    ],
+    selectedService: 'Wash',
+    hasStainRemover: false,
+    stainRemoverPrice: 500
   },
   {
     id: 'trousers',
     name: 'Trousers',
     desc: 'Denim & Chinos • Òkòtò',
     icon: ShoppingBag,
-    price: 250,
+    basePrice: 250,
     unit: 'unit',
     count: 2,
-    services: ['Wash', 'Iron', 'Wash + Iron'],
-    selectedService: 'Wash + Iron'
+    services: [
+      { name: 'Wash', price: 250 },
+      { name: 'Iron', price: 200 },
+      { name: 'Wash + Iron', price: 400 }
+    ],
+    selectedService: 'Wash + Iron',
+    hasStainRemover: false,
+    stainRemoverPrice: 500
   },
   {
     id: 'beddings',
     name: 'Beddings',
     desc: 'Sheets & Covers • Aṣọ Ìbùsùn',
     icon: Bed,
-    price: 1200,
+    basePrice: 1200,
     unit: 'set',
     count: 1,
-    services: ['Wash', 'Steam Press'],
+    services: [
+      { name: 'Wash', price: 1200 },
+      { name: 'Steam Press', price: 1000 }
+    ],
     selectedService: 'Wash',
-    addOn: { name: 'Stain Remover Added', price: 500 }
+    hasStainRemover: true,
+    stainRemoverPrice: 800
   }
 ];
 
 export default function OrderPage() {
   const [cart, setCart] = React.useState(items);
+  const [isPaid, setIsPaid] = React.useState(false);
+  const [isPaying, setIsPaying] = React.useState(false);
 
   const updateCount = (id: string, delta: number) => {
     setCart(prev => prev.map(item => 
@@ -53,14 +71,66 @@ export default function OrderPage() {
     ));
   };
 
+  const updateService = (id: string, serviceName: string) => {
+    setCart(prev => prev.map(item => 
+      item.id === id ? { ...item, selectedService: serviceName } : item
+    ));
+  };
+
+  const toggleStainRemover = (id: string) => {
+    setCart(prev => prev.map(item => 
+      item.id === id ? { ...item, hasStainRemover: !item.hasStainRemover } : item
+    ));
+  };
+
+  const getItemPrice = (item: typeof items[0]) => {
+    const service = item.services.find(s => s.name === item.selectedService);
+    const servicePrice = service ? service.price : item.basePrice;
+    const stainPrice = item.hasStainRemover ? item.stainRemoverPrice : 0;
+    return (item.count * servicePrice) + (item.count > 0 ? stainPrice : 0);
+  };
+
   const totalItems = cart.reduce((acc, item) => acc + item.count, 0);
-  const totalPrice = cart.reduce((acc, item) => acc + (item.count * item.price) + (item.count > 0 && item.addOn ? item.addOn.price : 0), 0);
+  const totalPrice = cart.reduce((acc, item) => acc + getItemPrice(item), 0);
+
+  const handlePayment = async () => {
+    setIsPaying(true);
+    // Simulate Paystack/Payment Gateway
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    setIsPaid(true);
+    setIsPaying(false);
+    alert('Payment Successful! You can now request a pickup.');
+  };
+
+  const handlePickupRequest = React.useCallback(() => {
+    const orders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
+    const currentUser = JSON.parse(localStorage.getItem('qw_user') || '{}');
+    
+    const newOrder = {
+      id: Math.floor(1000 + Math.random() * 9000).toString(),
+      customerName: currentUser.fullName || 'Guest',
+      customerPhone: currentUser.phoneNumber,
+      items: cart.filter(i => i.count > 0).map(i => `${i.count}x ${i.name} (${i.selectedService})`).join(', '),
+      totalPrice,
+      status: 'Pending Pickup',
+      time: 'Just now',
+      color: 'bg-primary-container text-on-primary-container',
+      vendorId: 'campus-cleans', // Default for now
+      createdAt: new Date().toISOString()
+    };
+
+    orders.push(newOrder);
+    localStorage.setItem('qw_orders', JSON.stringify(orders));
+    alert('Order placed successfully! A rider will be assigned shortly.');
+    router.push('/track');
+  }, [cart, totalPrice]);
 
   return (
     <div className="pb-64">
       <TopAppBar showAudioToggle />
       
       <main className="pt-28 px-6 max-w-3xl mx-auto">
+        {/* ... existing header ... */}
         <header className="mb-12">
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
@@ -136,39 +206,50 @@ export default function OrderPage() {
               <div className="flex flex-wrap gap-3 mb-8">
                 {item.services.map(service => (
                   <button 
-                    key={service}
+                    key={service.name}
+                    onClick={() => updateService(item.id, service.name)}
                     className={cn(
                       "px-8 py-4 rounded-2xl font-headline font-black text-sm shadow-sm transition-all active:scale-95",
-                      item.selectedService === service 
+                      item.selectedService === service.name 
                         ? "signature-gradient text-white shadow-lg" 
                         : "bg-white text-on-surface-variant hover:bg-surface-container-highest"
                     )}
                   >
-                    {service}
+                    {service.name} (₦{service.price})
                   </button>
                 ))}
               </div>
 
-              {item.addOn && item.count > 0 && (
-                <div className="flex items-center justify-between p-6 bg-tertiary-container/10 rounded-3xl border border-tertiary-container/30 mb-8">
+              {item.count > 0 && (
+                <button 
+                  onClick={() => toggleStainRemover(item.id)}
+                  className={cn(
+                    "w-full flex items-center justify-between p-6 rounded-3xl border transition-all mb-8",
+                    item.hasStainRemover 
+                      ? "bg-tertiary-container/20 border-tertiary-container shadow-inner" 
+                      : "bg-white border-primary/5 opacity-60"
+                  )}
+                >
                   <div className="flex items-center gap-4">
-                    <Sparkles className="text-tertiary w-6 h-6 fill-current" />
-                    <div>
-                      <span className="font-headline font-black text-sm block">{item.addOn.name}</span>
-                      <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Applied to all {item.name}</span>
+                    <Sparkles className={cn("w-6 h-6 fill-current", item.hasStainRemover ? "text-tertiary" : "text-on-surface-variant")} />
+                    <div className="text-left">
+                      <span className="font-headline font-black text-sm block">Stain Remover</span>
+                      <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Deep cleaning for tough marks</span>
                     </div>
                   </div>
-                  <span className="font-label text-sm font-black text-tertiary">+₦{item.addOn.price}</span>
-                </div>
+                  <span className={cn("font-label text-sm font-black", item.hasStainRemover ? "text-tertiary" : "text-on-surface-variant")}>
+                    {item.hasStainRemover ? 'Added' : 'Add'} +₦{item.stainRemoverPrice}
+                  </span>
+                </button>
               )}
 
               <div className="flex items-center justify-between pt-6 border-t border-primary/5">
                 <div className="flex items-center gap-2 text-on-surface-variant opacity-60">
                   <CreditCard className="w-5 h-5" />
-                  <span className="text-sm font-label font-bold uppercase tracking-widest">₦{item.price} / {item.unit}</span>
+                  <span className="text-sm font-label font-bold uppercase tracking-widest">Base: ₦{item.basePrice} / {item.unit}</span>
                 </div>
                 <div className="text-right">
-                  <span className="font-headline font-black text-3xl text-primary">₦{(item.count * item.price + (item.count > 0 && item.addOn ? item.addOn.price : 0)).toLocaleString()}</span>
+                  <span className="font-headline font-black text-3xl text-primary">₦{getItemPrice(item).toLocaleString()}</span>
                 </div>
               </div>
             </motion.div>
@@ -176,9 +257,9 @@ export default function OrderPage() {
         </div>
       </main>
 
-      {/* Sticky Footer with Ready Button */}
-      <footer className="fixed bottom-0 left-0 w-full z-50">
-        <div className="bg-white/95 backdrop-blur-3xl rounded-t-[3rem] px-8 pt-10 pb-12 shadow-[0_-20px_60px_rgba(0,106,40,0.15)] border-t border-primary/5">
+      {/* Non-Sticky Footer */}
+      <footer className="mt-12">
+        <div className="bg-white/95 backdrop-blur-3xl rounded-[3rem] px-8 pt-10 pb-12 shadow-[0_-20px_60px_rgba(0,106,40,0.05)] border border-primary/5">
           <div className="max-w-3xl mx-auto">
             <div className="flex justify-between items-end mb-10">
               <div>
@@ -191,7 +272,27 @@ export default function OrderPage() {
               </div>
             </div>
             
-            <ReadyForPickupButton />
+            {!isPaid ? (
+              <button 
+                onClick={handlePayment}
+                disabled={totalItems === 0 || isPaying}
+                className="w-full h-20 bg-primary text-white rounded-[2rem] font-headline font-black text-xl shadow-2xl shadow-primary/30 flex items-center justify-center gap-3 active:scale-[0.98] transition-all disabled:opacity-50 disabled:active:scale-100"
+              >
+                {isPaying ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Processing Payment...</span>
+                  </div>
+                ) : (
+                  <>
+                    <CreditCard className="w-6 h-6" />
+                    Pay ₦{totalPrice.toLocaleString()}
+                  </>
+                )}
+              </button>
+            ) : (
+              <ReadyForPickupButton onClick={handlePickupRequest} />
+            )}
 
             <div className="flex justify-center mt-6">
               <div className="flex items-center gap-2 text-[10px] font-label font-black uppercase tracking-[0.25em] text-on-surface-variant opacity-40">

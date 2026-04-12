@@ -49,6 +49,43 @@ const sortOptions = [
 
 export default function VendorSelectionPage() {
   const [selectedSort, setSelectedSort] = React.useState('highest-rated');
+  const [searchQuery, setSearchQuery] = React.useState('');
+
+  const filteredVendors = React.useMemo(() => {
+    let result = [...vendors];
+
+    // Filter by search
+    if (searchQuery) {
+      result = result.filter(v => 
+        v.name.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+
+    // Sort
+    result.sort((a, b) => {
+      if (selectedSort === 'cheapest') {
+        const priceA = parseInt(a.priceRange.replace(/[^0-9]/g, ''));
+        const priceB = parseInt(b.priceRange.replace(/[^0-9]/g, ''));
+        return priceA - priceB;
+      }
+      if (selectedSort === 'fastest') {
+        const timeA = parseInt(a.turnaround.replace(/[^0-9]/g, ''));
+        const timeB = parseInt(b.turnaround.replace(/[^0-9]/g, ''));
+        return timeA - timeB;
+      }
+      if (selectedSort === 'highest-rated') {
+        return b.rating - a.rating;
+      }
+      if (selectedSort === 'closest') {
+        const distA = parseFloat(a.distance.replace(/[^0-9.]/g, ''));
+        const distB = parseFloat(b.distance.replace(/[^0-9.]/g, ''));
+        return distA - distB;
+      }
+      return 0;
+    });
+
+    return result;
+  }, [selectedSort, searchQuery]);
 
   return (
     <div className="pb-32">
@@ -76,6 +113,8 @@ export default function VendorSelectionPage() {
             <input 
               type="text" 
               placeholder="Search for a shop or area..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full h-20 bg-surface-container-low rounded-[2rem] pl-16 pr-8 font-headline font-bold text-lg focus:ring-4 focus:ring-primary-container outline-none transition-all border border-primary/5"
             />
           </div>
@@ -104,12 +143,17 @@ export default function VendorSelectionPage() {
 
         {/* Vendor Grid */}
         <section className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {vendors.map((vendor) => (
+          {filteredVendors.map((vendor) => (
             <VendorCard 
               key={vendor.id}
               {...vendor}
             />
           ))}
+          {filteredVendors.length === 0 && (
+            <div className="col-span-full py-20 text-center">
+              <p className="text-on-surface-variant font-headline font-bold text-xl">No vendors found matching your search.</p>
+            </div>
+          )}
         </section>
       </main>
     </div>

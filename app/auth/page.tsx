@@ -3,35 +3,41 @@
 import React, { useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth, UserRole } from '@/hooks/use-auth';
-import { Droplets, ArrowLeft, Phone, Lock, User, MapPin, ChevronRight, Sparkles } from 'lucide-react';
+import { Droplets, ArrowLeft, Phone, Lock, User, MapPin, ChevronRight, Sparkles, Store, Bike } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 
 function AuthContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { signup, login } = useAuth();
+  const { signup, login, isProcessing } = useAuth();
   
   const role = (searchParams.get('role') as UserRole) || 'customer';
-  const [isLogin, setIsLogin] = useState(false);
+  const initialIsLogin = searchParams.get('login') === 'true';
+  const [isLogin, setIsLogin] = useState(initialIsLogin);
   
   const [formData, setFormData] = useState({
     fullName: '',
     phoneNumber: '',
     password: '',
-    landmark: 'Under-G'
+    landmark: 'Under-G',
+    shopName: '',
+    vehicleType: 'Bicycle'
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (isLogin) {
-      login(formData.phoneNumber, role);
+      login(formData.phoneNumber, formData.password);
     } else {
       signup({
         fullName: formData.fullName,
         phoneNumber: formData.phoneNumber,
+        password: formData.password,
         landmark: formData.landmark,
-        role: role
+        role: role,
+        shopName: formData.shopName,
+        vehicleType: formData.vehicleType
       });
     }
   };
@@ -98,10 +104,39 @@ function AuthContent() {
                         onChange={(e) => setFormData({...formData, landmark: e.target.value})}
                         className="w-full h-16 bg-surface-container-low rounded-2xl pl-14 pr-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all appearance-none"
                       >
-                        <option value="Under-G">Under-G</option>
-                        <option value="Adenike">Adenike</option>
-                        <option value="Main Gate">Main Gate</option>
-                        <option value="Aroje">Aroje</option>
+                        <option value="Under-G">Under-G (Campus Area)</option>
+                        <option value="Adenike">Adenike (Off-Campus)</option>
+                        <option value="Main Gate">Main Gate (Entrance)</option>
+                        <option value="Aroje">Aroje (Residential)</option>
+                      </select>
+                    </div>
+                  )}
+
+                  {role === 'vendor' && (
+                    <div className="relative">
+                      <Store className="absolute left-5 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5" />
+                      <input 
+                        type="text" 
+                        placeholder="Laundry Shop Name"
+                        required={!isLogin}
+                        value={formData.shopName}
+                        onChange={(e) => setFormData({...formData, shopName: e.target.value})}
+                        className="w-full h-16 bg-surface-container-low rounded-2xl pl-14 pr-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"
+                      />
+                    </div>
+                  )}
+
+                  {role === 'rider' && (
+                    <div className="relative">
+                      <Bike className="absolute left-5 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5" />
+                      <select 
+                        value={formData.vehicleType}
+                        onChange={(e) => setFormData({...formData, vehicleType: e.target.value})}
+                        className="w-full h-16 bg-surface-container-low rounded-2xl pl-14 pr-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all appearance-none"
+                      >
+                        <option value="Bicycle">Bicycle</option>
+                        <option value="Motorcycle">Motorcycle</option>
+                        <option value="Car">Car</option>
                       </select>
                     </div>
                   )}
@@ -135,10 +170,20 @@ function AuthContent() {
 
             <button 
               type="submit"
-              className="w-full h-16 signature-gradient text-white rounded-2xl font-headline font-black text-lg shadow-xl shadow-primary/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2 mt-4"
+              disabled={isProcessing}
+              className="w-full h-16 signature-gradient text-white rounded-2xl font-headline font-black text-lg shadow-xl shadow-primary/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2 mt-4 disabled:opacity-70 disabled:active:scale-100"
             >
-              {isLogin ? 'Login' : 'Create Account'}
-              <ChevronRight className="w-5 h-5" />
+              {isProcessing ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>Processing...</span>
+                </div>
+              ) : (
+                <>
+                  {isLogin ? 'Login' : 'Create Account'}
+                  <ChevronRight className="w-5 h-5" />
+                </>
+              )}
             </button>
           </form>
 

@@ -22,8 +22,9 @@ export default function TopAppBar({
   onClose,
   roleLabel
 }: TopAppBarProps) {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const homeLink = user?.role === 'customer' ? '/customer' : (user?.role ? `/${user.role}` : '/');
+  const profileLink = user?.role === 'customer' ? '/profile' : (user?.role ? `/${user.role}/profile` : '/profile');
 
   return (
     <header className="fixed top-0 w-full z-50 bg-surface/80 backdrop-blur-2xl border-b border-primary/5">
@@ -60,7 +61,15 @@ export default function TopAppBar({
                   {roleLabel}
                 </span>
               )}
-              <Link href={user?.role === 'customer' ? '/profile' : `/${user?.role}/profile` || '/profile'}>
+              {user && (
+                <button 
+                  onClick={logout}
+                  className="hidden md:flex items-center gap-2 px-4 py-2 rounded-xl bg-error/10 text-error font-headline font-black text-xs uppercase tracking-widest hover:bg-error/20 transition-colors"
+                >
+                  Logout
+                </button>
+              )}
+              <Link href={profileLink}>
                 <div className="h-12 w-12 rounded-2xl overflow-hidden bg-surface-container-highest relative border-2 border-primary-container shadow-md active:scale-95 transition-transform flex items-center justify-center">
                   <User className="w-8 h-8 text-on-surface-variant" />
                 </div>

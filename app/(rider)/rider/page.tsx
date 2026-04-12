@@ -26,33 +26,40 @@ const tasks = [
   }
 ];
 
+import ProtectedRoute from '@/components/shared/ProtectedRoute';
+import { useAuth } from '@/hooks/use-auth';
+
 export default function RiderDashboard() {
+  const { user } = useAuth();
+  
   return (
-    <div className="pb-32">
-      <TopAppBar roleLabel="Rider" />
-      
-      <main className="pt-24 px-6 max-w-7xl mx-auto">
-        <header className="mb-10 flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 rounded-xl bg-primary text-on-primary flex items-center justify-center">
-                <Bike className="w-6 h-6 fill-current" />
+    <ProtectedRoute allowedRoles={['rider']}>
+      <div className="pb-32">
+        <TopAppBar roleLabel="Rider" />
+        
+        <main className="pt-24 px-6 max-w-7xl mx-auto">
+          <header className="mb-10 flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-10 h-10 rounded-xl bg-primary text-on-primary flex items-center justify-center">
+                  <Bike className="w-6 h-6 fill-current" />
+                </div>
+                <p className="font-label text-xs font-black uppercase tracking-[0.2em] text-primary">On Duty</p>
               </div>
-              <p className="font-label text-xs font-black uppercase tracking-[0.2em] text-primary">On Duty</p>
+              <h1 className="text-4xl font-headline font-black text-on-surface tracking-tighter">
+                {user?.fullName || 'Rider'}
+              </h1>
+              <div className="mt-4 flex items-center gap-3 bg-tertiary-container/20 px-4 py-2 rounded-xl border border-tertiary-container/30">
+                <Zap className="text-tertiary w-4 h-4 fill-current" />
+                <span className="text-xs font-headline font-black text-tertiary">820 Trust Points • Elite Rider</span>
+              </div>
             </div>
-            <h1 className="text-4xl font-headline font-black text-on-surface tracking-tighter">
-              Samuel Okon
-            </h1>
-            <div className="mt-4 flex items-center gap-3 bg-tertiary-container/20 px-4 py-2 rounded-xl border border-tertiary-container/30">
-              <Zap className="text-tertiary w-4 h-4 fill-current" />
-              <span className="text-xs font-headline font-black text-tertiary">820 Trust Points • Elite Rider</span>
+            <div className="bg-surface-container-lowest p-4 rounded-3xl shadow-sm border border-primary/5 text-center">
+              <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">Earnings</p>
+              <p className="font-headline font-black text-2xl text-primary">₦12,400</p>
             </div>
-          </div>
-          <div className="bg-surface-container-lowest p-4 rounded-3xl shadow-sm border border-primary/5 text-center">
-            <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">Earnings</p>
-            <p className="font-headline font-black text-2xl text-primary">₦12,400</p>
-          </div>
-        </header>
+          </header>
+          {/* ... rest of the content ... */}
 
         <section className="bg-surface-container-low rounded-[2.5rem] p-8 mb-12 flex flex-col md:flex-row items-center justify-between gap-8 border border-primary/5">
           <div className="flex items-center gap-6">
@@ -134,5 +141,6 @@ export default function RiderDashboard() {
         </section>
       </main>
     </div>
+    </ProtectedRoute>
   );
 }

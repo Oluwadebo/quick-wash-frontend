@@ -46,6 +46,15 @@ const features = [
 
 export default function LandingPage() {
   const router = useRouter();
+
+  React.useEffect(() => {
+    const storedUser = localStorage.getItem('qw_user');
+    if (storedUser) {
+      const user = JSON.parse(storedUser);
+      router.push(`/${user.role === 'customer' ? 'customer' : user.role}`);
+    }
+  }, [router]);
+
   return (
     <div className="min-h-screen bg-surface">
       {/* Hero Section */}

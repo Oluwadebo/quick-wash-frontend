@@ -39,7 +39,7 @@ export default function YorubaAudioToggle() {
         <VolumeX className="w-5 h-5" />
       )}
       <span className="font-headline font-black text-xs uppercase tracking-widest">
-        {isEnabled ? "Yoruba Audio ON" : "Yoruba Audio OFF"}
+        {isEnabled ? "Audio: Yoruba" : "Audio: English"}
       </span>
     </button>
   );

@@ -47,12 +47,24 @@ const landmarks = [
   }
 ];
 
+import ProtectedRoute from '@/components/shared/ProtectedRoute';
+
 export default function LandmarkSelectionPage() {
+  const [recentOrders, setRecentOrders] = React.useState<any[]>([]);
+
+  React.useEffect(() => {
+    const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
+    const currentUser = JSON.parse(localStorage.getItem('qw_user') || '{}');
+    setRecentOrders(allOrders.filter((o: any) => o.customerPhone === currentUser.phoneNumber));
+  }, []);
+
   return (
-    <div className="pb-32">
-      <TopAppBar />
-      
-      <main className="pt-24 px-6 max-w-2xl mx-auto">
+    <ProtectedRoute allowedRoles={['customer']}>
+      <div className="pb-32">
+        <TopAppBar />
+        
+        <main className="pt-24 px-6 max-w-2xl mx-auto">
+          {/* ... existing content ... */}
         {/* Trust Points Header */}
         <section className="mb-10">
           <motion.div 
@@ -74,6 +86,33 @@ export default function LandmarkSelectionPage() {
             </Link>
           </motion.div>
         </section>
+
+        {/* Recent Orders Section */}
+        {recentOrders.length > 0 && (
+          <section className="mb-12">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="font-label text-xs uppercase tracking-[0.2em] font-bold text-outline">Your Recent Orders</h3>
+              <Link href="/track" className="text-primary font-headline font-bold text-xs">View All</Link>
+            </div>
+            <div className="space-y-4">
+              {recentOrders.slice(0, 2).map((order) => (
+                <Link 
+                  key={order.id} 
+                  href={`/track?id=${order.id}`}
+                  className="block bg-surface-container-low p-6 rounded-3xl border border-primary/5 hover:border-primary/20 transition-all"
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <h4 className="font-headline font-black text-on-surface">Order #{order.id}</h4>
+                    <span className={cn("px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest", order.color)}>
+                      {order.status}
+                    </span>
+                  </div>
+                  <p className="text-xs text-on-surface-variant font-medium line-clamp-1">{order.items}</p>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
 
         <header className="mb-8">
           <motion.h2 
@@ -183,5 +222,6 @@ export default function LandmarkSelectionPage() {
         </section>
       </main>
     </div>
+    </ProtectedRoute>
   );
 }
