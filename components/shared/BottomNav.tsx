@@ -27,37 +27,40 @@ interface NavItem {
 const customerItems: NavItem[] = [
   { label: 'Home', icon: Home, href: '/customer' },
   { label: 'Wash', icon: WashingMachine, href: '/vendors' },
-  { label: 'Track', icon: Map, href: '/track/8821' },
+  { label: 'Track', icon: Map, href: '/track' },
   { label: 'Profile', icon: User, href: '/profile' },
 ];
 
 const vendorItems: NavItem[] = [
   { label: 'Home', icon: LayoutDashboard, href: '/vendor' },
   { label: 'Prices', icon: Tag, href: '/vendor/price-list' },
-  { label: 'Orders', icon: ReceiptText, href: '/vendor' },
-  { label: 'Account', icon: User, href: '/vendor/profile' },
+  { label: 'Profile', icon: User, href: '/profile' },
 ];
 
 const riderItems: NavItem[] = [
   { label: 'Home', icon: Home, href: '/rider' },
-  { label: 'Orders', icon: WashingMachine, href: '/rider' },
-  { label: 'Wallet', icon: Wallet, href: '/rider' },
-  { label: 'Account', icon: User, href: '/rider/profile' },
+  { label: 'Profile', icon: User, href: '/profile' },
 ];
 
 export default function BottomNav() {
   const pathname = usePathname();
+  const [user, setUser] = React.useState<any>(null);
+
+  React.useEffect(() => {
+    const u = JSON.parse(localStorage.getItem('qw_user') || 'null');
+    setUser(u);
+  }, [pathname]);
   
+  if (pathname === '/' || pathname.startsWith('/auth') || pathname.startsWith('/admin')) return null;
+
   let items = customerItems;
-  if (pathname.includes('/vendor')) items = vendorItems;
-  else if (pathname.includes('/rider')) items = riderItems;
-  else if (pathname.includes('/admin')) items = []; // Admin might not need bottom nav
-  else if (pathname === '/' || pathname.startsWith('/auth')) return null;
+  if (user?.role === 'vendor') items = vendorItems;
+  else if (user?.role === 'rider') items = riderItems;
 
   return (
     <nav className="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 pt-3 pb-8 bg-zinc-900 backdrop-blur-2xl rounded-t-[2.5rem] shadow-[0_-8px_32px_rgba(0,0,0,0.2)]">
       {items.map((item) => {
-        const isActive = pathname === item.href || (item.label === 'Account' && pathname.includes('profile'));
+        const isActive = pathname === item.href;
         
         return (
           <Link

@@ -14,11 +14,13 @@ export default function VendorDashboard() {
   const [orders, setOrders] = React.useState<any[]>([]);
   const [selectedOrder, setSelectedOrder] = React.useState<any>(null);
 
+
   React.useEffect(() => {
+    if (!user) return;
     const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-    // Filter orders for this vendor.
-    setOrders(allOrders.filter((o: any) => o.vendorId === 'campus-cleans'));
-  }, []);
+    // Filter orders for this vendor using their phone number as ID
+    setOrders(allOrders.filter((o: any) => o.vendorId === user.phoneNumber || o.vendorId === 'campus-cleans'));
+  }, [user]);
 
   const updateOrderStatus = (orderId: string, newStatus: string) => {
     const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
@@ -26,16 +28,16 @@ export default function VendorDashboard() {
       o.id === orderId ? { ...o, status: newStatus, color: getStatusColor(newStatus) } : o
     );
     localStorage.setItem('qw_orders', JSON.stringify(updated));
-    setOrders(updated.filter((o: any) => o.vendorId === 'campus-cleans'));
+    setOrders(updated.filter((o: any) => o.vendorId === user?.phoneNumber || o.vendorId === 'campus-cleans'));
     if (selectedOrder?.id === orderId) {
       setSelectedOrder({ ...selectedOrder, status: newStatus, color: getStatusColor(newStatus) });
     }
   };
-
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'Washing': return 'bg-tertiary-container text-on-tertiary-container';
-      case 'Ready for Handover': return 'bg-primary text-on-primary';
+      case 'Awaiting Delivery Confirmation': return 'bg-warning/20 text-warning';
+      case 'Ready for Delivery': return 'bg-primary text-on-primary';
       case 'Handover': return 'bg-success text-white';
       default: return 'bg-primary-container text-on-primary-container';
     }
@@ -142,7 +144,15 @@ export default function VendorDashboard() {
                     )}
                     {order.status === 'Washing' && (
                       <button 
-                        onClick={(e) => { e.stopPropagation(); updateOrderStatus(order.id, 'Ready for Handover'); }}
+                        onClick={(e) => { 
+                          e.stopPropagation(); 
+                          updateOrderStatus(order.id, 'Awaiting Delivery Confirmation'); 
+                          const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
+                          const updated = allOrders.map((o: any) => 
+                            o.id === order.id ? { ...o, readyForDeliveryAt: new Date().toISOString() } : o
+                          );
+                          localStorage.setItem('qw_orders', JSON.stringify(updated));
+                        }}
                         className="flex-1 md:flex-none signature-gradient text-white px-6 py-4 rounded-2xl font-headline font-black text-xs shadow-lg active:scale-95 transition-transform"
                       >
                         READY FOR PICKUP
@@ -166,7 +176,22 @@ export default function VendorDashboard() {
               </div>
               <h3 className="text-2xl font-headline font-black">Report Rain</h3>
               <p className="text-on-surface-variant font-medium max-w-xs">Notify all active customers that drying might be delayed due to weather.</p>
-              <button className="bg-tertiary text-on-tertiary px-10 py-5 rounded-2xl font-headline font-black text-lg shadow-xl hover:brightness-105 active:scale-95 transition-all w-full">
+              <button 
+                onClick={() => {
+                  const alerts = JSON.parse(localStorage.getItem('qw_alerts') || '[]');
+                  alerts.push({
+                    id: Date.now(),
+                    type: 'Weather',
+                    msg: `Rain reported by ${user?.shopName || 'a vendor'} in Under G.`,
+                    time: 'Just now',
+                    icon: 'AlertTriangle',
+                    color: 'bg-error-container text-on-error-container'
+                  });
+                  localStorage.setItem('qw_alerts', JSON.stringify(alerts));
+                  alert('Rain reported! Customers and Admin have been notified.');
+                }}
+                className="bg-tertiary text-on-tertiary px-10 py-5 rounded-2xl font-headline font-black text-lg shadow-xl hover:brightness-105 active:scale-95 transition-all w-full"
+              >
                 REPORT RAIN 🌧️
               </button>
             </div>
@@ -248,7 +273,14 @@ export default function VendorDashboard() {
                   )}
                   {selectedOrder.status === 'Washing' && (
                     <button 
-                      onClick={() => updateOrderStatus(selectedOrder.id, 'Ready for Handover')}
+                      onClick={() => {
+                        updateOrderStatus(selectedOrder.id, 'Awaiting Delivery Confirmation');
+                        const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
+                        const updated = allOrders.map((o: any) => 
+                          o.id === selectedOrder.id ? { ...o, readyForDeliveryAt: new Date().toISOString() } : o
+                        );
+                        localStorage.setItem('qw_orders', JSON.stringify(updated));
+                      }}
                       className="col-span-2 h-20 signature-gradient text-white rounded-2xl font-headline font-black text-xl shadow-xl active:scale-[0.98] transition-all"
                     >
                       MARK AS READY

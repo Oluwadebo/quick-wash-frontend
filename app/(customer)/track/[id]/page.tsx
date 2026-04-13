@@ -15,15 +15,29 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
   const [order, setOrder] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(true);
 
+  const [rider, setRider] = React.useState<any>(null);
+
   React.useEffect(() => {
     const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
     const found = allOrders.find((o: any) => o.id === resolvedParams.id);
     setOrder(found);
+    
+    if (found?.riderPhone) {
+      const allUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
+      const riderInfo = allUsers.find((u: any) => u.phoneNumber === found.riderPhone);
+      setRider(riderInfo);
+    }
     setLoading(false);
   }, [resolvedParams.id]);
 
   if (loading) return <div className="pt-32 text-center font-headline font-black">Loading...</div>;
   if (!order) return <div className="pt-32 text-center font-headline font-black">Order not found.</div>;
+
+  const handleWhatsApp = () => {
+    const phone = rider?.phoneNumber || '08012345678';
+    const msg = encodeURIComponent(`Hello, I am checking on my Quick-Wash order #${order.id}.`);
+    window.open(`https://wa.me/${phone}?text=${msg}`, '_blank');
+  };
 
   const steps = [
     { id: 'Picked Up', icon: ShoppingBag, label: 'Picked up' },
@@ -102,7 +116,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
           <div className="relative z-10">
             <p className="font-label text-xs uppercase tracking-[0.3em] font-black text-on-surface-variant mb-8">Your Handover Code</p>
             <div className="flex justify-center gap-4">
-              {['4', '8', '2', '1'].map((num, i) => (
+              {(order.handoverCode || '----').split('').map((num: string, i: number) => (
                 <motion.span 
                   key={i}
                   initial={{ scale: 0.8, opacity: 0 }}
@@ -130,17 +144,23 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
         <section className="bg-surface-container-low rounded-[2.5rem] p-8 flex items-center gap-6 shadow-sm border border-primary/5">
           <div className="w-20 h-20 rounded-[2rem] overflow-hidden bg-surface-variant ring-4 ring-white relative shadow-xl">
             <Image 
-              src="https://picsum.photos/seed/rider/100/100" 
+              src={`https://picsum.photos/seed/${rider?.phoneNumber || 'rider'}/100/100`} 
               alt="Rider"
               fill
               className="object-cover"
+              referrerPolicy="no-referrer"
             />
           </div>
           <div className="flex-1">
-            <h4 className="font-headline font-black text-xl text-on-surface">Samuel Okon</h4>
-            <p className="font-label text-[10px] uppercase font-black tracking-widest text-on-surface-variant">Elite Rider • ID: QW-902</p>
+            <h4 className="font-headline font-black text-xl text-on-surface">{rider?.fullName || 'Assigning Rider...'}</h4>
+            <p className="font-label text-[10px] uppercase font-black tracking-widest text-on-surface-variant">
+              {rider ? `Elite Rider • ID: ${rider.phoneNumber.slice(-4)}` : 'Admin is assigning a rider'}
+            </p>
           </div>
-          <button className="w-16 h-16 rounded-2xl bg-[#25D366] text-white flex items-center justify-center shadow-xl active:scale-90 transition-transform">
+          <button 
+            onClick={handleWhatsApp}
+            className="w-16 h-16 rounded-2xl bg-[#25D366] text-white flex items-center justify-center shadow-xl active:scale-90 transition-transform"
+          >
             <MessageCircle className="w-8 h-8 fill-current" />
           </button>
         </section>
@@ -152,17 +172,37 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
             <span className="font-headline font-black text-lg text-tertiary">48hr Protection Active</span>
           </div>
           <p className="text-sm text-on-surface-variant leading-relaxed font-medium">
-            Payment of ₦4,350 is held securely. You have 48 hours after delivery to report any issues before the rider is paid.
+            Payment of ₦{order.totalPrice.toLocaleString()} is held securely. You have 48 hours after delivery to report any issues before the rider is paid.
           </p>
         </section>
       </main>
 
       {/* Sticky Footer */}
-      <div className="fixed bottom-0 left-0 w-full p-8 bg-gradient-to-t from-surface via-surface to-transparent z-40">
-        <div className="max-w-2xl mx-auto">
-          <ReadyToReceiveButton />
+      {order.status === 'Awaiting Delivery Confirmation' && (
+        <div className="fixed bottom-0 left-0 w-full p-8 bg-gradient-to-t from-surface via-surface to-transparent z-40">
+          <div className="max-w-2xl mx-auto">
+            <ReadyToReceiveButton 
+              onClick={() => {
+                const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
+                const updated = allOrders.map((o: any) => {
+                  if (o.id === resolvedParams.id) {
+                    return { 
+                      ...o, 
+                      status: 'Ready for Delivery', 
+                      color: 'bg-primary text-on-primary',
+                      customerConfirmedDeliveryAt: new Date().toISOString()
+                    };
+                  }
+                  return o;
+                });
+                localStorage.setItem('qw_orders', JSON.stringify(updated));
+                setOrder(updated.find((o: any) => o.id === resolvedParams.id));
+                alert('Riders have been notified that you are ready to receive your laundry!');
+              }}
+            />
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

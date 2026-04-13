@@ -2,7 +2,7 @@
 
 import React from 'react';
 import TopAppBar from '@/components/shared/TopAppBar';
-import { MapPin, Navigation, Package, CheckCircle, Clock, Phone, ArrowRight, Bike, Zap } from 'lucide-react';
+import { MapPin, Navigation, Package, CheckCircle, Clock, Phone, ArrowRight, Bike, Zap, AlertTriangle } from 'lucide-react';
 import { motion } from 'motion/react';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
@@ -35,19 +35,25 @@ export default function RiderDashboard() {
 
   React.useEffect(() => {
     const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-    // Riders see orders that are 'Pending Pickup' or 'Ready for Handover'
+    // Riders see orders that are 'Pending Pickup' or 'Ready for Delivery'
     const riderTasks = allOrders
-      .filter((o: any) => o.status === 'Pending Pickup' || o.status === 'Ready for Handover')
+      .filter((o: any) => o.status === 'Pending Pickup' || o.status === 'Ready for Delivery' || o.status === 'Out for Delivery')
       .map((o: any) => ({
         id: o.id,
         type: o.status === 'Pending Pickup' ? 'Pickup' : 'Delivery',
-        location: o.status === 'Pending Pickup' ? 'Customer Hostel' : 'Laundry Shop',
+        location: o.status === 'Pending Pickup' ? (o.customerLandmark || 'Customer Hostel') : (o.vendorName || 'Laundry Shop'),
         customer: o.customerName,
+        customerPhone: o.customerPhone,
         time: 'Now',
         priority: o.status === 'Pending Pickup'
       }));
     setTasks(riderTasks);
   }, []);
+
+  const handleStartNavigation = (location: string) => {
+    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location + ' Ogbomoso')}`;
+    window.open(url, '_blank');
+  };
 
   const handleTaskAction = (taskId: string, type: string) => {
     const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
@@ -56,22 +62,64 @@ export default function RiderDashboard() {
         if (type === 'Pickup') {
           return { ...o, status: 'Picked Up', color: 'bg-secondary-container text-on-secondary-container' };
         } else {
-          return { ...o, status: 'Handover', color: 'bg-success text-white' };
+          return { ...o, status: 'Out for Delivery', color: 'bg-tertiary text-on-tertiary' };
         }
       }
       return o;
     });
     localStorage.setItem('qw_orders', JSON.stringify(updated));
     setTasks(prev => prev.filter(t => t.id !== taskId));
-    alert(`Task ${taskId} ${type === 'Pickup' ? 'picked up' : 'delivered'} successfully!`);
+    alert(`Task ${taskId} ${type === 'Pickup' ? 'picked up' : 'started delivery'} successfully!`);
   };
   
+  const [handoverCode, setHandoverCode] = React.useState(['', '', '', '']);
+
+  const handleHandover = () => {
+    const code = handoverCode.join('');
+    const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
+    // Find the order that is 'Out for Delivery'
+    const activeOrder = allOrders.find((o: any) => o.status === 'Out for Delivery');
+    
+    if (!activeOrder) {
+      alert('No active delivery found.');
+      return;
+    }
+
+    if (code === activeOrder.handoverCode) {
+      const updated = allOrders.map((o: any) => {
+        if (o.id === activeOrder.id) {
+          return { ...o, status: 'Delivered', color: 'bg-success text-white', deliveredAt: new Date().toISOString() };
+        }
+        return o;
+      });
+      localStorage.setItem('qw_orders', JSON.stringify(updated));
+      alert('Delivery confirmed! Payment released to your wallet.');
+      setHandoverCode(['', '', '', '']);
+      // Refresh tasks
+      const riderTasks = updated
+        .filter((o: any) => o.status === 'Pending Pickup' || o.status === 'Ready for Delivery')
+        .map((o: any) => ({
+          id: o.id,
+          type: o.status === 'Pending Pickup' ? 'Pickup' : 'Delivery',
+          location: o.status === 'Pending Pickup' ? 'Customer Hostel' : 'Laundry Shop',
+          customer: o.customerName,
+          customerPhone: o.customerPhone,
+          time: 'Now',
+          priority: o.status === 'Pending Pickup'
+        }));
+      setTasks(riderTasks);
+    } else {
+      alert('Invalid code. Please ask the customer for the correct 4-digit code.');
+    }
+  };
+
   return (
     <ProtectedRoute allowedRoles={['rider']}>
       <div className="pb-32">
         <TopAppBar roleLabel="Rider" />
         
         <main className="pt-24 px-6 max-w-7xl mx-auto">
+          {/* ... existing header ... */}
           <header className="mb-10 flex items-center justify-between">
             <div>
               <div className="flex items-center gap-3 mb-2">
@@ -93,7 +141,6 @@ export default function RiderDashboard() {
               <p className="font-headline font-black text-2xl text-primary">₦12,400</p>
             </div>
           </header>
-          {/* ... rest of the content ... */}
 
           {tasks.length > 0 && (
             <section className="bg-surface-container-low rounded-[2.5rem] p-8 mb-12 flex flex-col md:flex-row items-center justify-between gap-8 border border-primary/5">
@@ -106,7 +153,10 @@ export default function RiderDashboard() {
                   <p className="text-on-surface-variant font-medium">{tasks[0].location}</p>
                 </div>
               </div>
-              <button className="signature-gradient text-white px-10 py-5 rounded-2xl font-headline font-black text-lg shadow-xl hover:brightness-105 active:scale-95 transition-all w-full md:w-auto">
+              <button 
+                onClick={() => handleStartNavigation(tasks[0].location)}
+                className="signature-gradient text-white px-10 py-5 rounded-2xl font-headline font-black text-lg shadow-xl hover:brightness-105 active:scale-95 transition-all w-full md:w-auto"
+              >
                 START NAVIGATION
               </button>
             </section>
@@ -115,7 +165,7 @@ export default function RiderDashboard() {
         <section className="mb-12">
           <div className="flex items-center justify-between mb-8">
             <h3 className="text-2xl font-headline font-black text-on-surface">Your Queue</h3>
-            <span className="font-label text-xs font-bold text-on-surface-variant uppercase tracking-widest">02 Tasks Remaining</span>
+            <span className="font-label text-xs font-bold text-on-surface-variant uppercase tracking-widest">{tasks.length.toString().padStart(2, '0')} Tasks Remaining</span>
           </div>
 
           <div className="space-y-6">
@@ -148,8 +198,39 @@ export default function RiderDashboard() {
                     <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Due</p>
                     <p className="font-headline font-bold text-on-surface">{task.time}</p>
                   </div>
-                  <button className="p-4 rounded-2xl bg-surface-container-highest text-on-surface hover:bg-surface-variant transition-colors active:scale-90">
+                  <button 
+                    onClick={() => {
+                      const tel = task.customerPhone || '08000000000';
+                      window.location.href = `tel:${tel}`;
+                    }}
+                    className="p-4 rounded-2xl bg-surface-container-highest text-on-surface hover:bg-surface-variant transition-colors active:scale-90"
+                  >
                     <Phone className="w-5 h-5 fill-current" />
+                  </button>
+                  <button 
+                    onClick={() => {
+                      if (confirm('Has it been 15 mins and 2 failed calls? This will return the order to the queue and charge the customer a waiting fee.')) {
+                        const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
+                        const updated = allOrders.map((o: any) => {
+                          if (o.id === task.id) {
+                            return { 
+                              ...o, 
+                              status: o.status === 'Picked Up' ? 'Ready for Handover' : 'Pending Pickup',
+                              waitingFee: (o.waitingFee || 0) + 500,
+                              logs: [...(o.logs || []), { time: new Date().toISOString(), event: 'Rider reported: Customer Not Responding' }]
+                            };
+                          }
+                          return o;
+                        });
+                        localStorage.setItem('qw_orders', JSON.stringify(updated));
+                        setTasks(prev => prev.filter(t => t.id !== task.id));
+                        alert('Order returned to queue. Waiting fee applied.');
+                      }
+                    }}
+                    className="p-4 rounded-2xl bg-error/10 text-error hover:bg-error/20 transition-colors active:scale-90"
+                    title="Customer Not Responding"
+                  >
+                    <AlertTriangle className="w-5 h-5" />
                   </button>
                   <button 
                     onClick={() => handleTaskAction(task.id, task.type)}
@@ -176,11 +257,28 @@ export default function RiderDashboard() {
             <h3 className="text-2xl font-headline font-black">Handover Complete?</h3>
             <p className="text-on-surface-variant font-medium max-w-xs">Enter the 4-digit code provided by the customer to complete this delivery.</p>
             <div className="flex gap-2 w-full max-w-xs">
-              {[1, 2, 3, 4].map(i => (
-                <input key={i} type="text" maxLength={1} className="w-full h-16 bg-surface-container rounded-xl text-center font-headline font-black text-2xl focus:ring-4 focus:ring-primary-container outline-none transition-all" />
+              {[0, 1, 2, 3].map(i => (
+                <input 
+                  key={i} 
+                  type="text" 
+                  maxLength={1} 
+                  value={handoverCode[i]}
+                  onChange={(e) => {
+                    const newCode = [...handoverCode];
+                    newCode[i] = e.target.value;
+                    setHandoverCode(newCode);
+                    if (e.target.value && e.target.nextElementSibling) {
+                      (e.target.nextElementSibling as HTMLInputElement).focus();
+                    }
+                  }}
+                  className="w-full h-16 bg-surface-container rounded-xl text-center font-headline font-black text-2xl focus:ring-4 focus:ring-primary-container outline-none transition-all" 
+                />
               ))}
             </div>
-            <button className="signature-gradient text-white px-10 py-5 rounded-2xl font-headline font-black text-lg shadow-xl hover:brightness-105 active:scale-95 transition-all w-full">
+            <button 
+              onClick={handleHandover}
+              className="signature-gradient text-white px-10 py-5 rounded-2xl font-headline font-black text-lg shadow-xl hover:brightness-105 active:scale-95 transition-all w-full"
+            >
               CONFIRM HANDOVER
             </button>
           </section>
@@ -191,7 +289,22 @@ export default function RiderDashboard() {
             </div>
             <h3 className="text-2xl font-headline font-black">Report Rain</h3>
             <p className="text-on-surface-variant font-medium max-w-xs">Notify vendors and customers that delivery might be slower due to rain.</p>
-            <button className="bg-tertiary text-on-tertiary px-10 py-5 rounded-2xl font-headline font-black text-lg shadow-xl hover:brightness-105 active:scale-95 transition-all w-full">
+            <button 
+              onClick={() => {
+                const alerts = JSON.parse(localStorage.getItem('qw_alerts') || '[]');
+                alerts.push({
+                  id: Date.now(),
+                  type: 'Weather',
+                  msg: `Rain reported by rider ${user?.fullName || 'a rider'}. Deliveries might be delayed.`,
+                  time: 'Just now',
+                  icon: 'AlertTriangle',
+                  color: 'bg-error-container text-on-error-container'
+                });
+                localStorage.setItem('qw_alerts', JSON.stringify(alerts));
+                alert('Rain reported! System updated.');
+              }}
+              className="bg-tertiary text-on-tertiary px-10 py-5 rounded-2xl font-headline font-black text-lg shadow-xl hover:brightness-105 active:scale-95 transition-all w-full"
+            >
               REPORT RAIN 🌧️
             </button>
           </section>

@@ -62,10 +62,15 @@ const items = [
       { id: 'bedsheet', name: 'Bedsheet', count: 1, price: 400 },
       { id: 'duvet', name: 'Duvet', count: 0, price: 1200 },
       { id: 'pillowcase', name: 'Pillow Case', count: 2, price: 150 },
+      { id: 'bedsheet-pillow', name: 'Bedsheet + Pillow Case', count: 0, price: 500 },
+      { id: 'duvet-pillow', name: 'Duvet + Pillow Case', count: 0, price: 1300 },
+      { id: 'duvet-bedsheet', name: 'Duvet + Bedsheet', count: 0, price: 1500 },
       { id: 'completeset', name: 'Complete Set', count: 0, price: 1800 }
     ]
   }
 ];
+
+const generateId = () => Math.floor(1000 + Math.random() * 9000).toString();
 
 export default function OrderPage() {
   const router = useRouter();
@@ -77,7 +82,21 @@ export default function OrderPage() {
   React.useEffect(() => {
     const savedCart = localStorage.getItem('qw_pending_cart');
     if (savedCart) {
-      setCart(JSON.parse(savedCart));
+      try {
+        const parsed = JSON.parse(savedCart);
+        // Restore icons by matching with initial items
+        const restored = items.map(initialItem => {
+          const savedItem = parsed.find((p: any) => p.id === initialItem.id);
+          if (savedItem) {
+            // Merge saved state but keep the original icon component
+            return { ...initialItem, ...savedItem, icon: initialItem.icon };
+          }
+          return initialItem;
+        });
+        setCart(restored);
+      } catch (e) {
+        console.error('Failed to parse saved cart', e);
+      }
     }
   }, []);
 
@@ -135,12 +154,7 @@ export default function OrderPage() {
   const handlePayment = async () => {
     setIsPaying(true);
     await new Promise(resolve => setTimeout(resolve, 2000));
-    setIsPaid(true);
-    setIsPaying(false);
-    alert('Payment Successful! You can now request a pickup.');
-  };
-
-  const handlePickupRequest = React.useCallback(() => {
+    
     const orders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
     const currentUser = JSON.parse(localStorage.getItem('qw_user') || '{}');
     
@@ -152,25 +166,55 @@ export default function OrderPage() {
       return `${i.count}x ${i.name} (${i.selectedService})`;
     }).join(', ');
 
+    const newOrderId = generateId();
+    const handoverCode = generateId();
     const newOrder = {
-      id: Math.floor(1000 + Math.random() * 9000).toString(),
+      id: newOrderId,
       customerName: currentUser.fullName || 'Guest',
       customerPhone: currentUser.phoneNumber,
       items: itemsDescription,
       totalPrice,
-      status: 'Pending Pickup',
+      status: 'Awaiting Pickup Confirmation',
       time: 'Just now',
-      color: 'bg-primary-container text-on-primary-container',
+      color: 'bg-warning/20 text-warning',
       vendorId: 'campus-cleans',
-      createdAt: new Date().toISOString()
+      handoverCode,
+      createdAt: new Date().toISOString(),
+      paidAt: new Date().toISOString()
     };
 
     orders.push(newOrder);
     localStorage.setItem('qw_orders', JSON.stringify(orders));
-    localStorage.removeItem('qw_pending_cart'); // Clear pending cart after order
-    alert('Order placed successfully! A rider will be assigned shortly.');
+    localStorage.setItem('qw_current_order_id', newOrderId);
+    localStorage.removeItem('qw_pending_cart');
+    
+    setIsPaid(true);
+    setIsPaying(false);
+    alert('Payment Successful! Please click "I\'M READY FOR PICKUP" when you are ready.');
+  };
+
+  const handlePickupRequest = React.useCallback(() => {
+    const orderId = localStorage.getItem('qw_current_order_id');
+    if (!orderId) return;
+
+    const orders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
+    const updated = orders.map((o: any) => {
+      if (o.id === orderId) {
+        return { 
+          ...o, 
+          status: 'Pending Pickup', 
+          color: 'bg-primary-container text-on-primary-container',
+          confirmedAt: new Date().toISOString()
+        };
+      }
+      return o;
+    });
+
+    localStorage.setItem('qw_orders', JSON.stringify(updated));
+    localStorage.removeItem('qw_current_order_id');
+    alert('Order confirmed! A rider will be assigned shortly.');
     router.push('/track');
-  }, [cart, totalPrice, router]);
+  }, [router]);
 
   return (
     <div className="pb-64">

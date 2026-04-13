@@ -5,7 +5,7 @@ import { DoorOpen, Volume2, Sparkles } from 'lucide-react';
 import { motion } from 'motion/react';
 import { cn } from '@/lib/utils';
 
-export default function ReadyToReceiveButton() {
+export default function ReadyToReceiveButton({ onClick }: { onClick?: () => void }) {
   const [isPlaying, setIsPlaying] = React.useState(false);
 
   const handleAction = () => {
@@ -15,6 +15,7 @@ export default function ReadyToReceiveButton() {
       console.log('Playing Yoruba Audio: "Mo ti ṣe tán láti gba aṣọ mi"');
       setTimeout(() => setIsPlaying(false), 2000);
     }
+    if (onClick) onClick();
   };
 
   return (

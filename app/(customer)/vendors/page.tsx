@@ -7,39 +7,6 @@ import { Volume2, MapPin, Search, SlidersHorizontal, DollarSign, Zap, Star, Navi
 import { motion } from 'motion/react';
 import { cn } from '@/lib/utils';
 
-const initialVendors = [
-  {
-    id: 'campus-cleans',
-    name: 'Campus Cleans',
-    priceRange: '₦2,500/KG',
-    rating: 4.9,
-    reviews: 128,
-    distance: '0.4 km',
-    turnaround: '6h Express',
-    image: 'https://picsum.photos/seed/laundry1/800/600'
-  },
-  {
-    id: 'adenike-bubbles',
-    name: 'Adenike Bubbles',
-    priceRange: '₦1,800/KG',
-    rating: 4.7,
-    reviews: 85,
-    distance: '1.2 km',
-    turnaround: '12h Standard',
-    image: 'https://picsum.photos/seed/laundry2/800/600'
-  },
-  {
-    id: 'laundry-hub',
-    name: 'The Laundry Hub',
-    priceRange: '₦3,200/KG',
-    rating: 5.0,
-    reviews: 210,
-    distance: '2.5 km',
-    turnaround: '4h Ultra-Fast',
-    image: 'https://picsum.photos/seed/laundry3/800/600'
-  }
-];
-
 const sortOptions = [
   { id: 'cheapest', label: 'Cheapest', icon: DollarSign },
   { id: 'fastest', label: 'Fastest', icon: Zap },
@@ -50,7 +17,7 @@ const sortOptions = [
 export default function VendorSelectionPage() {
   const [selectedSort, setSelectedSort] = React.useState('highest-rated');
   const [searchQuery, setSearchQuery] = React.useState('');
-  const [vendors, setVendors] = React.useState(initialVendors);
+  const [vendors, setVendors] = React.useState<any[]>([]);
 
   React.useEffect(() => {
     const allUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
@@ -60,15 +27,14 @@ export default function VendorSelectionPage() {
         id: u.phoneNumber,
         name: u.shopName || u.fullName || 'Anonymous Vendor',
         priceRange: '₦2,000/KG', // Default price range
-        rating: 4.5,
-        reviews: 0,
+        rating: u.trustPoints ? (u.trustPoints / 20) : 4.5,
+        reviews: Math.floor(Math.random() * 50),
         distance: 'Local',
-        turnaround: '24h Standard',
+        turnaround: u.turnaroundTime || '24h Standard',
         image: `https://picsum.photos/seed/${u.phoneNumber}/800/600`
       }));
     
-    // Merge initial vendors with approved ones from localStorage
-    setVendors([...initialVendors, ...approvedVendors]);
+    setVendors(approvedVendors);
   }, []);
 
   const filteredVendors = React.useMemo(() => {

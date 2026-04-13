@@ -52,12 +52,48 @@ import ProtectedRoute from '@/components/shared/ProtectedRoute';
 export default function LandmarkSelectionPage() {
   const [recentOrders, setRecentOrders] = React.useState<any[]>([]);
   const [user, setUser] = React.useState<any>(null);
+  const [alerts, setAlerts] = React.useState<any[]>([]);
 
   React.useEffect(() => {
     const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
     const currentUser = JSON.parse(localStorage.getItem('qw_user') || '{}');
     setUser(currentUser);
-    setRecentOrders(allOrders.filter((o: any) => o.customerPhone === currentUser.phoneNumber));
+
+    const activeAlerts = JSON.parse(localStorage.getItem('qw_alerts') || '[]');
+    setAlerts(activeAlerts.filter((a: any) => a.type === 'Weather'));
+    
+    const checkExpiredOrders = () => {
+      const now = new Date().getTime();
+      const fourHours = 4 * 60 * 60 * 1000;
+      let changed = false;
+
+      const updated = allOrders.map((o: any) => {
+        if (o.status === 'Awaiting Pickup Confirmation' && o.paidAt) {
+          const paidTime = new Date(o.paidAt).getTime();
+          if (now - paidTime > fourHours) {
+            changed = true;
+            return { ...o, status: 'Cancelled (Auto)', color: 'bg-error text-on-error', refundAmount: o.totalPrice - 200 };
+          }
+        }
+        if (o.status === 'Awaiting Delivery Confirmation' && o.readyForDeliveryAt) {
+          const readyTime = new Date(o.readyForDeliveryAt).getTime();
+          if (now - readyTime > fourHours) {
+            changed = true;
+            return { ...o, status: 'Cancelled (Auto)', color: 'bg-error text-on-error', refundAmount: o.totalPrice - 200 };
+          }
+        }
+        return o;
+      });
+
+      if (changed) {
+        localStorage.setItem('qw_orders', JSON.stringify(updated));
+        return updated.filter((o: any) => o.customerPhone === currentUser.phoneNumber);
+      }
+      return allOrders.filter((o: any) => o.customerPhone === currentUser.phoneNumber);
+    };
+
+    const filtered = checkExpiredOrders();
+    setRecentOrders(filtered.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
   }, []);
 
   return (
@@ -66,8 +102,24 @@ export default function LandmarkSelectionPage() {
         <TopAppBar />
         
         <main className="pt-24 px-6 max-w-2xl mx-auto">
-          {/* ... existing content ... */}
-        {/* Trust Points Header */}
+          {/* Weather Alerts */}
+          {alerts.length > 0 && (
+            <motion.section 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="mb-8 bg-error/10 border border-error/20 p-6 rounded-[2rem] flex items-center gap-4"
+            >
+              <div className="w-12 h-12 rounded-2xl bg-error text-white flex items-center justify-center shrink-0">
+                <HelpCircle className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="font-headline font-black text-error text-sm uppercase tracking-widest">Weather Alert</h4>
+                <p className="text-xs font-medium text-on-surface-variant">{alerts[0].msg}</p>
+              </div>
+            </motion.section>
+          )}
+
+          {/* Trust Points Header */}
         <section className="mb-10">
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
@@ -117,6 +169,33 @@ export default function LandmarkSelectionPage() {
             </div>
           </section>
         )}
+
+        {/* Earned Badges */}
+        <section className="mb-12">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="font-label text-xs uppercase tracking-[0.2em] font-bold text-outline">Earned Badges</h3>
+          </div>
+          <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
+            {[
+              { id: 'clean', name: 'Always Clean', icon: '✨', info: 'Completed 5 orders without issues.', earned: (user?.badges || []).includes('✨ Always Clean') },
+              { id: 'early', name: 'Early Bird', icon: '🌅', info: 'Placed an order before 8 AM.', earned: (user?.badges || []).includes('🌅 Early Bird') },
+              { id: 'loyal', name: 'Loyal Customer', icon: '💎', info: 'Used Quick-Wash for 3 months.', earned: (user?.badges || []).includes('💎 Loyal Customer') },
+              { id: 'new', name: 'Newcomer', icon: '🌱', info: 'Welcome to Quick-Wash!', earned: true }
+            ].map((badge) => (
+              <button 
+                key={badge.id}
+                onClick={() => alert(`${badge.name}: ${badge.info}\n\nStatus: ${badge.earned ? 'Earned ✅' : 'Not Earned ❌'}`)}
+                className={cn(
+                  "flex-shrink-0 w-32 h-32 rounded-3xl border flex flex-col items-center justify-center gap-2 active:scale-90 transition-transform",
+                  badge.earned ? "bg-surface-container-low border-primary/20" : "bg-surface-container-lowest border-dashed border-outline/20 opacity-50"
+                )}
+              >
+                <span className="text-3xl">{badge.icon}</span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-center px-2">{badge.name}</span>
+              </button>
+            ))}
+          </div>
+        </section>
 
         <header className="mb-8">
           <motion.h2 

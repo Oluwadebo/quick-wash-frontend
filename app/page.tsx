@@ -184,6 +184,47 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Spotlight Section */}
+      <section className="py-32 px-6 bg-surface">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-col md:flex-row gap-12">
+            <div className="flex-1 bg-surface-container-low rounded-[3rem] p-12 border border-primary/5 shadow-xl relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full -translate-y-1/2 translate-x-1/2 group-hover:scale-110 transition-transform duration-700" />
+              <p className="font-label text-xs font-black uppercase tracking-[0.2em] text-primary mb-6">Top Vendor Spotlight</p>
+              <div className="flex items-center gap-8 mb-8">
+                <div className="w-24 h-24 rounded-[2rem] overflow-hidden relative shadow-2xl">
+                  <Image src="https://picsum.photos/seed/vendor/200/200" alt="Top Vendor" fill className="object-cover" referrerPolicy="no-referrer" />
+                </div>
+                <div>
+                  <h3 className="text-3xl font-headline font-black text-on-surface">Campus Cleans</h3>
+                  <p className="text-on-surface-variant font-medium">Under G Hub • 4.9 Rating</p>
+                </div>
+              </div>
+              <p className="text-on-surface-variant font-medium text-lg leading-relaxed italic">
+                &quot;Quick-Wash has transformed how I manage my laundry business. The Trust Points system keeps my customers coming back!&quot;
+              </p>
+            </div>
+
+            <div className="flex-1 bg-surface-container-low rounded-[3rem] p-12 border border-tertiary/5 shadow-xl relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-tertiary/5 rounded-full -translate-y-1/2 translate-x-1/2 group-hover:scale-110 transition-transform duration-700" />
+              <p className="font-label text-xs font-black uppercase tracking-[0.2em] text-tertiary mb-6">Top Customer Spotlight</p>
+              <div className="flex items-center gap-8 mb-8">
+                <div className="w-24 h-24 rounded-[2rem] overflow-hidden relative shadow-2xl">
+                  <Image src="https://picsum.photos/seed/customer/200/200" alt="Top Customer" fill className="object-cover" referrerPolicy="no-referrer" />
+                </div>
+                <div>
+                  <h3 className="text-3xl font-headline font-black text-on-surface">Alex Thompson</h3>
+                  <p className="text-on-surface-variant font-medium">Elite Status • 820 Points</p>
+                </div>
+              </div>
+              <p className="text-on-surface-variant font-medium text-lg leading-relaxed italic">
+                &quot;I never have to worry about my laundry anymore. The pickup is fast, and I love earning badges for being a loyal user.&quot;
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Trust Points Section */}
       <section className="bg-surface-container-highest/30 py-32 px-6">
         <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-center gap-20">
@@ -242,12 +283,6 @@ export default function LandingPage() {
             <Link href="/contact" className="text-on-surface-variant font-bold hover:text-primary transition-colors">Contact Us</Link>
             <Link href="/privacy" className="text-on-surface-variant font-bold hover:text-primary transition-colors">Privacy Policy</Link>
             <Link href="/terms" className="text-on-surface-variant font-bold hover:text-primary transition-colors">Terms of Service</Link>
-            <Link 
-              href="/admin"
-              className="text-on-surface-variant font-bold hover:text-primary transition-colors opacity-10"
-            >
-              Admin
-            </Link>
           </div>
 
           <p className="font-label text-[10px] font-black uppercase tracking-[0.4em] text-on-surface-variant opacity-40 text-center">

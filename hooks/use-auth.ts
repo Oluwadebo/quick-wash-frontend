@@ -23,6 +23,7 @@ interface UserData {
   capacity?: number;
   trustPoints?: number;
   walletBalance?: number;
+  badges?: string[];
 }
 
 export function useAuth() {
@@ -41,16 +42,17 @@ export function useAuth() {
   useEffect(() => {
     // Initialize super-admin if not exists
     const users = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
-    const superAdminPhone = '123456789';
+    const superAdminPhone = '09012345678'; // Secret Super Admin Phone
     if (!users.find((u: any) => u.phoneNumber === superAdminPhone)) {
       users.push({
         fullName: 'Super Admin',
         phoneNumber: superAdminPhone,
-        password: '123456789',
+        password: 'admin_password_123',
         role: 'admin',
         isApproved: true,
         trustPoints: 100,
-        walletBalance: 0
+        walletBalance: 0,
+        badges: ['👑 Super Admin']
       });
       localStorage.setItem('qw_all_users', JSON.stringify(users));
     }
@@ -88,21 +90,21 @@ export function useAuth() {
       return;
     }
     
-    // Vendors, Riders, and Admins need approval
+    // Vendors, Riders, and Moderator Admins need approval
     const needsApproval = data.role !== 'customer';
     const newUser = { 
       ...data, 
       isApproved: !needsApproval,
-      trustPoints: 50, // New users start at 50
-      walletBalance: 0
+      trustPoints: data.role === 'customer' ? 50 : 0,
+      walletBalance: 0,
+      badges: data.role === 'customer' ? ['🌱 Newcomer'] : []
     };
 
     users.push(newUser);
     localStorage.setItem('qw_all_users', JSON.stringify(users));
     
     if (needsApproval) {
-      // Redirect to login with a message
-      router.push(`/auth?login=true&role=${data.role}&message=pending`);
+      router.push(`/auth/login?message=pending&role=${data.role}`);
     } else {
       localStorage.setItem('qw_user', JSON.stringify(newUser));
       setUser(newUser);
@@ -127,7 +129,12 @@ export function useAuth() {
       }
       localStorage.setItem('qw_user', JSON.stringify(foundUser));
       setUser(foundUser);
-      router.push(`/${foundUser.role === 'customer' ? 'customer' : foundUser.role}`);
+      
+      // Role-based redirection
+      if (foundUser.role === 'admin') router.push('/admin');
+      else if (foundUser.role === 'vendor') router.push('/vendor');
+      else if (foundUser.role === 'rider') router.push('/rider');
+      else router.push('/customer');
     } else {
       setError('Invalid phone number or password. Please try again.');
     }
