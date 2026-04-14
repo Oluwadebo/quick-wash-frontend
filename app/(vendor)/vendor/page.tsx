@@ -74,7 +74,6 @@ export default function VendorDashboard() {
       setServices(allServices.filter((s: any) => s.vendorId === currentUser.phoneNumber));
 
       // Process 24h Payout Release
-      const now = new Date().getTime();
       const twentyFourHours = 24 * 60 * 60 * 1000;
       let payoutHappened = false;
       
