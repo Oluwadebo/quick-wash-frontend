@@ -71,12 +71,30 @@ export default function AdminDashboard() {
     setAllUsers(updated);
     setIsAddUserModalOpen(false);
     setNewUser({ fullName: '', phoneNumber: '', password: '', role: 'customer', status: 'active', isApproved: true });
-    alert('User added successfully!');
+    
+    // Add audit log
+    const logs = JSON.parse(localStorage.getItem('qw_audit_logs') || '[]');
+    logs.push({
+      id: Date.now(),
+      action: 'User Created',
+      target: newUser.phoneNumber,
+      admin: currentUser?.phoneNumber,
+      time: new Date().toISOString(),
+      details: `Admin ${currentUser?.fullName} created a new ${newUser.role}: ${newUser.fullName}`
+    });
+    localStorage.setItem('qw_audit_logs', JSON.stringify(logs));
+    
+    alert(`User ${newUser.fullName} created successfully! Details: Phone: ${newUser.phoneNumber}, Role: ${newUser.role}`);
   };
   const [isVerificationModalOpen, setIsVerificationModalOpen] = React.useState(false);
   const [verifyingUser, setVerifyingUser] = React.useState<any>(null);
   const [selectedDetail, setSelectedDetail] = React.useState<any>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = React.useState(false);
+  const [showNewUserPassword, setShowNewUserPassword] = React.useState(false);
+  const [broadcastMessage, setBroadcastMessage] = React.useState('');
+  const [broadcastAudience, setBroadcastAudience] = React.useState('All Users');
+  const [isOverriding, setIsOverriding] = React.useState(false);
+  const [overrideData, setOverrideData] = React.useState({ action: '', reason: '' });
 
   const clearAlerts = () => {
     localStorage.setItem('qw_alerts', JSON.stringify([]));
@@ -126,7 +144,7 @@ export default function AdminDashboard() {
     const activeOrders = allOrders.filter((o: any) => o.status !== 'Delivered' && !o.status.includes('Cancelled')).length;
     
     setStats([
-      { label: 'Total Revenue', value: `₦${totalRevenue.toLocaleString()}`, trend: '+18.2%', icon: TrendingUp, color: 'text-primary' },
+      { label: 'Total Revenue', value: `₦${(totalRevenue || 0).toLocaleString()}`, trend: '+18.2%', icon: TrendingUp, color: 'text-primary' },
       { label: 'Active Orders', value: activeOrders.toString(), trend: '+5.4%', icon: ShoppingBag, color: 'text-tertiary' },
       { label: 'Total Users', value: users.length.toString(), trend: '+12.1%', icon: Users, color: 'text-on-surface' },
       { label: 'System Health', value: '99.9%', trend: 'Stable', icon: Activity, color: 'text-primary' }
@@ -511,7 +529,17 @@ export default function AdminDashboard() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-primary/5">
-                        {allUsers.filter(u => userSection === 'all' || u.role === userSection).map(u => (
+                        {allUsers
+                          .filter(u => userSection === 'all' || u.role === userSection)
+                          .filter(u => {
+                            // Moderator restrictions: hide admins and super admin
+                            if (!isSuperAdmin) {
+                              if (u.role === 'admin') return false;
+                              if (u.phoneNumber === '09012345678') return false;
+                            }
+                            return true;
+                          })
+                          .map(u => (
                           <tr key={u.phoneNumber} className="group hover:bg-surface-container-lowest transition-colors">
                             <td className="py-4">
                               <div className="flex items-center gap-3">
@@ -669,7 +697,7 @@ export default function AdminDashboard() {
                           </div>
                           <div className="flex items-center gap-6">
                             <div className="text-right">
-                              <p className="text-xs font-black text-primary">₦{u.walletBalance.toLocaleString()}</p>
+                              <p className="text-xs font-black text-primary">₦{(u.walletBalance || 0).toLocaleString()}</p>
                               <p className="text-[10px] text-on-surface-variant">Requested 2h ago</p>
                             </div>
                             <button className="h-12 px-6 bg-primary text-on-primary rounded-xl font-headline font-bold text-xs active:scale-95 transition-transform">
@@ -864,25 +892,38 @@ export default function AdminDashboard() {
                     <div className="bg-surface-container-low p-8 rounded-[2.5rem] border border-primary/5">
                       <h2 className="text-2xl font-headline font-black text-on-surface mb-8">Push Notifications</h2>
                       <div className="space-y-6">
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-2">Target Audience</label>
-                          <select className="w-full h-12 bg-surface-container-lowest rounded-xl px-4 font-bold text-sm outline-none border border-primary/5">
-                            <option>All Users</option>
-                            <option>Customers Only</option>
-                            <option>Vendors Only</option>
-                            <option>Riders Only</option>
-                          </select>
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-2">Message</label>
-                          <textarea 
-                            placeholder="Type your broadcast message..."
-                            className="w-full h-32 bg-surface-container-lowest rounded-xl p-4 font-medium text-sm outline-none border border-primary/5 resize-none"
-                          />
-                        </div>
-                        <button className="w-full h-14 bg-primary text-on-primary rounded-2xl font-headline font-black text-sm shadow-lg active:scale-95 transition-transform">
-                          SEND BROADCAST
-                        </button>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-2">Target Audience</label>
+                        <select 
+                          value={broadcastAudience}
+                          onChange={(e) => setBroadcastAudience(e.target.value)}
+                          className="w-full h-12 bg-surface-container-lowest rounded-xl px-4 font-bold text-sm outline-none border border-primary/5"
+                        >
+                          <option>All Users</option>
+                          <option>Customers Only</option>
+                          <option>Vendors Only</option>
+                          <option>Riders Only</option>
+                        </select>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-2">Message</label>
+                        <textarea 
+                          placeholder="Type your broadcast message..."
+                          value={broadcastMessage}
+                          onChange={(e) => setBroadcastMessage(e.target.value)}
+                          className="w-full h-32 bg-surface-container-lowest rounded-xl p-4 font-medium text-sm outline-none border border-primary/5 resize-none"
+                        />
+                      </div>
+                      <button 
+                        onClick={() => {
+                          if (!broadcastMessage) return alert('Please enter a message.');
+                          alert(`Broadcast sent to ${broadcastAudience}: ${broadcastMessage}`);
+                          setBroadcastMessage('');
+                        }}
+                        className="w-full h-14 bg-primary text-on-primary rounded-2xl font-headline font-black text-sm shadow-lg active:scale-95 transition-transform"
+                      >
+                        SEND BROADCAST
+                      </button>
                       </div>
                     </div>
                   </div>
@@ -925,13 +966,26 @@ export default function AdminDashboard() {
                       </div>
                       <div className="space-y-2">
                         <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Password</label>
-                        <input 
-                          type="password" 
-                          required
-                          value={newUser.password}
-                          onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-                          className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
-                        />
+                        <div className="relative">
+                          <input 
+                            type={showNewUserPassword ? "text" : "password"} 
+                            required
+                            value={newUser.password}
+                            onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                            className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 pr-14 font-headline font-bold outline-none focus:ring-2 ring-primary"
+                          />
+                          <button 
+                            type="button"
+                            onClick={() => setShowNewUserPassword(!showNewUserPassword)}
+                            className="absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant"
+                          >
+                            {showNewUserPassword ? (
+                              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.88 9.88L4.62 4.62"/><path d="M1 1l22 22"/><path d="M10.47 4.38A12.5 12.5 0 0 1 23 12a12.5 12.5 0 0 1-2.47 3.62"/><path d="M13.02 19.44A12.5 12.5 0 0 1 1 12a12.5 12.5 0 0 1 5.02-6.44"/><circle cx="12" cy="12" r="3"/><path d="M14.22 14.22a3 3 0 1 1-4.24-4.24"/></svg>
+                            ) : (
+                              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                            )}
+                          </button>
+                        </div>
                       </div>
                       <div className="space-y-2">
                         <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Role</label>
@@ -943,7 +997,7 @@ export default function AdminDashboard() {
                           <option value="customer">Customer</option>
                           <option value="vendor">Vendor</option>
                           <option value="rider">Rider</option>
-                          <option value="admin">Admin</option>
+                          {isSuperAdmin && <option value="admin">Admin</option>}
                         </select>
                       </div>
                       <div className="flex gap-4 pt-4">
@@ -1195,8 +1249,8 @@ export default function AdminDashboard() {
                       {selectedDetail.type === 'Audit Log' && (
                         <button 
                           onClick={() => {
-                            alert('Decision override functionality triggered.');
-                            setIsDetailModalOpen(false);
+                            setIsOverriding(true);
+                            setOverrideData({ action: selectedDetail.action, reason: '' });
                           }}
                           className="flex-1 h-14 bg-surface-container-highest text-on-surface rounded-2xl font-headline font-black text-sm active:scale-95 transition-transform"
                         >
@@ -1204,6 +1258,53 @@ export default function AdminDashboard() {
                         </button>
                       )}
                     </div>
+
+                    {isOverriding && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="mt-8 p-6 bg-surface-container-highest rounded-3xl border border-primary/10"
+                      >
+                        <h3 className="font-headline font-black text-lg mb-4">Override Action</h3>
+                        <div className="space-y-4">
+                          <input 
+                            type="text" 
+                            placeholder="New Action Name"
+                            value={overrideData.action}
+                            onChange={(e) => setOverrideData({ ...overrideData, action: e.target.value })}
+                            className="w-full h-12 bg-surface-container-lowest rounded-xl px-4 font-bold text-sm outline-none border border-primary/5"
+                          />
+                          <textarea 
+                            placeholder="Reason for override..."
+                            value={overrideData.reason}
+                            onChange={(e) => setOverrideData({ ...overrideData, reason: e.target.value })}
+                            className="w-full h-24 bg-surface-container-lowest rounded-xl p-4 font-medium text-sm outline-none border border-primary/5 resize-none"
+                          />
+                          <div className="flex gap-2">
+                            <button 
+                              onClick={() => setIsOverriding(false)}
+                              className="flex-1 h-12 bg-surface-container-low text-on-surface rounded-xl font-bold text-xs"
+                            >
+                              Cancel
+                            </button>
+                            <button 
+                              onClick={() => {
+                                if (!overrideData.reason) return alert('Please provide a reason.');
+                                const logs = JSON.parse(localStorage.getItem('qw_audit_logs') || '[]');
+                                const updated = logs.map((l: any) => l.id === selectedDetail.id ? { ...l, action: overrideData.action, overrideReason: overrideData.reason, overridenBy: currentUser?.phoneNumber } : l);
+                                localStorage.setItem('qw_audit_logs', JSON.stringify(updated));
+                                alert('Audit log updated successfully.');
+                                setIsOverriding(false);
+                                setIsDetailModalOpen(false);
+                              }}
+                              className="flex-1 h-12 bg-primary text-on-primary rounded-xl font-bold text-xs"
+                            >
+                              Confirm Override
+                            </button>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
                   </motion.div>
                 </div>
               )}

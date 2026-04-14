@@ -17,6 +17,8 @@ function AuthContent() {
   const message = searchParams.get('message');
   const [isLogin, setIsLogin] = useState(initialIsLogin);
   
+  const [showPassword, setShowPassword] = useState(false);
+  
   const [formData, setFormData] = useState({
     fullName: '',
     phoneNumber: '',
@@ -268,13 +270,24 @@ function AuthContent() {
             <div className="relative">
               <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5" />
               <input 
-                type="password" 
+                type={showPassword ? "text" : "password"} 
                 placeholder="Password"
                 required
                 value={formData.password}
                 onChange={(e) => setFormData({...formData, password: e.target.value})}
-                className="w-full h-16 bg-surface-container-low rounded-2xl pl-14 pr-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"
+                className="w-full h-16 bg-surface-container-low rounded-2xl pl-14 pr-14 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"
               />
+              <button 
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-5 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-primary transition-colors"
+              >
+                {showPassword ? (
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.88 9.88L4.62 4.62"/><path d="M1 1l22 22"/><path d="M10.47 4.38A12.5 12.5 0 0 1 23 12a12.5 12.5 0 0 1-2.47 3.62"/><path d="M13.02 19.44A12.5 12.5 0 0 1 1 12a12.5 12.5 0 0 1 5.02-6.44"/><circle cx="12" cy="12" r="3"/><path d="M14.22 14.22a3 3 0 1 1-4.24-4.24"/></svg>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                )}
+              </button>
             </div>
 
             <button 

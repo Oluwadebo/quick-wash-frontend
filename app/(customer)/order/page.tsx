@@ -102,35 +102,30 @@ function OrderPageContent() {
       const foundVendor = allUsers.find((u: any) => u.phoneNumber === vendorId);
       setVendor(foundVendor);
 
-      const vendorServices = JSON.parse(localStorage.getItem(`qw_services_${vendorId}`) || '[]');
-      if (vendorServices.length > 0) {
-        // Map vendor services to cart structure
-        const mapped = vendorServices.map((vs: any) => {
-          const baseItem = defaultItems.find(di => di.id === vs.id) || {
-            id: vs.id,
-            name: vs.name,
-            desc: vs.category,
-            icon: Shirt,
-            unit: 'unit',
-            count: 0,
-            hasStainRemover: false,
-            stainRemoverPrice: 500
-          };
-
-          return {
-            ...baseItem,
-            services: [
-              { name: 'Wash', price: vs.prices.wash },
-              { name: 'Iron', price: vs.prices.iron },
-              { name: 'Wash + Iron', price: vs.prices.washIron }
-            ],
-            subItems: vs.subServices ? vs.subServices.map((ss: any) => ({
-              ...ss,
-              count: 0
-            })) : undefined
-          };
-        });
+      const vendorServices = JSON.parse(localStorage.getItem('qw_vendor_services') || '[]');
+      const myServices = vendorServices.filter((s: any) => s.vendorId === vendorId);
+      
+      if (myServices.length > 0) {
+        const mapped = myServices.map((vs: any) => ({
+          id: vs.id.toString(),
+          name: vs.name,
+          desc: 'Professional Cleaning',
+          icon: Shirt,
+          unit: 'unit',
+          count: 0,
+          services: [
+            { name: 'Wash', price: vs.washPrice },
+            { name: 'Iron', price: vs.ironPrice },
+            { name: 'Wash + Iron', price: vs.washIronPrice }
+          ],
+          selectedService: 'Wash',
+          hasStainRemover: false,
+          stainRemoverPrice: 500,
+          basePrice: vs.washPrice
+        }));
         setCart(mapped);
+      } else {
+        setCart(defaultItems);
       }
     }
   }, [vendorId]);
@@ -201,13 +196,13 @@ function OrderPageContent() {
 
   const getItemPrice = (item: any) => {
     if (item.subItems) {
-      const subTotal = item.subItems.reduce((acc: number, si: any) => acc + (si.count * si.price), 0);
-      const stainPrice = item.hasStainRemover ? item.stainRemoverPrice : 0;
+      const subTotal = item.subItems.reduce((acc: number, si: any) => acc + (si.count * (si.price || 0)), 0);
+      const stainPrice = item.hasStainRemover ? (item.stainRemoverPrice || 0) : 0;
       return subTotal + (item.count > 0 ? stainPrice : 0);
     }
-    const service = item.services.find((s: any) => s.name === item.selectedService);
-    const servicePrice = service ? service.price : item.basePrice;
-    const stainPrice = item.hasStainRemover ? item.stainRemoverPrice : 0;
+    const service = item.services?.find((s: any) => s.name === item.selectedService);
+    const servicePrice = service ? (service.price ?? item.basePrice ?? 0) : (item.basePrice ?? 0);
+    const stainPrice = item.hasStainRemover ? (item.stainRemoverPrice || 0) : 0;
     return (item.count * servicePrice) + (item.count > 0 ? stainPrice : 0);
   };
 
@@ -455,7 +450,7 @@ function OrderPageContent() {
                   </span>
                 </div>
                 <div className="text-right">
-                  <span className="font-headline font-black text-2xl text-primary">₦{getItemPrice(item).toLocaleString()}</span>
+                  <span className="font-headline font-black text-2xl text-primary">₦{(getItemPrice(item) || 0).toLocaleString()}</span>
                 </div>
               </div>
             </motion.div>
@@ -473,7 +468,7 @@ function OrderPageContent() {
               </div>
               <div className="text-right">
                 <p className="font-label text-xs uppercase tracking-[0.3em] text-on-surface-variant font-black mb-2">Estimated Total</p>
-                <h3 className="font-headline font-black text-5xl text-primary tracking-tighter">₦{totalPrice.toLocaleString()}</h3>
+                <h3 className="font-headline font-black text-5xl text-primary tracking-tighter">₦{(totalPrice || 0).toLocaleString()}</h3>
               </div>
             </div>
             
@@ -491,7 +486,7 @@ function OrderPageContent() {
                 ) : (
                   <>
                     <CreditCard className="w-6 h-6" />
-                    Pay ₦{totalPrice.toLocaleString()}
+                    Pay ₦{(totalPrice || 0).toLocaleString()}
                   </>
                 )}
               </button>

@@ -17,6 +17,8 @@ export default function VendorDashboard() {
   const [selectedOrder, setSelectedOrder] = React.useState<any>(null);
   const [handoverInput, setHandoverInput] = React.useState('');
   const [isPriceModalOpen, setIsPriceModalOpen] = React.useState(false);
+  const [isServicePickerOpen, setIsServicePickerOpen] = React.useState(false);
+  const [globalServices, setGlobalServices] = React.useState<string[]>([]);
   const [editingService, setEditingService] = React.useState<any>(null);
   const [services, setServices] = React.useState<any[]>([]);
 
@@ -72,6 +74,10 @@ export default function VendorDashboard() {
       // Load services
       const allServices = JSON.parse(localStorage.getItem('qw_vendor_services') || '[]');
       setServices(allServices.filter((s: any) => s.vendorId === currentUser.phoneNumber));
+
+      // Load global services
+      const gServices = JSON.parse(localStorage.getItem('qw_global_services') || '["Shirt", "Trousers", "Jeans", "Bedding", "Towel", "Suit", "Native Wear", "Gown"]');
+      setGlobalServices(gServices);
 
       // Process 24h Payout Release
       const twentyFourHours = 24 * 60 * 60 * 1000;
@@ -183,6 +189,15 @@ export default function VendorDashboard() {
     }
     localStorage.setItem('qw_vendor_services', JSON.stringify(updated));
     setServices(updated.filter((s: any) => s.vendorId === currentUser?.phoneNumber));
+
+    // Update global services
+    const gServices = JSON.parse(localStorage.getItem('qw_global_services') || '[]');
+    if (!gServices.includes(editingService.name)) {
+      const newGServices = [...gServices, editingService.name];
+      localStorage.setItem('qw_global_services', JSON.stringify(newGServices));
+      setGlobalServices(newGServices);
+    }
+
     setIsPriceModalOpen(false);
     setEditingService(null);
     alert('Service saved successfully!');
@@ -254,11 +269,11 @@ export default function VendorDashboard() {
           <section className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
             <div className="bg-surface-container-low p-6 rounded-[2rem] border border-primary/5">
               <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Total Earnings</p>
-              <h3 className="text-2xl font-headline font-black text-primary">₦{stats.totalEarnings.toLocaleString()}</h3>
+              <h3 className="text-2xl font-headline font-black text-primary">₦{(stats.totalEarnings || 0).toLocaleString()}</h3>
             </div>
             <div className="bg-surface-container-low p-6 rounded-[2rem] border border-primary/5">
               <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Pending</p>
-              <h3 className="text-2xl font-headline font-black text-on-surface">₦{stats.pendingBalance.toLocaleString()}</h3>
+              <h3 className="text-2xl font-headline font-black text-on-surface">₦{(stats.pendingBalance || 0).toLocaleString()}</h3>
             </div>
             <div className="bg-surface-container-low p-6 rounded-[2rem] border border-primary/5">
               <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Active Orders</p>
@@ -301,8 +316,7 @@ export default function VendorDashboard() {
                   <h2 className="text-2xl font-headline font-black text-on-surface">My Price List</h2>
                   <button 
                     onClick={() => {
-                      setEditingService({ name: '', washPrice: 0, ironPrice: 0, washIronPrice: 0, whitePremium: 0 });
-                      setIsPriceModalOpen(true);
+                      setIsServicePickerOpen(true);
                     }}
                     className="signature-gradient text-white px-6 py-3 rounded-xl font-headline font-bold text-xs shadow-lg active:scale-95 transition-transform"
                   >
@@ -454,7 +468,7 @@ export default function VendorDashboard() {
                       </div>
                       <div>
                         <h4 className="font-headline font-black text-on-surface">Order #{order.id}</h4>
-                        <p className="text-[10px] font-bold text-on-surface-variant">{formatRelativeTime(order.time)} • ₦{order.totalPrice.toLocaleString()}</p>
+                        <p className="text-[10px] font-bold text-on-surface-variant">{formatRelativeTime(order.time)} • ₦{(order.totalPrice || 0).toLocaleString()}</p>
                       </div>
                     </div>
                     <span className={cn(
@@ -482,7 +496,7 @@ export default function VendorDashboard() {
               >
                 <div className="bg-primary text-on-primary p-10 rounded-[3rem] shadow-2xl shadow-primary/30">
                   <p className="font-label text-xs uppercase tracking-[0.3em] font-black mb-4 opacity-80">Available for Payout</p>
-                  <h2 className="text-6xl font-headline font-black mb-8 tracking-tighter">₦{stats.totalEarnings.toLocaleString()}</h2>
+                  <h2 className="text-6xl font-headline font-black mb-8 tracking-tighter">₦{(stats.totalEarnings || 0).toLocaleString()}</h2>
                   <button 
                     onClick={handleWithdrawal}
                     disabled={stats.totalEarnings < 8000}
@@ -541,7 +555,7 @@ export default function VendorDashboard() {
                     </div>
                     <div className="p-6 bg-surface-container-lowest rounded-3xl border border-primary/5">
                       <p className="font-label text-[10px] font-black uppercase tracking-widest text-primary mb-2">Total Price</p>
-                      <p className="font-headline font-black text-2xl text-primary">₦{selectedOrder.totalPrice.toLocaleString()}</p>
+                      <p className="font-headline font-black text-2xl text-primary">₦{(selectedOrder.totalPrice || 0).toLocaleString()}</p>
                     </div>
                   </div>
 
@@ -558,6 +572,53 @@ export default function VendorDashboard() {
             </div>
           )}
         </AnimatePresence>
+
+        {/* Service Picker Modal */}
+        <AnimatePresence>
+          {isServicePickerOpen && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+              <motion.div 
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                onClick={() => setIsServicePickerOpen(false)}
+                className="absolute inset-0 bg-surface/80 backdrop-blur-xl"
+              />
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                className="relative w-full max-w-lg bg-surface-container-low rounded-[3rem] p-10 shadow-2xl border border-primary/10"
+              >
+                <h3 className="text-3xl font-headline font-black text-on-surface mb-6">Select Service Type</h3>
+                <div className="grid grid-cols-2 gap-3 mb-8">
+                  {globalServices.map(s => (
+                    <button 
+                      key={s}
+                      onClick={() => {
+                        setEditingService({ name: s, washPrice: 0, ironPrice: 0, washIronPrice: 0, whitePremium: 0 });
+                        setIsServicePickerOpen(false);
+                        setIsPriceModalOpen(true);
+                      }}
+                      className="h-14 bg-surface-container-lowest rounded-2xl border border-primary/5 font-headline font-bold text-sm hover:border-primary transition-all"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+                <button 
+                  onClick={() => {
+                    setEditingService({ name: '', washPrice: 0, ironPrice: 0, washIronPrice: 0, whitePremium: 0 });
+                    setIsServicePickerOpen(false);
+                    setIsPriceModalOpen(true);
+                  }}
+                  className="w-full h-14 bg-primary/10 text-primary rounded-2xl font-headline font-black text-sm active:scale-95 transition-transform"
+                >
+                  OTHERS (ADD NEW)
+                </button>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
         {/* Price Modal */}
         <AnimatePresence>
           {isPriceModalOpen && editingService && (

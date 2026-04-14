@@ -125,34 +125,40 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
         </section>
 
         {/* Handover Code Section */}
-        <section className="bg-surface-container-lowest rounded-[3rem] p-10 text-center space-y-8 shadow-2xl border-4 border-primary-container relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4">
-            <ShieldCheck className="text-primary/10 w-24 h-24" />
-          </div>
-          
-          <div className="relative z-10">
-            <p className="font-label text-xs uppercase tracking-[0.3em] font-black text-on-surface-variant mb-8">Your Handover Code</p>
-            <div className="flex justify-center gap-4">
-              {(order.handoverCode || '----').split('').map((num: string, i: number) => (
-                <motion.span 
-                  key={i}
-                  initial={{ scale: 0.8, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ delay: i * 0.1 }}
-                  className="w-16 h-20 flex items-center justify-center bg-surface-container-low rounded-2xl text-4xl font-headline font-black text-primary shadow-xl border border-primary/5"
-                >
-                  {num}
-                </motion.span>
-              ))}
+        {['Pending Pickup', 'Out for Delivery', 'Ready for Delivery'].includes(order.status) && (
+          <section className="bg-surface-container-lowest rounded-[3rem] p-10 text-center space-y-8 shadow-2xl border-4 border-primary-container relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-4">
+              <ShieldCheck className="text-primary/10 w-24 h-24" />
             </div>
-            <div className="mt-10 flex items-center justify-center gap-3 bg-primary/5 p-4 rounded-2xl border border-primary/10">
-              <Info className="text-primary w-5 h-5" />
-              <p className="text-xs font-bold text-on-surface-variant leading-relaxed">
-                Show this code to the rider only after receiving your laundry.
+            
+            <div className="relative z-10">
+              <p className="font-label text-xs uppercase tracking-[0.3em] font-black text-on-surface-variant mb-8">
+                {order.status === 'Pending Pickup' ? 'Give this to Rider at Pickup' : 'Your Handover Code'}
               </p>
+              <div className="flex justify-center gap-4">
+                {(order.handoverCode || '----').split('').map((num: string, i: number) => (
+                  <motion.span 
+                    key={i}
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ delay: i * 0.1 }}
+                    className="w-16 h-20 flex items-center justify-center bg-surface-container-low rounded-2xl text-4xl font-headline font-black text-primary shadow-xl border border-primary/5"
+                  >
+                    {num}
+                  </motion.span>
+                ))}
+              </div>
+              <div className="mt-10 flex items-center justify-center gap-3 bg-primary/5 p-4 rounded-2xl border border-primary/10">
+                <Info className="text-primary w-5 h-5" />
+                <p className="text-xs font-bold text-on-surface-variant leading-relaxed">
+                  {order.status === 'Pending Pickup' 
+                    ? 'The rider needs this code to confirm they have picked up your laundry.'
+                    : 'Show this code to the rider only after receiving your laundry.'}
+                </p>
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+        )}
 
         {/* Sealed Bag Uploader - Only at pickup stage */}
         {(order.status === 'Awaiting Pickup Confirmation' || order.status === 'Pending Pickup') && (
@@ -190,10 +196,10 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
         <section className="bg-tertiary-container/10 rounded-[2.5rem] p-8 border border-tertiary-container/30">
           <div className="flex items-center gap-4 mb-4">
             <Shield className="text-tertiary w-6 h-6 fill-current" />
-            <span className="font-headline font-black text-lg text-tertiary">24hr Protection Active</span>
+            <span className="font-headline font-black text-lg text-tertiary">24hr Protection Active – 20% held</span>
           </div>
           <p className="text-sm text-on-surface-variant leading-relaxed font-medium">
-            Payment of ₦{order.totalPrice.toLocaleString()} is held securely. You have 24 hours after delivery to report any issues before the rider is paid.
+            Payment of ₦{(order.totalPrice || 0).toLocaleString()} is held securely. 20% (₦{(order.totalPrice * 0.2 || 0).toLocaleString()}) is held for 24 hours after delivery to ensure your satisfaction.
           </p>
         </section>
 

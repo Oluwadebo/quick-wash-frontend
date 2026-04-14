@@ -34,10 +34,10 @@ export default function ProfilePage() {
   }, [user]);
 
   const earnedBadges = [
-    { id: 'clean', name: 'Always Clean', icon: Sun, color: 'bg-surface-container-high text-primary', earned: (user?.badges || []).includes('✨ Always Clean') },
-    { id: 'early', name: 'Early Bird', icon: Sun, color: 'bg-primary-container text-on-primary-container', earned: (user?.badges || []).includes('🌅 Early Bird') },
-    { id: 'loyal', name: 'Loyal Customer', icon: Leaf, color: 'bg-tertiary-container text-on-tertiary-container', earned: (user?.badges || []).includes('💎 Loyal Customer') },
-    { id: 'new', name: 'Newcomer', icon: Leaf, color: 'bg-surface-container-highest text-on-surface', earned: true }
+    { id: 'clean', name: 'Always Clean', icon: Sun, color: 'bg-surface-container-high text-primary', earned: (user?.badges || []).includes('✨ Always Clean'), criteria: 'Complete 5 orders without any disputes.' },
+    { id: 'early', name: 'Early Bird', icon: Sun, color: 'bg-primary-container text-on-primary-container', earned: (user?.badges || []).includes('🌅 Early Bird'), criteria: 'Place an order before 8 AM.' },
+    { id: 'loyal', name: 'Loyal Customer', icon: Leaf, color: 'bg-tertiary-container text-on-tertiary-container', earned: (user?.badges || []).includes('💎 Loyal Customer'), criteria: 'Stay with us for over 1 month.' },
+    { id: 'new', name: 'Newcomer', icon: Leaf, color: 'bg-surface-container-highest text-on-surface', earned: true, criteria: 'Welcome to Quick-Wash!' }
   ];
 
   return (
@@ -126,7 +126,7 @@ export default function ProfilePage() {
             {earnedBadges.map(badge => (
               <div 
                 key={badge.id} 
-                onClick={() => alert(`${badge.name}: ${badge.earned ? 'Earned ✅' : 'Not Earned ❌'}`)}
+                onClick={() => alert(`${badge.name}: ${badge.criteria}\n\nStatus: ${badge.earned ? 'Earned ✅' : 'Not Earned ❌'}`)}
                 className={cn("flex-shrink-0 w-24 flex flex-col items-center space-y-2 cursor-pointer", !badge.earned && "opacity-40")}
               >
                 <div className={cn("w-16 h-16 rounded-2xl flex items-center justify-center transition-transform duration-300 hover:rotate-0", badge.color)}>
@@ -149,7 +149,7 @@ export default function ProfilePage() {
                 <div className="flex-1">
                   <div className="flex justify-between items-start">
                     <h4 className="font-headline font-bold text-sm line-clamp-1">{item.items}</h4>
-                    <span className="font-label text-[10px] font-bold text-on-surface-variant">₦{item.totalPrice.toLocaleString()}</span>
+                    <span className="font-label text-[10px] font-bold text-on-surface-variant">₦{(item.totalPrice || 0).toLocaleString()}</span>
                   </div>
                   <p className="font-label text-[10px] text-on-surface-variant">{new Date(item.createdAt).toLocaleDateString()} • {item.status}</p>
                 </div>

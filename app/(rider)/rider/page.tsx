@@ -178,7 +178,7 @@ export default function RiderDashboard() {
           <section className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
             <div className="bg-surface-container-low p-6 rounded-[2rem] border border-primary/5">
               <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Wallet Balance</p>
-              <h3 className="text-2xl font-headline font-black text-primary">₦{stats.walletBalance.toLocaleString()}</h3>
+              <h3 className="text-2xl font-headline font-black text-primary">₦{(stats.walletBalance || 0).toLocaleString()}</h3>
             </div>
             <div className="bg-surface-container-low p-6 rounded-[2rem] border border-primary/5">
               <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Trust Score</p>
@@ -375,7 +375,7 @@ export default function RiderDashboard() {
               >
                 <div className="bg-primary text-on-primary p-10 rounded-[3rem] shadow-2xl shadow-primary/30">
                   <p className="font-label text-xs uppercase tracking-[0.3em] font-black mb-4 opacity-80">Rider Balance</p>
-                  <h2 className="text-6xl font-headline font-black mb-8 tracking-tighter">₦{stats.walletBalance.toLocaleString()}</h2>
+                  <h2 className="text-6xl font-headline font-black mb-8 tracking-tighter">₦{(stats.walletBalance || 0).toLocaleString()}</h2>
                   <button 
                     onClick={handleWithdrawal}
                     disabled={stats.walletBalance < 2000}
