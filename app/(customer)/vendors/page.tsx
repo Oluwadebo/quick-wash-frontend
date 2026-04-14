@@ -31,7 +31,7 @@ export default function VendorSelectionPage() {
         reviews: Math.floor(Math.random() * 50),
         distance: 'Local',
         turnaround: u.turnaroundTime || '24h Standard',
-        image: `https://picsum.photos/seed/${u.phoneNumber}/800/600`
+        image: `https://picsum.photos/seed/laundry-${u.phoneNumber}/800/600`
       }));
     
     setVendors(approvedVendors);

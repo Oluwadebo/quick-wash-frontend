@@ -191,17 +191,17 @@ function AuthContent() {
                           className="w-full h-16 bg-surface-container-low rounded-2xl pl-14 pr-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"
                         />
                       </div>
-                      <div className="relative">
-                        <Phone className="absolute left-5 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5" />
-                        <input 
-                          type="tel" 
-                          placeholder="WhatsApp Number"
-                          required={role === 'vendor' && !isLogin}
-                          value={formData.whatsappNumber}
-                          onChange={(e) => setFormData({...formData, whatsappNumber: e.target.value})}
-                          className="w-full h-16 bg-surface-container-low rounded-2xl pl-14 pr-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"
-                        />
-                      </div>
+                    <div className="relative">
+                      <Phone className="absolute left-5 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5" />
+                      <input 
+                        type="tel" 
+                        placeholder="WhatsApp Number (For Customers)"
+                        required={role === 'vendor' && !isLogin}
+                        value={formData.whatsappNumber}
+                        onChange={(e) => setFormData({...formData, whatsappNumber: e.target.value})}
+                        className="w-full h-16 bg-surface-container-low rounded-2xl pl-14 pr-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"
+                      />
+                    </div>
                       <div className="grid grid-cols-1 gap-4">
                         <input 
                           type="text" 
@@ -243,7 +243,7 @@ function AuthContent() {
                           placeholder="Max Bags/Day"
                           required={role === 'vendor' && !isLogin}
                           value={formData.capacity}
-                          onChange={(e) => setFormData({...formData, capacity: e.target.value})}
+                          onChange={(e) => setFormData({...formData, capacity: Number(e.target.value)})}
                           className="w-full h-16 bg-surface-container-low rounded-2xl px-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"
                         />
                       </div>
@@ -257,7 +257,7 @@ function AuthContent() {
               <Phone className="absolute left-5 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5" />
               <input 
                 type="tel" 
-                placeholder="Phone Number"
+                placeholder={isLogin ? "Phone Number" : "Login Phone Number"}
                 required
                 value={formData.phoneNumber}
                 onChange={(e) => setFormData({...formData, phoneNumber: e.target.value})}

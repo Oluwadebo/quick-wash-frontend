@@ -20,13 +20,22 @@ interface SubService {
   price: number;
 }
 
+const iconMap: Record<string, React.ElementType> = {
+  Shirt,
+  ShoppingBag,
+  Bed,
+  Droplets,
+  Sparkles,
+  Zap
+};
+
 interface Service {
   id: string;
   name: string;
   category: string;
   prices: ServicePrice;
   subServices?: SubService[];
-  icon: any;
+  icon: string;
   color: string;
 }
 
@@ -36,7 +45,7 @@ const defaultServices: Service[] = [
     name: 'Shirts & Tops', 
     category: 'General', 
     prices: { wash: 200, iron: 150, washIron: 300, whitePremium: 100 },
-    icon: Shirt, 
+    icon: 'Shirt', 
     color: 'bg-primary-container text-on-primary-container' 
   },
   { 
@@ -44,7 +53,7 @@ const defaultServices: Service[] = [
     name: 'Trousers & Jeans', 
     category: 'General', 
     prices: { wash: 250, iron: 200, washIron: 400, whitePremium: 150 },
-    icon: ShoppingBag, 
+    icon: 'ShoppingBag', 
     color: 'bg-secondary-container text-on-secondary-container' 
   },
   { 
@@ -57,7 +66,7 @@ const defaultServices: Service[] = [
       { id: 'duvet', name: 'Duvet', price: 1200 },
       { id: 'pillowcase', name: 'Pillow Case', price: 150 }
     ],
-    icon: Bed, 
+    icon: 'Bed', 
     color: 'bg-tertiary-container text-on-tertiary-container' 
   }
 ];
@@ -163,7 +172,7 @@ export default function PriceListPage() {
       name: 'New Service',
       category: 'Custom',
       prices: { wash: 0, iron: 0, washIron: 0, whitePremium: 0 },
-      icon: Droplets,
+      icon: 'Droplets',
       color: 'bg-surface-container-highest text-on-surface'
     };
     saveServices([...services, newService]);
@@ -209,7 +218,10 @@ export default function PriceListPage() {
                 <div className="flex justify-between items-start mb-8">
                   <div className="flex items-center gap-6">
                     <div className={cn("w-20 h-20 rounded-[2rem] flex items-center justify-center shadow-xl", service.color)}>
-                      <service.icon className="w-10 h-10" />
+                      {(() => {
+                        const Icon = iconMap[service.icon] || Droplets;
+                        return <Icon className="w-10 h-10" />;
+                      })()}
                     </div>
                     <div>
                       <span className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1 block">

@@ -2,315 +2,411 @@
 
 import React from 'react';
 import TopAppBar from '@/components/shared/TopAppBar';
-import { MapPin, Navigation, Package, CheckCircle, Clock, Phone, ArrowRight, Bike, Zap, AlertTriangle } from 'lucide-react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
-
-const tasks = [
-  {
-    id: 'QW-8821',
-    type: 'Pickup',
-    location: 'Campus Cleans (Under G)',
-    customer: 'Alex Thompson',
-    time: 'Now',
-    priority: true
-  },
-  {
-    id: 'QW-8825',
-    type: 'Delivery',
-    location: 'North Campus Dorms',
-    customer: 'Tunde Kelani',
-    time: 'In 15m',
-    priority: false
-  }
-];
-
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
 import { useAuth } from '@/hooks/use-auth';
+import { formatRelativeTime } from '@/lib/time';
+import { X, History, Wallet, ShoppingBag, MapPin, Navigation, Package, CheckCircle, Clock, Phone, ArrowRight, Bike, Zap, AlertTriangle, MessageCircle } from 'lucide-react';
 
 export default function RiderDashboard() {
-  const { user } = useAuth();
+  const { user: currentUser } = useAuth();
+  const [activeTab, setActiveTab] = React.useState<'tasks' | 'history' | 'wallet'>('tasks');
   const [tasks, setTasks] = React.useState<any[]>([]);
+  const [availableOrders, setAvailableOrders] = React.useState<any[]>([]);
+  const [stats, setStats] = React.useState({
+    walletBalance: 0,
+    trustScore: 100,
+    completedTasks: 0
+  });
+  const [handoverInput, setHandoverInput] = React.useState<{ [key: string]: string }>({});
 
   React.useEffect(() => {
+    if (currentUser) {
+      const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
+      
+      // Tasks assigned to this rider
+      const myTasks = allOrders.filter((o: any) => o.riderPhone === currentUser.phoneNumber && !['Delivered', 'Cancelled'].includes(o.status));
+      setTasks(myTasks);
+
+      // Orders available for pickup (not yet assigned)
+      const available = allOrders.filter((o: any) => o.status === 'Awaiting Pickup Confirmation' && !o.riderPhone);
+      setAvailableOrders(available);
+
+      const allUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
+      const me = allUsers.find((u: any) => u.phoneNumber === currentUser.phoneNumber);
+      
+      setStats({
+        walletBalance: me?.walletBalance || 0,
+        trustScore: me?.trustScore || 100,
+        completedTasks: allOrders.filter((o: any) => o.riderPhone === currentUser.phoneNumber && o.status === 'Delivered').length
+      });
+    }
+  }, [currentUser]);
+
+  const handleAcceptOrder = (orderId: string) => {
     const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-    // Riders see orders that are 'Pending Pickup' or 'Ready for Delivery'
-    const riderTasks = allOrders
-      .filter((o: any) => o.status === 'Pending Pickup' || o.status === 'Ready for Delivery' || o.status === 'Out for Delivery')
-      .map((o: any) => ({
-        id: o.id,
-        type: o.status === 'Pending Pickup' ? 'Pickup' : 'Delivery',
-        location: o.status === 'Pending Pickup' ? (o.customerLandmark || 'Customer Hostel') : (o.vendorName || 'Laundry Shop'),
-        customer: o.customerName,
-        customerPhone: o.customerPhone,
-        time: 'Now',
-        priority: o.status === 'Pending Pickup'
-      }));
-    setTasks(riderTasks);
-  }, []);
+    const updated = allOrders.map((o: any) => {
+      if (o.id === orderId) {
+        return { 
+          ...o, 
+          status: 'Pending Pickup', 
+          riderPhone: currentUser?.phoneNumber,
+          riderName: currentUser?.fullName,
+          color: 'bg-primary text-on-primary'
+        };
+      }
+      return o;
+    });
+    localStorage.setItem('qw_orders', JSON.stringify(updated));
+    setTasks(updated.filter((o: any) => o.riderPhone === currentUser?.phoneNumber && !['Delivered', 'Cancelled'].includes(o.status)));
+    setAvailableOrders(updated.filter((o: any) => o.status === 'Awaiting Pickup Confirmation' && !o.riderPhone));
+    alert('Order accepted! Head to the customer location.');
+  };
+
+  const handleRejectOrder = (orderId: string) => {
+    if (confirm('Are you sure you want to reject this order? It will be available for other riders.')) {
+      const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
+      const updated = allOrders.map((o: any) => {
+        if (o.id === orderId) {
+          return { 
+            ...o, 
+            status: 'Awaiting Pickup Confirmation', 
+            riderPhone: null,
+            riderName: null,
+            color: 'bg-warning/20 text-warning'
+          };
+        }
+        return o;
+      });
+      localStorage.setItem('qw_orders', JSON.stringify(updated));
+      setTasks(updated.filter((o: any) => o.riderPhone === currentUser?.phoneNumber && !['Delivered', 'Cancelled'].includes(o.status)));
+      setAvailableOrders(updated.filter((o: any) => o.status === 'Awaiting Pickup Confirmation' && !o.riderPhone));
+      alert('Order rejected.');
+    }
+  };
+
+  const handleStatusUpdate = (orderId: string, newStatus: string, color: string) => {
+    const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
+    const updated = allOrders.map((o: any) => {
+      if (o.id === orderId) {
+        return { ...o, status: newStatus, color };
+      }
+      return o;
+    });
+    localStorage.setItem('qw_orders', JSON.stringify(updated));
+    setTasks(updated.filter((o: any) => o.riderPhone === currentUser?.phoneNumber && !['Delivered', 'Cancelled'].includes(o.status)));
+  };
+
+  const handleVerifyHandover = (order: any) => {
+    const input = handoverInput[order.id];
+    if (input === order.handoverCode) {
+      // Final 50% rider fee to rider
+      const allUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
+      const riderFee = 1000; // Fixed + Dynamic (simulated)
+      
+      const updatedUsers = allUsers.map((u: any) => {
+        if (u.phoneNumber === currentUser?.phoneNumber) {
+          return { ...u, walletBalance: (u.walletBalance || 0) + (riderFee * 0.5) };
+        }
+        return u;
+      });
+      localStorage.setItem('qw_all_users', JSON.stringify(updatedUsers));
+
+      // Update order status and set deliveredAt
+      const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
+      const updatedOrders = allOrders.map((o: any) => {
+        if (o.id === order.id) {
+          return { 
+            ...o, 
+            status: 'Delivered', 
+            color: 'bg-success text-on-success',
+            deliveredAt: new Date().toISOString()
+          };
+        }
+        return o;
+      });
+      localStorage.setItem('qw_orders', JSON.stringify(updatedOrders));
+      setTasks(updatedOrders.filter((o: any) => o.riderPhone === currentUser?.phoneNumber && !['Delivered', 'Cancelled'].includes(o.status)));
+
+      alert('Handover verified! Delivery complete. Final payment credited.');
+      setHandoverInput(prev => ({ ...prev, [order.id]: '' }));
+    } else {
+      alert('Invalid handover code!');
+    }
+  };
+
+  const handleWithdrawal = () => {
+    if (stats.walletBalance < 2000) return;
+    
+    const allUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
+    const updated = allUsers.map((u: any) => {
+      if (u.phoneNumber === currentUser?.phoneNumber) {
+        return { ...u, withdrawalRequested: true };
+      }
+      return u;
+    });
+    localStorage.setItem('qw_all_users', JSON.stringify(updated));
+    alert('Withdrawal request submitted! You will be paid within 2 hours.');
+  };
 
   const handleStartNavigation = (location: string) => {
     const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location + ' Ogbomoso')}`;
     window.open(url, '_blank');
   };
 
-  const handleTaskAction = (taskId: string, type: string) => {
-    const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-    const updated = allOrders.map((o: any) => {
-      if (o.id === taskId) {
-        if (type === 'Pickup') {
-          return { ...o, status: 'Picked Up', color: 'bg-secondary-container text-on-secondary-container' };
-        } else {
-          return { ...o, status: 'Out for Delivery', color: 'bg-tertiary text-on-tertiary' };
-        }
-      }
-      return o;
-    });
-    localStorage.setItem('qw_orders', JSON.stringify(updated));
-    setTasks(prev => prev.filter(t => t.id !== taskId));
-    alert(`Task ${taskId} ${type === 'Pickup' ? 'picked up' : 'started delivery'} successfully!`);
-  };
-  
-  const [handoverCode, setHandoverCode] = React.useState(['', '', '', '']);
-
-  const handleHandover = () => {
-    const code = handoverCode.join('');
-    const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-    // Find the order that is 'Out for Delivery'
-    const activeOrder = allOrders.find((o: any) => o.status === 'Out for Delivery');
-    
-    if (!activeOrder) {
-      alert('No active delivery found.');
-      return;
-    }
-
-    if (code === activeOrder.handoverCode) {
-      const updated = allOrders.map((o: any) => {
-        if (o.id === activeOrder.id) {
-          return { ...o, status: 'Delivered', color: 'bg-success text-white', deliveredAt: new Date().toISOString() };
-        }
-        return o;
-      });
-      localStorage.setItem('qw_orders', JSON.stringify(updated));
-      alert('Delivery confirmed! Payment released to your wallet.');
-      setHandoverCode(['', '', '', '']);
-      // Refresh tasks
-      const riderTasks = updated
-        .filter((o: any) => o.status === 'Pending Pickup' || o.status === 'Ready for Delivery')
-        .map((o: any) => ({
-          id: o.id,
-          type: o.status === 'Pending Pickup' ? 'Pickup' : 'Delivery',
-          location: o.status === 'Pending Pickup' ? 'Customer Hostel' : 'Laundry Shop',
-          customer: o.customerName,
-          customerPhone: o.customerPhone,
-          time: 'Now',
-          priority: o.status === 'Pending Pickup'
-        }));
-      setTasks(riderTasks);
-    } else {
-      alert('Invalid code. Please ask the customer for the correct 4-digit code.');
-    }
-  };
-
   return (
     <ProtectedRoute allowedRoles={['rider']}>
       <div className="pb-32">
-        <TopAppBar roleLabel="Rider" />
+        <TopAppBar roleLabel="Rider Station" showAudioToggle />
         
         <main className="pt-24 px-6 max-w-7xl mx-auto">
-          {/* ... existing header ... */}
-          <header className="mb-10 flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 rounded-xl bg-primary text-on-primary flex items-center justify-center">
-                  <Bike className="w-6 h-6 fill-current" />
-                </div>
-                <p className="font-label text-xs font-black uppercase tracking-[0.2em] text-primary">On Duty</p>
+          <header className="mb-10">
+            <div className="flex items-center gap-4 mb-2">
+              <div className="w-12 h-12 rounded-2xl bg-primary-container flex items-center justify-center">
+                <Bike className="text-primary w-6 h-6" />
               </div>
-              <h1 className="text-4xl font-headline font-black text-on-surface tracking-tighter">
-                {user?.fullName || 'Rider'}
-              </h1>
-              <div className="mt-4 flex items-center gap-3 bg-tertiary-container/20 px-4 py-2 rounded-xl border border-tertiary-container/30">
-                <Zap className="text-tertiary w-4 h-4 fill-current" />
-                <span className="text-xs font-headline font-black text-tertiary">820 Trust Points • Elite Rider</span>
-              </div>
+              <p className="font-label text-xs font-black uppercase tracking-[0.2em] text-primary">Live Dashboard</p>
             </div>
-            <div className="bg-surface-container-lowest p-4 rounded-3xl shadow-sm border border-primary/5 text-center">
-              <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">Earnings</p>
-              <p className="font-headline font-black text-2xl text-primary">₦12,400</p>
-            </div>
+            <h1 className="text-[3.5rem] leading-[0.95] font-headline font-black text-on-surface mb-6 tracking-tighter">
+              Welcome, {currentUser?.fullName || 'Rider'}!
+            </h1>
           </header>
 
-          {tasks.length > 0 && (
-            <section className="bg-surface-container-low rounded-[2.5rem] p-8 mb-12 flex flex-col md:flex-row items-center justify-between gap-8 border border-primary/5">
-              <div className="flex items-center gap-6">
-                <div className="w-20 h-20 rounded-full bg-primary-container flex items-center justify-center shadow-inner">
-                  <Navigation className="text-primary w-10 h-10 fill-current animate-pulse" />
-                </div>
-                <div>
-                  <h2 className="text-2xl font-headline font-black text-on-surface">Next Stop</h2>
-                  <p className="text-on-surface-variant font-medium">{tasks[0].location}</p>
-                </div>
-              </div>
-              <button 
-                onClick={() => handleStartNavigation(tasks[0].location)}
-                className="signature-gradient text-white px-10 py-5 rounded-2xl font-headline font-black text-lg shadow-xl hover:brightness-105 active:scale-95 transition-all w-full md:w-auto"
-              >
-                START NAVIGATION
-              </button>
-            </section>
-          )}
+          {/* Stats Grid */}
+          <section className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
+            <div className="bg-surface-container-low p-6 rounded-[2rem] border border-primary/5">
+              <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Wallet Balance</p>
+              <h3 className="text-2xl font-headline font-black text-primary">₦{stats.walletBalance.toLocaleString()}</h3>
+            </div>
+            <div className="bg-surface-container-low p-6 rounded-[2rem] border border-primary/5">
+              <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Trust Score</p>
+              <h3 className={cn(
+                "text-2xl font-headline font-black",
+                stats.trustScore >= 80 ? "text-success" : stats.trustScore >= 60 ? "text-warning" : "text-error"
+              )}>{stats.trustScore}%</h3>
+            </div>
+            <div className="bg-surface-container-low p-6 rounded-[2rem] border border-primary/5">
+              <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Completed</p>
+              <h3 className="text-2xl font-headline font-black text-on-surface">{stats.completedTasks}</h3>
+            </div>
+            <div className="bg-surface-container-low p-6 rounded-[2rem] border border-primary/5">
+              <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Status</p>
+              <h3 className="text-2xl font-headline font-black text-success uppercase tracking-tighter">Active</h3>
+            </div>
+          </section>
 
-        <section className="mb-12">
-          <div className="flex items-center justify-between mb-8">
-            <h3 className="text-2xl font-headline font-black text-on-surface">Your Queue</h3>
-            <span className="font-label text-xs font-bold text-on-surface-variant uppercase tracking-widest">{tasks.length.toString().padStart(2, '0')} Tasks Remaining</span>
-          </div>
-
-          <div className="space-y-6">
-            {tasks.map((task, idx) => (
-              <motion.div 
-                key={task.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: idx * 0.1 }}
+          {/* Tabs */}
+          <div className="flex gap-4 mb-8 overflow-x-auto pb-2 hide-scrollbar">
+            {['tasks', 'history', 'wallet'].map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab as any)}
                 className={cn(
-                  "bg-surface-container-low rounded-[2rem] p-6 flex flex-col md:flex-row items-center gap-6 border border-primary/5",
-                  task.priority && "ring-2 ring-primary ring-offset-4 ring-offset-surface"
+                  "px-8 py-4 rounded-2xl font-headline font-black text-sm capitalize transition-all",
+                  activeTab === tab ? "signature-gradient text-white shadow-lg" : "bg-surface-container-low text-on-surface-variant"
                 )}
               >
-                <div className={cn(
-                  "w-16 h-16 rounded-2xl flex items-center justify-center shadow-sm",
-                  task.type === 'Pickup' ? "bg-primary-container text-primary" : "bg-tertiary-container text-tertiary"
-                )}>
-                  <Package className="w-8 h-8" />
-                </div>
-                <div className="flex-1 text-center md:text-left">
-                  <div className="flex flex-col md:flex-row md:items-center gap-2 mb-1">
-                    <h4 className="text-xl font-headline font-black text-on-surface">{task.type}: {task.location}</h4>
-                    {task.priority && <span className="bg-error text-on-error font-label text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest">Urgent</span>}
-                  </div>
-                  <p className="font-label text-xs font-bold text-on-surface-variant uppercase tracking-widest">Customer: {task.customer} • {task.id}</p>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="text-center md:text-right">
-                    <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Due</p>
-                    <p className="font-headline font-bold text-on-surface">{task.time}</p>
-                  </div>
-                  <button 
-                    onClick={() => {
-                      const tel = task.customerPhone || '08000000000';
-                      window.location.href = `tel:${tel}`;
-                    }}
-                    className="p-4 rounded-2xl bg-surface-container-highest text-on-surface hover:bg-surface-variant transition-colors active:scale-90"
-                  >
-                    <Phone className="w-5 h-5 fill-current" />
-                  </button>
-                  <button 
-                    onClick={() => {
-                      if (confirm('Has it been 15 mins and 2 failed calls? This will return the order to the queue and charge the customer a waiting fee.')) {
-                        const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-                        const updated = allOrders.map((o: any) => {
-                          if (o.id === task.id) {
-                            return { 
-                              ...o, 
-                              status: o.status === 'Picked Up' ? 'Ready for Handover' : 'Pending Pickup',
-                              waitingFee: (o.waitingFee || 0) + 500,
-                              logs: [...(o.logs || []), { time: new Date().toISOString(), event: 'Rider reported: Customer Not Responding' }]
-                            };
-                          }
-                          return o;
-                        });
-                        localStorage.setItem('qw_orders', JSON.stringify(updated));
-                        setTasks(prev => prev.filter(t => t.id !== task.id));
-                        alert('Order returned to queue. Waiting fee applied.');
-                      }
-                    }}
-                    className="p-4 rounded-2xl bg-error/10 text-error hover:bg-error/20 transition-colors active:scale-90"
-                    title="Customer Not Responding"
-                  >
-                    <AlertTriangle className="w-5 h-5" />
-                  </button>
-                  <button 
-                    onClick={() => handleTaskAction(task.id, task.type)}
-                    className="signature-gradient text-white p-4 rounded-2xl shadow-lg active:scale-90 transition-all"
-                  >
-                    <ArrowRight className="w-6 h-6" />
-                  </button>
-                </div>
-              </motion.div>
+                {tab}
+              </button>
             ))}
-            {tasks.length === 0 && (
-              <div className="py-20 text-center bg-surface-container-low rounded-[2rem] border border-dashed border-primary/20">
-                <p className="text-on-surface-variant font-headline font-bold text-xl">No tasks available right now.</p>
-              </div>
-            )}
           </div>
-        </section>
 
-        <section className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <section className="bg-surface-container-lowest p-8 rounded-[2.5rem] border-2 border-dashed border-primary/20 flex flex-col items-center justify-center text-center space-y-4">
-            <div className="w-20 h-20 rounded-full bg-primary/5 flex items-center justify-center">
-              <CheckCircle className="text-primary w-10 h-10" />
-            </div>
-            <h3 className="text-2xl font-headline font-black">Handover Complete?</h3>
-            <p className="text-on-surface-variant font-medium max-w-xs">Enter the 4-digit code provided by the customer to complete this delivery.</p>
-            <div className="flex gap-2 w-full max-w-xs">
-              {[0, 1, 2, 3].map(i => (
-                <input 
-                  key={i} 
-                  type="text" 
-                  maxLength={1} 
-                  value={handoverCode[i]}
-                  onChange={(e) => {
-                    const newCode = [...handoverCode];
-                    newCode[i] = e.target.value;
-                    setHandoverCode(newCode);
-                    if (e.target.value && e.target.nextElementSibling) {
-                      (e.target.nextElementSibling as HTMLInputElement).focus();
-                    }
-                  }}
-                  className="w-full h-16 bg-surface-container rounded-xl text-center font-headline font-black text-2xl focus:ring-4 focus:ring-primary-container outline-none transition-all" 
-                />
-              ))}
-            </div>
-            <button 
-              onClick={handleHandover}
-              className="signature-gradient text-white px-10 py-5 rounded-2xl font-headline font-black text-lg shadow-xl hover:brightness-105 active:scale-95 transition-all w-full"
-            >
-              CONFIRM HANDOVER
-            </button>
-          </section>
+          <AnimatePresence mode="wait">
+            {activeTab === 'tasks' && (
+              <motion.section 
+                key="tasks"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="space-y-12"
+              >
+                {/* Available Orders */}
+                {availableOrders.length > 0 && (
+                  <div>
+                    <h3 className="font-headline font-black text-xl mb-6 flex items-center gap-3">
+                      <Zap className="text-warning fill-current w-6 h-6" />
+                      Available for Pickup
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {availableOrders.map((order) => (
+                        <div key={order.id} className="bg-surface-container-low p-8 rounded-[2.5rem] border-2 border-primary/20 shadow-xl">
+                          <div className="flex justify-between items-start mb-6">
+                            <div>
+                              <h4 className="font-headline font-black text-xl text-on-surface">{order.customerName}</h4>
+                              <p className="text-xs font-bold text-on-surface-variant">{order.customerLandmark}</p>
+                            </div>
+                            <span className="bg-primary text-on-primary px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">₦1,000 FEE</span>
+                          </div>
+                          <button 
+                            onClick={() => handleAcceptOrder(order.id)}
+                            className="w-full h-14 signature-gradient text-white rounded-xl font-headline font-black text-sm shadow-lg active:scale-95 transition-transform"
+                          >
+                            ACCEPT ORDER
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-          <section className="bg-surface-container-lowest p-8 rounded-[2.5rem] border-2 border-dashed border-tertiary/20 flex flex-col items-center justify-center text-center space-y-4">
-            <div className="w-20 h-20 rounded-full bg-tertiary/5 flex items-center justify-center">
-              <Zap className="text-tertiary w-10 h-10 fill-current" />
-            </div>
-            <h3 className="text-2xl font-headline font-black">Report Rain</h3>
-            <p className="text-on-surface-variant font-medium max-w-xs">Notify vendors and customers that delivery might be slower due to rain.</p>
-            <button 
-              onClick={() => {
-                const alerts = JSON.parse(localStorage.getItem('qw_alerts') || '[]');
-                alerts.push({
-                  id: Date.now(),
-                  type: 'Weather',
-                  msg: `Rain reported by rider ${user?.fullName || 'a rider'}. Deliveries might be delayed.`,
-                  time: 'Just now',
-                  icon: 'AlertTriangle',
-                  color: 'bg-error-container text-on-error-container'
-                });
-                localStorage.setItem('qw_alerts', JSON.stringify(alerts));
-                alert('Rain reported! System updated.');
-              }}
-              className="bg-tertiary text-on-tertiary px-10 py-5 rounded-2xl font-headline font-black text-lg shadow-xl hover:brightness-105 active:scale-95 transition-all w-full"
-            >
-              REPORT RAIN 🌧️
-            </button>
-          </section>
-        </section>
-      </main>
-    </div>
+                {/* My Tasks */}
+                <div>
+                  <h3 className="font-headline font-black text-xl mb-6">My Active Tasks</h3>
+                  <div className="space-y-6">
+                    {tasks.map((order) => {
+                      const isPickup = order.status === 'Pending Pickup';
+                      const isDelivery = order.status === 'Out for Delivery' || order.status === 'Ready for Delivery';
+                      const location = isPickup ? order.customerLandmark : order.vendorName;
+                      const subLocation = isPickup ? order.customerPhone : order.vendorLandmark;
+                      
+                      return (
+                        <div key={order.id} className="bg-surface-container-low p-8 rounded-[2.5rem] border border-primary/5 shadow-sm">
+                          <div className="flex justify-between items-start mb-6">
+                            <div className="flex items-center gap-4">
+                              <div className={cn(
+                                "w-16 h-16 rounded-2xl flex items-center justify-center",
+                                isPickup ? "bg-primary/10 text-primary" : "bg-tertiary/10 text-tertiary"
+                              )}>
+                                {isPickup ? <MapPin className="w-8 h-8" /> : <Package className="w-8 h-8" />}
+                              </div>
+                              <div>
+                                <h4 className="font-headline font-black text-xl text-on-surface">
+                                  {isPickup ? 'Pickup from' : 'Deliver to'} {isPickup ? order.customerName : order.customerName}
+                                </h4>
+                                <p className="text-xs font-bold text-on-surface-variant">{location} • {subLocation}</p>
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-end gap-2">
+                              <span className={cn(
+                                "px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest",
+                                order.color
+                              )}>
+                                {order.status}
+                              </span>
+                              {isPickup && (
+                                <button 
+                                  onClick={() => handleRejectOrder(order.id)}
+                                  className="text-[10px] font-black uppercase tracking-widest text-error hover:underline"
+                                >
+                                  Reject Task
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex gap-4">
+                            <button 
+                              onClick={() => handleStartNavigation(location)}
+                              className="flex-1 h-14 bg-surface-container-highest text-on-surface rounded-xl font-headline font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-transform"
+                            >
+                              <Navigation className="w-5 h-5" /> NAVIGATE
+                            </button>
+                            
+                            {order.status === 'Pending Pickup' && (
+                              <button 
+                                onClick={() => handleStatusUpdate(order.id, 'Picked Up', 'bg-secondary text-on-secondary')}
+                                className="flex-1 h-14 bg-primary text-on-primary rounded-xl font-headline font-black text-sm active:scale-95 transition-transform"
+                              >
+                                CONFIRM PICKUP
+                              </button>
+                            )}
+                            
+                            {order.status === 'Ready for Delivery' && (
+                              <button 
+                                onClick={() => handleStatusUpdate(order.id, 'Out for Delivery', 'bg-tertiary text-on-tertiary')}
+                                className="flex-1 h-14 bg-tertiary text-on-tertiary rounded-xl font-headline font-black text-sm active:scale-95 transition-transform"
+                              >
+                                START DELIVERY
+                              </button>
+                            )}
+
+                            {order.status === 'Out for Delivery' && (
+                              <div className="flex-1 flex gap-3">
+                                <input 
+                                  type="text" 
+                                  placeholder="Code"
+                                  value={handoverInput[order.id] || ''}
+                                  onChange={(e) => setHandoverInput(prev => ({ ...prev, [order.id]: e.target.value }))}
+                                  className="w-24 h-14 bg-surface-container-highest rounded-xl px-4 text-center font-headline font-black text-xl outline-none focus:ring-2 ring-primary"
+                                />
+                                <button 
+                                  onClick={() => handleVerifyHandover(order)}
+                                  className="flex-1 h-14 bg-success text-on-success rounded-xl font-headline font-black text-sm active:scale-95 transition-transform"
+                                >
+                                  DELIVERED
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {tasks.length === 0 && availableOrders.length === 0 && (
+                      <div className="py-20 text-center border-2 border-dashed border-primary/10 rounded-[3rem]">
+                        <p className="text-on-surface-variant font-headline font-bold text-xl">No active tasks.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </motion.section>
+            )}
+
+            {activeTab === 'history' && (
+              <motion.section 
+                key="history"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="space-y-4"
+              >
+                {/* History items would go here */}
+                <div className="py-20 text-center border-2 border-dashed border-primary/10 rounded-[3rem]">
+                  <p className="text-on-surface-variant font-medium">No delivery history yet.</p>
+                </div>
+              </motion.section>
+            )}
+
+            {activeTab === 'wallet' && (
+              <motion.section 
+                key="wallet"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="space-y-8"
+              >
+                <div className="bg-primary text-on-primary p-10 rounded-[3rem] shadow-2xl shadow-primary/30">
+                  <p className="font-label text-xs uppercase tracking-[0.3em] font-black mb-4 opacity-80">Rider Balance</p>
+                  <h2 className="text-6xl font-headline font-black mb-8 tracking-tighter">₦{stats.walletBalance.toLocaleString()}</h2>
+                  <button 
+                    onClick={handleWithdrawal}
+                    disabled={stats.walletBalance < 2000}
+                    className="w-full h-16 bg-white text-primary rounded-2xl font-headline font-black text-lg active:scale-[0.98] transition-all disabled:opacity-50"
+                  >
+                    {stats.walletBalance < 2000 ? 'MIN ₦2,000 REQUIRED' : 'WITHDRAW NOW'}
+                  </button>
+                </div>
+                
+                <div className="bg-surface-container-low p-8 rounded-[2.5rem] border border-primary/5">
+                  <h3 className="font-headline font-black text-xl mb-6">Withdrawal Info</h3>
+                  <ul className="space-y-4 text-sm font-medium text-on-surface-variant">
+                    <li className="flex items-center gap-3">
+                      <CheckCircle className="w-5 h-5 text-success" />
+                      No withdrawal fees
+                    </li>
+                    <li className="flex items-center gap-3">
+                      <CheckCircle className="w-5 h-5 text-success" />
+                      Paid within 2 hours
+                    </li>
+                    <li className="flex items-center gap-3">
+                      <CheckCircle className="w-5 h-5 text-success" />
+                      Direct to your bank account
+                    </li>
+                  </ul>
+                </div>
+              </motion.section>
+            )}
+          </AnimatePresence>
+        </main>
+      </div>
     </ProtectedRoute>
   );
 }

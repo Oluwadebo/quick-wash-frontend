@@ -8,7 +8,11 @@ import { Minus, Plus, Sparkles, Shirt, ShoppingBag, Bed, CreditCard, Bolt, Info,
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 
-const items = [
+import { formatRelativeTime } from '@/lib/time';
+import { useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
+
+const defaultItems = [
   {
     id: 'shirts',
     name: 'Shirts & Tops',
@@ -16,7 +20,7 @@ const items = [
     icon: Shirt,
     basePrice: 200,
     unit: 'unit',
-    count: 4,
+    count: 0,
     services: [
       { name: 'Wash', price: 200 },
       { name: 'Iron', price: 150 },
@@ -33,7 +37,7 @@ const items = [
     icon: ShoppingBag,
     basePrice: 250,
     unit: 'unit',
-    count: 2,
+    count: 0,
     services: [
       { name: 'Wash', price: 250 },
       { name: 'Iron', price: 200 },
@@ -59,12 +63,9 @@ const items = [
     hasStainRemover: false,
     stainRemoverPrice: 800,
     subItems: [
-      { id: 'bedsheet', name: 'Bedsheet', count: 1, price: 400 },
+      { id: 'bedsheet', name: 'Bedsheet', count: 0, price: 400 },
       { id: 'duvet', name: 'Duvet', count: 0, price: 1200 },
-      { id: 'pillowcase', name: 'Pillow Case', count: 2, price: 150 },
-      { id: 'bedsheet-pillow', name: 'Bedsheet + Pillow Case', count: 0, price: 500 },
-      { id: 'duvet-pillow', name: 'Duvet + Pillow Case', count: 0, price: 1300 },
-      { id: 'duvet-bedsheet', name: 'Duvet + Bedsheet', count: 0, price: 1500 },
+      { id: 'pillowcase', name: 'Pillow Case', count: 0, price: 150 },
       { id: 'completeset', name: 'Complete Set', count: 0, price: 1800 }
     ]
   }
@@ -72,11 +73,67 @@ const items = [
 
 const generateId = () => Math.floor(1000 + Math.random() * 9000).toString();
 
+const calculateRiderFee = () => {
+  const distance = Math.floor(Math.random() * 5) + 1;
+  return 500 + (distance * 100);
+};
+
 export default function OrderPage() {
+  return (
+    <Suspense fallback={<div className="pt-32 text-center font-headline font-black">Loading...</div>}>
+      <OrderPageContent />
+    </Suspense>
+  );
+}
+
+function OrderPageContent() {
   const router = useRouter();
-  const [cart, setCart] = React.useState(items);
+  const searchParams = useSearchParams();
+  const vendorId = searchParams.get('vendor');
+  const [cart, setCart] = React.useState(defaultItems);
   const [isPaid, setIsPaid] = React.useState(false);
   const [isPaying, setIsPaying] = React.useState(false);
+  const [vendor, setVendor] = React.useState<any>(null);
+
+  // Load vendor services
+  React.useEffect(() => {
+    if (vendorId) {
+      const allUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
+      const foundVendor = allUsers.find((u: any) => u.phoneNumber === vendorId);
+      setVendor(foundVendor);
+
+      const vendorServices = JSON.parse(localStorage.getItem(`qw_services_${vendorId}`) || '[]');
+      if (vendorServices.length > 0) {
+        // Map vendor services to cart structure
+        const mapped = vendorServices.map((vs: any) => {
+          const baseItem = defaultItems.find(di => di.id === vs.id) || {
+            id: vs.id,
+            name: vs.name,
+            desc: vs.category,
+            icon: Shirt,
+            unit: 'unit',
+            count: 0,
+            hasStainRemover: false,
+            stainRemoverPrice: 500
+          };
+
+          return {
+            ...baseItem,
+            services: [
+              { name: 'Wash', price: vs.prices.wash },
+              { name: 'Iron', price: vs.prices.iron },
+              { name: 'Wash + Iron', price: vs.prices.washIron }
+            ],
+            subItems: vs.subServices ? vs.subServices.map((ss: any) => ({
+              ...ss,
+              count: 0
+            })) : undefined
+          };
+        });
+        setCart(mapped);
+      }
+    }
+  }, [vendorId]);
 
   // Persistence: Load from localStorage if exists
   React.useEffect(() => {
@@ -84,16 +141,22 @@ export default function OrderPage() {
     if (savedCart) {
       try {
         const parsed = JSON.parse(savedCart);
-        // Restore icons by matching with initial items
-        const restored = items.map(initialItem => {
-          const savedItem = parsed.find((p: any) => p.id === initialItem.id);
+        setCart(prev => prev.map(item => {
+          const savedItem = parsed.find((p: any) => p.id === item.id);
           if (savedItem) {
-            // Merge saved state but keep the original icon component
-            return { ...initialItem, ...savedItem, icon: initialItem.icon };
+            return { 
+              ...item, 
+              count: savedItem.count,
+              selectedService: savedItem.selectedService,
+              hasStainRemover: savedItem.hasStainRemover,
+              subItems: item.subItems ? item.subItems.map(si => {
+                const savedSi = savedItem.subItems?.find((ssi: any) => ssi.id === si.id);
+                return savedSi ? { ...si, count: savedSi.count } : si;
+              }) : undefined
+            };
           }
-          return initialItem;
-        });
-        setCart(restored);
+          return item;
+        }));
       } catch (e) {
         console.error('Failed to parse saved cart', e);
       }
@@ -157,6 +220,7 @@ export default function OrderPage() {
     
     const orders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
     const currentUser = JSON.parse(localStorage.getItem('qw_user') || '{}');
+    const allUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
     
     const itemsDescription = cart.filter(i => i.count > 0).map(i => {
       if (i.subItems) {
@@ -168,20 +232,41 @@ export default function OrderPage() {
 
     const newOrderId = generateId();
     const handoverCode = generateId();
+    
+    // Platform Commission: 10% + ₦300
+    const commission = (totalPrice * 0.1) + 300;
+
+    // Rider Fee: Fixed ₦500 + Dynamic (₦100 per km, simulated 1-5km)
+    const riderFee = calculateRiderFee();
+    
     const newOrder = {
       id: newOrderId,
       customerName: currentUser.fullName || 'Guest',
       customerPhone: currentUser.phoneNumber,
+      customerLandmark: currentUser.landmark || 'Main Gate',
       items: itemsDescription,
       totalPrice,
+      commission,
+      riderFee,
       status: 'Awaiting Pickup Confirmation',
-      time: 'Just now',
+      time: new Date().toISOString(),
       color: 'bg-warning/20 text-warning',
-      vendorId: 'campus-cleans',
-      handoverCode,
+      vendorId: vendorId || 'campus-cleans',
+      vendorName: vendor?.shopName || 'Quick-Wash Partner',
+      vendorLandmark: vendor?.landmark || 'Campus Center',
+      handoverCode: handoverCode,
       createdAt: new Date().toISOString(),
       paidAt: new Date().toISOString()
     };
+
+    // Move commission to admin wallet
+    const updatedUsers = allUsers.map((u: any) => {
+      if (u.role === 'admin' && u.phoneNumber === '09012345678') {
+        return { ...u, walletBalance: (u.walletBalance || 0) + commission };
+      }
+      return u;
+    });
+    localStorage.setItem('qw_all_users', JSON.stringify(updatedUsers));
 
     orders.push(newOrder);
     localStorage.setItem('qw_orders', JSON.stringify(orders));
@@ -220,7 +305,7 @@ export default function OrderPage() {
     <div className="pb-64">
       <TopAppBar showAudioToggle />
       
-      <main className="pt-28 px-6 max-w-3xl mx-auto">
+      <main className="pt-28 px-6 max-w-7xl mx-auto">
         <header className="mb-12">
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
@@ -234,7 +319,7 @@ export default function OrderPage() {
             Let&apos;s get started.
           </h1>
           <p className="text-on-surface-variant font-medium text-xl leading-relaxed max-w-xl">
-            What are we cleaning today? Select your items and how you want them handled.
+            Ordering from <span className="text-primary font-black">{vendor?.shopName || 'Quick-Wash Station'}</span>. What are we cleaning today?
           </p>
         </header>
 
@@ -253,7 +338,7 @@ export default function OrderPage() {
           </div>
         </section>
 
-        <div className="space-y-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {cart.map((item, idx) => (
             <motion.div 
               key={item.id}
@@ -261,7 +346,7 @@ export default function OrderPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.1 }}
               className={cn(
-                "rounded-[3rem] p-8 border border-primary/5 transition-all hover:shadow-2xl hover:shadow-primary/5 bg-surface-container-low",
+                "rounded-[3rem] p-8 border border-primary/5 transition-all hover:shadow-2xl hover:shadow-primary/5 bg-surface-container-low flex flex-col",
                 item.count > 0 && "ring-4 ring-primary-container"
               )}
             >
@@ -295,7 +380,7 @@ export default function OrderPage() {
               </div>
 
               {item.subItems && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+                <div className="grid grid-cols-1 gap-4 mb-8">
                   {item.subItems.map(si => (
                     <div key={si.id} className="bg-white p-6 rounded-3xl shadow-sm border border-primary/5 flex items-center justify-between">
                       <div>
@@ -322,13 +407,13 @@ export default function OrderPage() {
                 </div>
               )}
 
-              <div className="flex flex-wrap gap-3 mb-8">
+              <div className="flex flex-wrap gap-3 mb-8 mt-auto">
                 {item.services.map(service => (
                   <button 
                     key={service.name}
                     onClick={() => updateService(item.id, service.name)}
                     className={cn(
-                      "px-8 py-4 rounded-2xl font-headline font-black text-sm shadow-sm transition-all active:scale-95",
+                      "px-6 py-3 rounded-2xl font-headline font-black text-xs shadow-sm transition-all active:scale-95",
                       item.selectedService === service.name 
                         ? "signature-gradient text-white shadow-lg" 
                         : "bg-white text-on-surface-variant hover:bg-surface-container-highest"
@@ -353,11 +438,11 @@ export default function OrderPage() {
                     <Sparkles className={cn("w-6 h-6 fill-current", item.hasStainRemover ? "text-tertiary" : "text-on-surface-variant")} />
                     <div className="text-left">
                       <span className="font-headline font-black text-sm block">Stain Remover</span>
-                      <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Deep cleaning for tough marks</span>
+                      <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Deep cleaning</span>
                     </div>
                   </div>
                   <span className={cn("font-label text-sm font-black", item.hasStainRemover ? "text-tertiary" : "text-on-surface-variant")}>
-                    {item.hasStainRemover ? 'Added' : 'Add'} +₦{item.stainRemoverPrice}
+                    +₦{item.stainRemoverPrice}
                   </span>
                 </button>
               )}
@@ -365,12 +450,12 @@ export default function OrderPage() {
               <div className="flex items-center justify-between pt-6 border-t border-primary/5">
                 <div className="flex items-center gap-2 text-on-surface-variant opacity-60">
                   <CreditCard className="w-5 h-5" />
-                  <span className="text-sm font-label font-bold uppercase tracking-widest">
-                    {item.subItems ? 'Custom Set Price' : `Base: ₦${item.basePrice} / ${item.unit}`}
+                  <span className="text-[10px] font-label font-bold uppercase tracking-widest">
+                    {item.subItems ? 'Custom' : `₦${item.basePrice}/${item.unit}`}
                   </span>
                 </div>
                 <div className="text-right">
-                  <span className="font-headline font-black text-3xl text-primary">₦{getItemPrice(item).toLocaleString()}</span>
+                  <span className="font-headline font-black text-2xl text-primary">₦{getItemPrice(item).toLocaleString()}</span>
                 </div>
               </div>
             </motion.div>

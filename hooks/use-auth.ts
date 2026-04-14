@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
 export type UserRole = 'customer' | 'vendor' | 'rider' | 'admin';
@@ -8,6 +8,7 @@ export type UserRole = 'customer' | 'vendor' | 'rider' | 'admin';
 interface UserData {
   fullName?: string;
   phoneNumber: string;
+  email?: string;
   password?: string;
   landmark?: string;
   role: UserRole;
@@ -22,8 +23,11 @@ interface UserData {
   turnaroundTime?: string;
   capacity?: number;
   trustPoints?: number;
+  trustScore?: number; // 0-100
   walletBalance?: number;
+  pendingBalance?: number;
   badges?: string[];
+  status?: 'active' | 'restricted' | 'suspended';
 }
 
 export function useAuth() {
@@ -51,7 +55,10 @@ export function useAuth() {
         role: 'admin',
         isApproved: true,
         trustPoints: 100,
+        trustScore: 100,
         walletBalance: 0,
+        pendingBalance: 0,
+        status: 'active',
         badges: ['👑 Super Admin']
       });
       localStorage.setItem('qw_all_users', JSON.stringify(users));
@@ -92,11 +99,14 @@ export function useAuth() {
     
     // Vendors, Riders, and Moderator Admins need approval
     const needsApproval = data.role !== 'customer';
-    const newUser = { 
+    const newUser: UserData = { 
       ...data, 
       isApproved: !needsApproval,
       trustPoints: data.role === 'customer' ? 50 : 0,
+      trustScore: 100,
       walletBalance: 0,
+      pendingBalance: 0,
+      status: 'active',
       badges: data.role === 'customer' ? ['🌱 Newcomer'] : []
     };
 
@@ -104,7 +114,7 @@ export function useAuth() {
     localStorage.setItem('qw_all_users', JSON.stringify(users));
     
     if (needsApproval) {
-      router.push(`/auth/login?message=pending&role=${data.role}`);
+      router.push(`/auth?login=true&message=pending&role=${data.role}`);
     } else {
       localStorage.setItem('qw_user', JSON.stringify(newUser));
       setUser(newUser);
@@ -141,11 +151,38 @@ export function useAuth() {
     setIsProcessing(false);
   };
 
-  const logout = () => {
+  const logout = useCallback(() => {
     localStorage.removeItem('qw_user');
     setUser(null);
     router.push('/');
-  };
+  }, [router]);
+
+  // Inactivity Logout (30 minutes)
+  useEffect(() => {
+    if (!user) return;
+
+    let timeoutId: NodeJS.Timeout;
+
+    const resetTimer = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        logout();
+        alert('You have been logged out due to inactivity.');
+      }, 30 * 60 * 1000); // 30 minutes
+    };
+
+    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+    const handleActivity = () => resetTimer();
+    
+    events.forEach(event => document.addEventListener(event, handleActivity));
+
+    resetTimer();
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      events.forEach(event => document.removeEventListener(event, handleActivity));
+    };
+  }, [user, logout]);
 
   const approveUser = (phoneNumber: string) => {
     const users = JSON.parse(localStorage.getItem('qw_all_users') || '[]');

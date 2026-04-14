@@ -7,7 +7,7 @@ import {
   Map, Activity, ArrowUpRight, Check, X as XIcon, 
   Wallet, BarChart3, Megaphone, History, MessageSquare, 
   Search, Filter, MoreHorizontal, UserPlus, Trash2, ExternalLink,
-  Edit3, Bike, Package
+  Edit3, Bike, Package, Navigation
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
@@ -15,17 +15,99 @@ import { useAuth } from '@/hooks/use-auth';
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
 import Image from 'next/image';
 
+import { 
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell
+} from 'recharts';
+
 type AdminTab = 'overview' | 'orders' | 'disputes' | 'users' | 'wallets' | 'analytics' | 'marketing' | 'audit';
+type UserSection = 'all' | 'admin' | 'vendor' | 'rider' | 'customer' | 'marketing';
 
 export default function AdminDashboard() {
   const { approveUser, user: currentUser } = useAuth();
   const [activeTab, setActiveTab] = React.useState<AdminTab>('overview');
+  const [userSection, setUserSection] = React.useState<UserSection>('all');
   const [pendingUsers, setPendingUsers] = React.useState<any[]>([]);
   const [allUsers, setAllUsers] = React.useState<any[]>([]);
   const [orders, setOrders] = React.useState<any[]>([]);
   const [alerts, setAlerts] = React.useState<any[]>([]);
   const [stats, setStats] = React.useState<any[]>([]);
 
+  const [isUserModalOpen, setIsUserModalOpen] = React.useState(false);
+  const [isAddUserModalOpen, setIsAddUserModalOpen] = React.useState(false);
+  const [editingUser, setEditingUser] = React.useState<any>(null);
+  const [newUser, setNewUser] = React.useState<any>({
+    fullName: '',
+    phoneNumber: '',
+    password: '',
+    role: 'customer',
+    status: 'active',
+    isApproved: true
+  });
+
+  const isSuperAdmin = currentUser?.phoneNumber === '09012345678';
+
+  const handleRestrictUser = (phone: string, status: 'active' | 'restricted' | 'suspended') => {
+    if (!isSuperAdmin) {
+      alert('Only Super Admin can restrict or ban users.');
+      return;
+    }
+    const users = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
+    const updated = users.map((u: any) => u.phoneNumber === phone ? { ...u, status } : u);
+    localStorage.setItem('qw_all_users', JSON.stringify(updated));
+    setAllUsers(updated);
+    alert(`User status updated to ${status}.`);
+  };
+
+  const handleAddUser = (e: React.FormEvent) => {
+    e.preventDefault();
+    const users = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
+    if (users.find((u: any) => u.phoneNumber === newUser.phoneNumber)) {
+      alert('User with this phone number already exists!');
+      return;
+    }
+    const updated = [...users, { ...newUser, trustPoints: 50, trustScore: 100, walletBalance: 0, pendingBalance: 0 }];
+    localStorage.setItem('qw_all_users', JSON.stringify(updated));
+    setAllUsers(updated);
+    setIsAddUserModalOpen(false);
+    setNewUser({ fullName: '', phoneNumber: '', password: '', role: 'customer', status: 'active', isApproved: true });
+    alert('User added successfully!');
+  };
+  const [isVerificationModalOpen, setIsVerificationModalOpen] = React.useState(false);
+  const [verifyingUser, setVerifyingUser] = React.useState<any>(null);
+  const [selectedDetail, setSelectedDetail] = React.useState<any>(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = React.useState(false);
+
+  const clearAlerts = () => {
+    localStorage.setItem('qw_alerts', JSON.stringify([]));
+    setAlerts([]);
+    alert('System alerts cleared.');
+  };
+
+  const handleEditUser = (user: any) => {
+    setEditingUser(user);
+    setIsUserModalOpen(true);
+  };
+
+  const handleDeleteUser = (phone: string) => {
+    if (confirm('Are you sure you want to delete this user?')) {
+      const users = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
+      const updated = users.filter((u: any) => u.phoneNumber !== phone);
+      localStorage.setItem('qw_all_users', JSON.stringify(updated));
+      setAllUsers(updated);
+      setPendingUsers(updated.filter((u: any) => !u.isApproved));
+    }
+  };
+
+  const handleSaveUser = (e: React.FormEvent) => {
+    e.preventDefault();
+    const users = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
+    const updated = users.map((u: any) => u.phoneNumber === editingUser.phoneNumber ? editingUser : u);
+    localStorage.setItem('qw_all_users', JSON.stringify(updated));
+    setAllUsers(updated);
+    setIsUserModalOpen(false);
+    alert('User updated successfully!');
+  };
   const [riders, setRiders] = React.useState<any[]>([]);
 
   React.useEffect(() => {
@@ -206,13 +288,19 @@ export default function AdminDashboard() {
                             </div>
                             <div className="flex gap-3">
                               <button 
-                                onClick={() => handleApprove(u.phoneNumber)}
-                                className="flex-1 h-12 bg-primary text-on-primary rounded-xl font-headline font-bold text-xs flex items-center justify-center gap-2 active:scale-95 transition-transform"
+                                onClick={() => {
+                                  setVerifyingUser(u);
+                                  setIsVerificationModalOpen(true);
+                                }}
+                                className="flex-1 h-12 bg-surface-container-highest text-on-surface rounded-xl font-headline font-bold text-xs flex items-center justify-center active:scale-95 transition-transform"
                               >
-                                <Check className="w-4 h-4" /> Approve
+                                View Details
                               </button>
-                              <button className="w-12 h-12 bg-surface-container-highest text-on-surface rounded-xl flex items-center justify-center active:scale-95 transition-transform">
-                                <XIcon className="w-4 h-4" />
+                              <button 
+                                onClick={() => handleApprove(u.phoneNumber)}
+                                className="w-12 h-12 bg-primary text-on-primary rounded-xl flex items-center justify-center active:scale-95 transition-transform"
+                              >
+                                <Check className="w-4 h-4" />
                               </button>
                             </div>
                           </div>
@@ -224,20 +312,68 @@ export default function AdminDashboard() {
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     <div className="lg:col-span-2 bg-surface-container-low rounded-[2.5rem] p-8 border border-primary/5">
                       <h2 className="text-2xl font-headline font-black text-on-surface mb-6">Live Activity Map</h2>
-                      <div className="bg-surface-container-lowest aspect-video rounded-[2rem] relative overflow-hidden flex items-center justify-center">
+                      <div className="bg-surface-container-lowest aspect-video rounded-[2rem] relative overflow-hidden">
                         <Image src="https://picsum.photos/seed/map/1200/800" alt="Map" fill className="object-cover opacity-20 grayscale" />
-                        <div className="relative z-10 text-center">
-                          <div className="flex justify-center gap-2 mb-4">
-                            <div className="w-3 h-3 bg-primary rounded-full animate-ping"></div>
-                            <div className="w-3 h-3 bg-tertiary rounded-full animate-ping delay-75"></div>
+                        
+                        {/* Simulated Map Markers */}
+                        <div className="absolute inset-0">
+                          {[
+                            { top: '20%', left: '30%', color: 'bg-primary' },
+                            { top: '45%', left: '60%', color: 'bg-tertiary' },
+                            { top: '70%', left: '40%', color: 'bg-primary' },
+                            { top: '30%', left: '80%', color: 'bg-secondary' },
+                            { top: '60%', left: '20%', color: 'bg-primary' },
+                          ].map((marker, i) => (
+                            <motion.div
+                              key={i}
+                              initial={{ scale: 0 }}
+                              animate={{ scale: [1, 1.2, 1] }}
+                              transition={{ repeat: Infinity, duration: 2, delay: i * 0.4 }}
+                              className={cn("absolute w-4 h-4 rounded-full shadow-lg border-2 border-white", marker.color)}
+                              style={{ top: marker.top, left: marker.left }}
+                            >
+                              <div className={cn("absolute inset-0 rounded-full animate-ping opacity-50", marker.color)}></div>
+                            </motion.div>
+                          ))}
+                        </div>
+
+                        <div className="absolute bottom-6 left-6 right-6 flex justify-between items-end">
+                          <div className="bg-surface/90 backdrop-blur-md p-4 rounded-2xl border border-primary/10 shadow-xl">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-primary mb-1">Active Now</p>
+                            <div className="flex items-center gap-4">
+                              <div>
+                                <p className="text-xl font-headline font-black text-on-surface">12</p>
+                                <p className="text-[8px] font-bold text-on-surface-variant uppercase">Riders</p>
+                              </div>
+                              <div className="w-px h-8 bg-primary/10"></div>
+                              <div>
+                                <p className="text-xl font-headline font-black text-on-surface">45</p>
+                                <p className="text-[8px] font-bold text-on-surface-variant uppercase">Orders</p>
+                              </div>
+                            </div>
                           </div>
-                          <p className="font-headline font-bold text-on-surface">12 Active Riders • 45 Deliveries</p>
+                          <div className="flex gap-2">
+                            <div className="w-10 h-10 bg-surface/90 backdrop-blur-md rounded-xl flex items-center justify-center border border-primary/10 shadow-lg">
+                              <Navigation className="w-5 h-5 text-primary" />
+                            </div>
+                            <div className="w-10 h-10 bg-surface/90 backdrop-blur-md rounded-xl flex items-center justify-center border border-primary/10 shadow-lg">
+                              <Map className="w-5 h-5 text-on-surface-variant" />
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
                     
                     <div className="bg-surface-container-low rounded-[2.5rem] p-8 border border-primary/5">
-                      <h2 className="text-2xl font-headline font-black text-on-surface mb-6">System Alerts</h2>
+                      <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-2xl font-headline font-black text-on-surface">System Alerts</h2>
+                        <button 
+                          onClick={clearAlerts}
+                          className="text-[10px] font-black uppercase tracking-widest text-primary hover:underline"
+                        >
+                          Clear All
+                        </button>
+                      </div>
                       <div className="space-y-4">
                         {alerts.slice(0, 4).map(alert => (
                           <div key={alert.id} className="flex gap-4 p-4 bg-surface-container-lowest rounded-2xl border border-primary/5">
@@ -311,7 +447,13 @@ export default function AdminDashboard() {
                                 )}
                               </td>
                               <td className="py-4">
-                                <button className="p-2 rounded-lg bg-surface-container-highest text-on-surface-variant hover:text-primary transition-colors">
+                                <button 
+                                  onClick={() => {
+                                    setSelectedDetail({ type: 'Order', ...o });
+                                    setIsDetailModalOpen(true);
+                                  }}
+                                  className="p-2 rounded-lg bg-surface-container-highest text-on-surface-variant hover:text-primary transition-colors"
+                                >
                                   <ExternalLink className="w-4 h-4" />
                                 </button>
                               </td>
@@ -333,10 +475,30 @@ export default function AdminDashboard() {
                 >
                   <div className="flex justify-between items-center mb-8">
                     <h2 className="text-2xl font-headline font-black text-on-surface">User Management</h2>
-                    <button className="signature-gradient text-white px-6 py-3 rounded-xl font-headline font-bold text-xs flex items-center gap-2 shadow-lg">
+                    <button 
+                      onClick={() => setIsAddUserModalOpen(true)}
+                      className="signature-gradient text-white px-6 py-3 rounded-xl font-headline font-bold text-xs flex items-center gap-2 shadow-lg active:scale-95 transition-transform"
+                    >
                       <UserPlus className="w-4 h-4" /> Add User
                     </button>
                   </div>
+
+                  {/* User Sub-Tabs */}
+                  <div className="flex gap-2 mb-8 overflow-x-auto pb-2 hide-scrollbar">
+                    {['all', 'admin', 'vendor', 'rider', 'customer', 'marketing'].map((section) => (
+                      <button
+                        key={section}
+                        onClick={() => setUserSection(section as any)}
+                        className={cn(
+                          "px-6 py-3 rounded-xl font-headline font-bold text-[10px] uppercase tracking-widest transition-all",
+                          userSection === section ? "bg-primary text-on-primary shadow-md" : "bg-surface-container-highest text-on-surface-variant hover:bg-primary/10"
+                        )}
+                      >
+                        {section}
+                      </button>
+                    ))}
+                  </div>
+
                   <div className="overflow-x-auto">
                     <table className="w-full text-left">
                       <thead>
@@ -349,7 +511,7 @@ export default function AdminDashboard() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-primary/5">
-                        {allUsers.map(u => (
+                        {allUsers.filter(u => userSection === 'all' || u.role === userSection).map(u => (
                           <tr key={u.phoneNumber} className="group hover:bg-surface-container-lowest transition-colors">
                             <td className="py-4">
                               <div className="flex items-center gap-3">
@@ -368,20 +530,56 @@ export default function AdminDashboard() {
                               </span>
                             </td>
                             <td className="py-4">
-                              <span className={cn(
-                                "px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest",
-                                u.isApproved ? "bg-success/10 text-success" : "bg-warning/10 text-warning"
-                              )}>
-                                {u.isApproved ? 'Approved' : 'Pending'}
-                              </span>
+                              <div className="flex flex-col gap-1">
+                                <span className={cn(
+                                  "px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest inline-block w-fit",
+                                  u.status === 'restricted' ? "bg-warning text-on-warning" : 
+                                  u.status === 'suspended' ? "bg-error text-on-error" :
+                                  u.isApproved ? "bg-success/10 text-success" : "bg-warning/10 text-warning"
+                                )}>
+                                  {u.status || (u.isApproved ? 'Approved' : 'Pending')}
+                                </span>
+                              </div>
                             </td>
                             <td className="py-4 font-headline font-black text-sm">{u.trustPoints || 0}</td>
                             <td className="py-4">
                               <div className="flex gap-2">
-                                <button className="p-2 rounded-lg bg-surface-container-highest text-on-surface-variant hover:text-primary transition-colors">
+                                <button 
+                                  onClick={() => handleEditUser(u)}
+                                  className="p-2 rounded-lg bg-surface-container-highest text-on-surface-variant hover:text-primary transition-colors"
+                                  title="Edit User"
+                                >
                                   <Edit3 className="w-4 h-4" />
                                 </button>
-                                <button className="p-2 rounded-lg bg-surface-container-highest text-on-surface-variant hover:text-error transition-colors">
+                                {isSuperAdmin && (
+                                  <>
+                                    <button 
+                                      onClick={() => handleRestrictUser(u.phoneNumber, u.status === 'restricted' ? 'active' : 'restricted')}
+                                      className={cn(
+                                        "p-2 rounded-lg bg-surface-container-highest transition-colors",
+                                        u.status === 'restricted' ? "text-success hover:bg-success/10" : "text-warning hover:bg-warning/10"
+                                      )}
+                                      title={u.status === 'restricted' ? "Unrestrict User" : "Restrict User"}
+                                    >
+                                      <ShieldCheck className="w-4 h-4" />
+                                    </button>
+                                    <button 
+                                      onClick={() => handleRestrictUser(u.phoneNumber, u.status === 'suspended' ? 'active' : 'suspended')}
+                                      className={cn(
+                                        "p-2 rounded-lg bg-surface-container-highest transition-colors",
+                                        u.status === 'suspended' ? "text-success hover:bg-success/10" : "text-error hover:bg-error/10"
+                                      )}
+                                      title={u.status === 'suspended' ? "Unban User" : "Ban User"}
+                                    >
+                                      <XIcon className="w-4 h-4" />
+                                    </button>
+                                  </>
+                                )}
+                                <button 
+                                  onClick={() => handleDeleteUser(u.phoneNumber)}
+                                  className="p-2 rounded-lg bg-surface-container-highest text-on-surface-variant hover:text-error transition-colors"
+                                  title="Delete User"
+                                >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
                               </div>
@@ -404,7 +602,14 @@ export default function AdminDashboard() {
                   <h2 className="text-2xl font-headline font-black text-on-surface mb-8">System Audit Log</h2>
                   <div className="space-y-4">
                     {(JSON.parse(localStorage.getItem('qw_audit_logs') || '[]')).reverse().map((log: any) => (
-                      <div key={log.id} className="flex items-center justify-between p-4 bg-surface-container-lowest rounded-2xl border border-primary/5">
+                      <div 
+                        key={log.id} 
+                        onClick={() => {
+                          setSelectedDetail({ type: 'Audit Log', ...log });
+                          setIsDetailModalOpen(true);
+                        }}
+                        className="flex items-center justify-between p-4 bg-surface-container-lowest rounded-2xl border border-primary/5 cursor-pointer hover:border-primary/20 transition-all"
+                      >
                         <div className="flex items-center gap-4">
                           <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
                             <History className="w-5 h-5" />
@@ -426,20 +631,581 @@ export default function AdminDashboard() {
                 </motion.div>
               )}
 
-              {/* Add other tabs as needed... */}
-              {['orders', 'disputes', 'wallets', 'analytics', 'marketing'].includes(activeTab) && (
+              {activeTab === 'wallets' && (
                 <motion.div 
-                  key="placeholder"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="py-40 text-center bg-surface-container-low rounded-[3rem] border-2 border-dashed border-primary/10"
+                  key="wallets"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="space-y-8"
                 >
-                  <div className="w-20 h-20 bg-primary/5 rounded-full flex items-center justify-center mx-auto mb-6">
-                    <Activity className="w-10 h-10 text-primary animate-pulse" />
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="bg-primary text-on-primary p-8 rounded-[2.5rem] shadow-xl">
+                      <p className="font-label text-[10px] font-black uppercase tracking-widest opacity-80 mb-2">Platform Commission</p>
+                      <h3 className="text-4xl font-headline font-black">₦{allUsers.find(u => u.phoneNumber === '09012345678')?.walletBalance?.toLocaleString() || '0'}</h3>
+                    </div>
+                    <div className="bg-surface-container-low p-8 rounded-[2.5rem] border border-primary/5">
+                      <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Total Payouts</p>
+                      <h3 className="text-4xl font-headline font-black text-on-surface">₦450,000</h3>
+                    </div>
+                    <div className="bg-surface-container-low p-8 rounded-[2.5rem] border border-primary/5">
+                      <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Pending Withdrawals</p>
+                      <h3 className="text-4xl font-headline font-black text-warning">₦12,500</h3>
+                    </div>
                   </div>
-                  <h3 className="text-2xl font-headline font-black text-on-surface mb-2">Section Under Construction</h3>
-                  <p className="text-on-surface-variant font-medium">We are finalizing the {activeTab} module for production.</p>
+
+                  <div className="bg-surface-container-low rounded-[2.5rem] p-8 border border-primary/5">
+                    <h2 className="text-2xl font-headline font-black text-on-surface mb-8">Withdrawal Requests</h2>
+                    <div className="space-y-4">
+                      {allUsers.filter(u => u.withdrawalRequested).map(u => (
+                        <div key={u.phoneNumber} className="flex items-center justify-between p-6 bg-surface-container-lowest rounded-3xl border border-primary/5">
+                          <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
+                              <Wallet className="w-6 h-6" />
+                            </div>
+                            <div>
+                              <p className="font-headline font-bold text-lg">{u.fullName}</p>
+                              <p className="text-xs text-on-surface-variant">{u.role} • {u.phoneNumber}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-6">
+                            <div className="text-right">
+                              <p className="text-xs font-black text-primary">₦{u.walletBalance.toLocaleString()}</p>
+                              <p className="text-[10px] text-on-surface-variant">Requested 2h ago</p>
+                            </div>
+                            <button className="h-12 px-6 bg-primary text-on-primary rounded-xl font-headline font-bold text-xs active:scale-95 transition-transform">
+                              Approve Payout
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      {allUsers.filter(u => u.withdrawalRequested).length === 0 && (
+                        <div className="py-20 text-center border-2 border-dashed border-primary/10 rounded-3xl">
+                          <p className="text-on-surface-variant font-medium">No pending withdrawal requests.</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </motion.div>
+              )}
+
+              {activeTab === 'disputes' && (
+                <motion.div 
+                  key="disputes"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  className="space-y-6"
+                >
+                  <div className="bg-surface-container-low rounded-[2.5rem] p-8 border border-primary/5">
+                    <h2 className="text-2xl font-headline font-black text-on-surface mb-8">Active Disputes</h2>
+                    <div className="space-y-4">
+                      {orders.filter(o => o.disputed).map(o => (
+                        <div key={o.id} className="p-6 bg-surface-container-lowest rounded-3xl border border-error/20">
+                          <div className="flex justify-between items-start mb-4">
+                            <div className="flex items-center gap-4">
+                              <div className="w-12 h-12 rounded-2xl bg-error/10 flex items-center justify-center text-error">
+                                <AlertTriangle className="w-6 h-6" />
+                              </div>
+                              <div>
+                                <h4 className="font-headline font-black text-lg text-on-surface">Order #{o.id}</h4>
+                                <p className="text-xs font-bold text-on-surface-variant">Customer: {o.customerName}</p>
+                              </div>
+                            </div>
+                            <span className="bg-error text-on-error px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">High Priority</span>
+                          </div>
+                          <p className="text-sm text-on-surface-variant mb-6 bg-surface-container p-4 rounded-xl italic">
+                            &quot;{o.disputeReason || 'Customer reported items missing from bag.'}&quot;
+                          </p>
+                          <div className="flex gap-3">
+                            <button className="flex-1 h-12 bg-primary text-on-primary rounded-xl font-headline font-bold text-xs active:scale-95 transition-transform">
+                              Refund Customer
+                            </button>
+                            <button className="flex-1 h-12 bg-surface-container-highest text-on-surface rounded-xl font-headline font-bold text-xs active:scale-95 transition-transform">
+                              Reject Dispute
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      {orders.filter(o => o.disputed).length === 0 && (
+                        <div className="py-20 text-center border-2 border-dashed border-primary/10 rounded-3xl">
+                          <p className="text-on-surface-variant font-medium">No active disputes. Great job!</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {activeTab === 'analytics' && (
+                <motion.div 
+                  key="analytics"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="space-y-8"
+                >
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div className="bg-surface-container-low p-8 rounded-[2.5rem] border border-primary/5">
+                      <h3 className="text-xl font-headline font-black mb-6">Revenue Growth</h3>
+                      <div className="h-80 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={[
+                            { name: 'Mon', value: 4000 },
+                            { name: 'Tue', value: 3000 },
+                            { name: 'Wed', value: 5000 },
+                            { name: 'Thu', value: 2780 },
+                            { name: 'Fri', value: 1890 },
+                            { name: 'Sat', value: 2390 },
+                            { name: 'Sun', value: 3490 },
+                          ]}>
+                            <defs>
+                              <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#6750A4" stopOpacity={0.3}/>
+                                <stop offset="95%" stopColor="#6750A4" stopOpacity={0}/>
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E1E2EC" />
+                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700 }} />
+                            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700 }} />
+                            <Tooltip 
+                              contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                            />
+                            <Area type="monotone" dataKey="value" stroke="#6750A4" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+
+                    <div className="bg-surface-container-low p-8 rounded-[2.5rem] border border-primary/5">
+                      <h3 className="text-xl font-headline font-black mb-6">Order Categories</h3>
+                      <div className="h-80 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={[
+                            { name: 'Wash', value: 450 },
+                            { name: 'Iron', value: 300 },
+                            { name: 'Wash+Iron', value: 600 },
+                            { name: 'Premium', value: 150 },
+                          ]}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E1E2EC" />
+                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700 }} />
+                            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700 }} />
+                            <Tooltip 
+                              contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                            />
+                            <Bar dataKey="value" fill="#6750A4" radius={[8, 8, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {[
+                      { label: 'Avg. Order Value', value: '₦3,450', trend: '+12%' },
+                      { label: 'Customer Retention', value: '78%', trend: '+5%' },
+                      { label: 'Rider Efficiency', value: '94%', trend: '+2%' }
+                    ].map(m => (
+                      <div key={m.label} className="bg-surface-container-low p-6 rounded-3xl border border-primary/5">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">{m.label}</p>
+                        <div className="flex justify-between items-end">
+                          <h4 className="text-2xl font-headline font-black">{m.value}</h4>
+                          <span className="text-xs font-bold text-success">{m.trend}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+
+              {activeTab === 'marketing' && (
+                <motion.div 
+                  key="marketing"
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="space-y-8"
+                >
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div className="lg:col-span-2 bg-surface-container-low p-8 rounded-[2.5rem] border border-primary/5">
+                      <div className="flex justify-between items-center mb-8">
+                        <h2 className="text-2xl font-headline font-black text-on-surface">Active Campaigns</h2>
+                        <button className="signature-gradient text-white px-6 py-3 rounded-xl font-headline font-bold text-xs shadow-lg">
+                          Create New
+                        </button>
+                      </div>
+                      <div className="space-y-4">
+                        {[
+                          { name: 'Freshman Welcome', status: 'Active', reach: '1.2k', conversion: '15%', color: 'bg-primary' },
+                          { name: 'Weekend Flash Sale', status: 'Scheduled', reach: '4.5k', conversion: '-', color: 'bg-tertiary' },
+                          { name: 'Loyalty Rewards', status: 'Active', reach: '850', conversion: '22%', color: 'bg-success' }
+                        ].map(c => (
+                          <div key={c.name} className="flex items-center justify-between p-6 bg-surface-container-lowest rounded-3xl border border-primary/5">
+                            <div className="flex items-center gap-4">
+                              <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center text-white", c.color)}>
+                                <Megaphone className="w-6 h-6" />
+                              </div>
+                              <div>
+                                <h4 className="font-headline font-bold text-lg">{c.name}</h4>
+                                <p className="text-xs text-on-surface-variant">Status: {c.status}</p>
+                              </div>
+                            </div>
+                            <div className="flex gap-8 text-right">
+                              <div>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Reach</p>
+                                <p className="font-headline font-black">{c.reach}</p>
+                              </div>
+                              <div>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Conv.</p>
+                                <p className="font-headline font-black text-primary">{c.conversion}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="bg-surface-container-low p-8 rounded-[2.5rem] border border-primary/5">
+                      <h2 className="text-2xl font-headline font-black text-on-surface mb-8">Push Notifications</h2>
+                      <div className="space-y-6">
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-2">Target Audience</label>
+                          <select className="w-full h-12 bg-surface-container-lowest rounded-xl px-4 font-bold text-sm outline-none border border-primary/5">
+                            <option>All Users</option>
+                            <option>Customers Only</option>
+                            <option>Vendors Only</option>
+                            <option>Riders Only</option>
+                          </select>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-2">Message</label>
+                          <textarea 
+                            placeholder="Type your broadcast message..."
+                            className="w-full h-32 bg-surface-container-lowest rounded-xl p-4 font-medium text-sm outline-none border border-primary/5 resize-none"
+                          />
+                        </div>
+                        <button className="w-full h-14 bg-primary text-on-primary rounded-2xl font-headline font-black text-sm shadow-lg active:scale-95 transition-transform">
+                          SEND BROADCAST
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+              {/* Add User Modal */}
+              {isAddUserModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+                  <motion.div 
+                    initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                    className="absolute inset-0 bg-surface/80 backdrop-blur-xl"
+                    onClick={() => setIsAddUserModalOpen(false)}
+                  />
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    className="relative w-full max-w-lg bg-surface-container-low rounded-[3rem] p-10 border border-primary/10 shadow-2xl overflow-y-auto max-h-[90vh]"
+                  >
+                    <h2 className="text-3xl font-headline font-black text-on-surface mb-8 tracking-tighter">Add New User</h2>
+                    <form onSubmit={handleAddUser} className="space-y-6">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Full Name</label>
+                        <input 
+                          type="text" 
+                          required
+                          value={newUser.fullName}
+                          onChange={(e) => setNewUser({ ...newUser, fullName: e.target.value })}
+                          className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Phone Number</label>
+                        <input 
+                          type="tel" 
+                          required
+                          value={newUser.phoneNumber}
+                          onChange={(e) => setNewUser({ ...newUser, phoneNumber: e.target.value })}
+                          className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Password</label>
+                        <input 
+                          type="password" 
+                          required
+                          value={newUser.password}
+                          onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                          className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Role</label>
+                        <select 
+                          value={newUser.role}
+                          onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
+                          className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
+                        >
+                          <option value="customer">Customer</option>
+                          <option value="vendor">Vendor</option>
+                          <option value="rider">Rider</option>
+                          <option value="admin">Admin</option>
+                        </select>
+                      </div>
+                      <div className="flex gap-4 pt-4">
+                        <button 
+                          type="button"
+                          onClick={() => setIsAddUserModalOpen(false)}
+                          className="flex-1 h-14 bg-surface-container-highest text-on-surface rounded-2xl font-headline font-black text-sm active:scale-95 transition-transform"
+                        >
+                          CANCEL
+                        </button>
+                        <button 
+                          type="submit"
+                          className="flex-1 h-14 signature-gradient text-white rounded-2xl font-headline font-black text-sm shadow-lg active:scale-95 transition-transform"
+                        >
+                          CREATE USER
+                        </button>
+                      </div>
+                    </form>
+                  </motion.div>
+                </div>
+              )}
+
+              {/* User Edit Modal */}
+              {isUserModalOpen && editingUser && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+                  <motion.div 
+                    initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                    className="absolute inset-0 bg-surface/80 backdrop-blur-xl"
+                    onClick={() => setIsUserModalOpen(false)}
+                  />
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    className="relative w-full max-w-lg bg-surface-container-low rounded-[3rem] p-10 border border-primary/10 shadow-2xl"
+                  >
+                    <h2 className="text-3xl font-headline font-black text-on-surface mb-8 tracking-tighter">Edit User</h2>
+                    <form onSubmit={handleSaveUser} className="space-y-6">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Full Name</label>
+                        <input 
+                          type="text" 
+                          value={editingUser.fullName}
+                          onChange={(e) => setEditingUser({ ...editingUser, fullName: e.target.value })}
+                          className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Role</label>
+                        <select 
+                          value={editingUser.role}
+                          onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}
+                          className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
+                        >
+                          <option value="customer">Customer</option>
+                          <option value="vendor">Vendor</option>
+                          <option value="rider">Rider</option>
+                          <option value="admin">Admin</option>
+                        </select>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Trust Points</label>
+                        <input 
+                          type="number" 
+                          value={editingUser.trustPoints || 0}
+                          onChange={(e) => setEditingUser({ ...editingUser, trustPoints: parseInt(e.target.value) })}
+                          className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
+                        />
+                      </div>
+                      <div className="flex gap-4 pt-4">
+                        <button 
+                          type="button"
+                          onClick={() => setIsUserModalOpen(false)}
+                          className="flex-1 h-14 bg-surface-container-highest text-on-surface rounded-2xl font-headline font-black text-sm active:scale-95 transition-transform"
+                        >
+                          CANCEL
+                        </button>
+                        <button 
+                          type="submit"
+                          className="flex-1 h-14 signature-gradient text-white rounded-2xl font-headline font-black text-sm shadow-lg active:scale-95 transition-transform"
+                        >
+                          SAVE CHANGES
+                        </button>
+                      </div>
+                    </form>
+                  </motion.div>
+                </div>
+              )}
+
+              {/* Verification Modal */}
+              {isVerificationModalOpen && verifyingUser && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+                  <motion.div 
+                    initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                    className="absolute inset-0 bg-surface/80 backdrop-blur-xl"
+                    onClick={() => setIsVerificationModalOpen(false)}
+                  />
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    className="relative w-full max-w-2xl bg-surface-container-low rounded-[3rem] p-10 border border-primary/10 shadow-2xl overflow-y-auto max-h-[90vh]"
+                  >
+                    <div className="flex justify-between items-start mb-8">
+                      <div>
+                        <h2 className="text-3xl font-headline font-black text-on-surface tracking-tighter">Verification Details</h2>
+                        <p className="text-on-surface-variant font-medium">Review credentials for {verifyingUser.fullName}</p>
+                      </div>
+                      <button 
+                        onClick={() => setIsVerificationModalOpen(false)}
+                        className="w-12 h-12 bg-surface-container-highest rounded-full flex items-center justify-center"
+                      >
+                        <XIcon className="w-6 h-6" />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
+                      <div className="space-y-6">
+                        <div className="bg-surface-container-lowest p-6 rounded-3xl border border-primary/5">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-primary mb-4">Identity Information</p>
+                          <div className="space-y-4">
+                            <div>
+                              <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Full Name</p>
+                              <p className="font-headline font-bold">{verifyingUser.fullName}</p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Phone Number</p>
+                              <p className="font-headline font-bold">{verifyingUser.phoneNumber}</p>
+                            </div>
+                            {verifyingUser.nin && (
+                              <div>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">NIN Number</p>
+                                <p className="font-headline font-bold">{verifyingUser.nin}</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {verifyingUser.role === 'vendor' && (
+                          <div className="bg-surface-container-lowest p-6 rounded-3xl border border-primary/5">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-primary mb-4">Shop Information</p>
+                            <div className="space-y-4">
+                              <div>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Shop Name</p>
+                                <p className="font-headline font-bold">{verifyingUser.shopName}</p>
+                              </div>
+                              <div>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Location/Landmark</p>
+                                <p className="font-headline font-bold">{verifyingUser.landmark}</p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="space-y-6">
+                        <div className="bg-surface-container-lowest p-6 rounded-3xl border border-primary/5">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-primary mb-4">Financial Details</p>
+                          <div className="space-y-4">
+                            <div>
+                              <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Bank Name</p>
+                              <p className="font-headline font-bold">{verifyingUser.bankName || 'Not provided'}</p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Account Number</p>
+                              <p className="font-headline font-bold">{verifyingUser.bankAccountNumber || 'Not provided'}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="bg-surface-container-lowest p-6 rounded-3xl border border-primary/5">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-primary mb-4">Verification Documents</p>
+                          <div className="aspect-video bg-surface-container-highest rounded-2xl flex items-center justify-center border-2 border-dashed border-primary/10">
+                            <div className="text-center">
+                              <ShieldCheck className="w-10 h-10 text-primary/40 mx-auto mb-2" />
+                              <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">ID Document Preview</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-4">
+                      <button 
+                        onClick={() => {
+                          handleApprove(verifyingUser.phoneNumber);
+                          setIsVerificationModalOpen(false);
+                        }}
+                        className="flex-1 h-16 signature-gradient text-white rounded-2xl font-headline font-black text-sm shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-3"
+                      >
+                        <Check className="w-6 h-6" /> APPROVE USER
+                      </button>
+                      <button 
+                        onClick={() => setIsVerificationModalOpen(false)}
+                        className="flex-1 h-16 bg-error/10 text-error rounded-2xl font-headline font-black text-sm active:scale-95 transition-transform flex items-center justify-center gap-3"
+                      >
+                        <XIcon className="w-6 h-6" /> REJECT APPLICATION
+                      </button>
+                    </div>
+                  </motion.div>
+                </div>
+              )}
+
+              {/* Generic Detail Modal */}
+              {isDetailModalOpen && selectedDetail && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+                  <motion.div 
+                    initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                    className="absolute inset-0 bg-surface/80 backdrop-blur-xl"
+                    onClick={() => setIsDetailModalOpen(false)}
+                  />
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    className="relative w-full max-w-lg bg-surface-container-low rounded-[3rem] p-10 border border-primary/10 shadow-2xl overflow-y-auto max-h-[90vh]"
+                  >
+                    <div className="flex justify-between items-start mb-8">
+                      <div>
+                        <h2 className="text-3xl font-headline font-black text-on-surface tracking-tighter">{selectedDetail.type} Details</h2>
+                        <p className="text-on-surface-variant font-medium">Detailed record information</p>
+                      </div>
+                      <button 
+                        onClick={() => setIsDetailModalOpen(false)}
+                        className="w-12 h-12 bg-surface-container-highest rounded-full flex items-center justify-center"
+                      >
+                        <XIcon className="w-6 h-6" />
+                      </button>
+                    </div>
+
+                    <div className="space-y-6 mb-10">
+                      {Object.entries(selectedDetail).map(([key, value]) => {
+                        if (key === 'type' || key === 'id') return null;
+                        return (
+                          <div key={key} className="bg-surface-container-lowest p-4 rounded-2xl border border-primary/5">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">{key}</p>
+                            <p className="font-headline font-bold break-all">
+                              {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="flex gap-4">
+                      <button 
+                        onClick={() => setIsDetailModalOpen(false)}
+                        className="flex-1 h-14 bg-primary text-on-primary rounded-2xl font-headline font-black text-sm active:scale-95 transition-transform"
+                      >
+                        CLOSE
+                      </button>
+                      {selectedDetail.type === 'Audit Log' && (
+                        <button 
+                          onClick={() => {
+                            alert('Decision override functionality triggered.');
+                            setIsDetailModalOpen(false);
+                          }}
+                          className="flex-1 h-14 bg-surface-container-highest text-on-surface rounded-2xl font-headline font-black text-sm active:scale-95 transition-transform"
+                        >
+                          OVERRIDE
+                        </button>
+                      )}
+                    </div>
+                  </motion.div>
+                </div>
               )}
             </AnimatePresence>
           </main>

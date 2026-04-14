@@ -34,12 +34,12 @@ const customerItems: NavItem[] = [
 const vendorItems: NavItem[] = [
   { label: 'Home', icon: LayoutDashboard, href: '/vendor' },
   { label: 'Prices', icon: Tag, href: '/vendor/price-list' },
-  { label: 'Profile', icon: User, href: '/profile' },
+  { label: 'Profile', icon: User, href: '/vendor/profile' },
 ];
 
 const riderItems: NavItem[] = [
   { label: 'Home', icon: Home, href: '/rider' },
-  { label: 'Profile', icon: User, href: '/profile' },
+  { label: 'Profile', icon: User, href: '/rider/profile' },
 ];
 
 export default function BottomNav() {

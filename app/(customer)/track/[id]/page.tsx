@@ -10,11 +10,12 @@ import { motion } from 'motion/react';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
 
+import { formatRelativeTime } from '@/lib/time';
+
 export default function OrderTrackingPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = React.use(params);
   const [order, setOrder] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(true);
-
   const [rider, setRider] = React.useState<any>(null);
 
   React.useEffect(() => {
@@ -34,16 +35,32 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
   if (!order) return <div className="pt-32 text-center font-headline font-black">Order not found.</div>;
 
   const handleWhatsApp = () => {
-    const phone = rider?.phoneNumber || '08012345678';
+    const phone = rider?.phoneNumber || rider?.whatsappNumber || '08012345678';
     const msg = encodeURIComponent(`Hello, I am checking on my Quick-Wash order #${order.id}.`);
     window.open(`https://wa.me/${phone}?text=${msg}`, '_blank');
   };
 
+  const handleCancelOrder = () => {
+    if (order?.status === 'Awaiting Pickup Confirmation' || order?.status === 'Pending Pickup') {
+      if (confirm('Are you sure you want to cancel this order?')) {
+        const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
+        const updated = allOrders.map((o: any) => o.id === order.id ? { ...o, status: 'Cancelled', color: 'bg-error/10 text-error' } : o);
+        localStorage.setItem('qw_orders', JSON.stringify(updated));
+        setOrder({ ...order, status: 'Cancelled', color: 'bg-error/10 text-error' });
+        alert('Order cancelled successfully.');
+      }
+    } else {
+      alert('Orders can only be cancelled before pickup.');
+    }
+  };
+
   const steps = [
-    { id: 'Picked Up', icon: ShoppingBag, label: 'Picked up' },
-    { id: 'Washing', icon: WashingMachine, label: 'Washing' },
-    { id: 'Ready for Handover', icon: CheckCircle, label: 'Handover' },
-    { id: 'Handover', icon: DoorOpen, label: 'Delivered' }
+    { id: 'Awaiting Pickup Confirmation', label: 'Confirmed' },
+    { id: 'Pending Pickup', label: 'Pickup' },
+    { id: 'Picked Up', label: 'Picked up' },
+    { id: 'Wash', label: 'Washing' },
+    { id: 'Ready for Delivery', label: 'Ready' },
+    { id: 'Delivered', label: 'Delivered' }
   ];
 
   const currentStepIdx = steps.findIndex(s => s.id === order.status);
@@ -59,13 +76,13 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
             </Link>
             <div className="flex flex-col">
               <h1 className="text-on-surface font-black font-headline text-xl tracking-tight leading-tight">Order #{order.id}</h1>
-              <p className="text-[10px] font-black text-primary uppercase tracking-widest">{order.status}</p>
+              <p className="text-[10px] font-black text-primary uppercase tracking-widest">{formatRelativeTime(order.time)} • {order.status}</p>
             </div>
           </div>
           <div className="h-12 w-12 rounded-2xl overflow-hidden bg-surface-container-highest relative border-2 border-primary-container shadow-lg">
             <Image 
-              src="https://picsum.photos/seed/student/100/100" 
-              alt="Student Profile"
+              src={`https://picsum.photos/seed/${order.customerPhone}/100/100`} 
+              alt="Profile"
               fill
               className="object-cover"
             />
@@ -91,14 +108,14 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
               return (
                 <div key={i} className="relative z-10 flex flex-col items-center gap-4">
                   <div className={cn(
-                    "w-14 h-14 rounded-full flex items-center justify-center transition-all duration-500",
+                    "w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500",
                     isActive ? "bg-primary text-on-primary" : "bg-surface-container-highest text-on-surface-variant",
-                    isCurrent && "ring-8 ring-primary-container shadow-xl"
+                    isCurrent && "ring-4 ring-primary-container shadow-xl"
                   )}>
-                    <step.icon className="w-7 h-7 fill-current" />
+                    <CheckCircle className="w-5 h-5 fill-current" />
                   </div>
                   <span className={cn(
-                    "font-headline text-[10px] font-black uppercase tracking-widest text-center",
+                    "font-headline text-[8px] font-black uppercase tracking-widest text-center",
                     isActive ? "text-primary" : "text-on-surface-variant"
                   )}>{step.label}</span>
                 </div>
@@ -122,7 +139,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
                   initial={{ scale: 0.8, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
                   transition={{ delay: i * 0.1 }}
-                  className="w-20 h-24 flex items-center justify-center bg-surface-container-low rounded-3xl text-5xl font-headline font-black text-primary shadow-xl border border-primary/5"
+                  className="w-16 h-20 flex items-center justify-center bg-surface-container-low rounded-2xl text-4xl font-headline font-black text-primary shadow-xl border border-primary/5"
                 >
                   {num}
                 </motion.span>
@@ -137,8 +154,10 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
           </div>
         </section>
 
-        {/* Sealed Bag Uploader */}
-        <SealedBagUploader />
+        {/* Sealed Bag Uploader - Only at pickup stage */}
+        {(order.status === 'Awaiting Pickup Confirmation' || order.status === 'Pending Pickup') && (
+          <SealedBagUploader />
+        )}
 
         {/* Rider Info */}
         <section className="bg-surface-container-low rounded-[2.5rem] p-8 flex items-center gap-6 shadow-sm border border-primary/5">
@@ -157,28 +176,40 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
               {rider ? `Elite Rider • ID: ${rider.phoneNumber.slice(-4)}` : 'Admin is assigning a rider'}
             </p>
           </div>
-          <button 
-            onClick={handleWhatsApp}
-            className="w-16 h-16 rounded-2xl bg-[#25D366] text-white flex items-center justify-center shadow-xl active:scale-90 transition-transform"
-          >
-            <MessageCircle className="w-8 h-8 fill-current" />
-          </button>
+          {rider && (
+            <button 
+              onClick={handleWhatsApp}
+              className="w-16 h-16 rounded-2xl bg-[#25D366] text-white flex items-center justify-center shadow-xl active:scale-90 transition-transform"
+            >
+              <MessageCircle className="w-8 h-8 fill-current" />
+            </button>
+          )}
         </section>
 
         {/* Protection Info */}
         <section className="bg-tertiary-container/10 rounded-[2.5rem] p-8 border border-tertiary-container/30">
           <div className="flex items-center gap-4 mb-4">
             <Shield className="text-tertiary w-6 h-6 fill-current" />
-            <span className="font-headline font-black text-lg text-tertiary">48hr Protection Active</span>
+            <span className="font-headline font-black text-lg text-tertiary">24hr Protection Active</span>
           </div>
           <p className="text-sm text-on-surface-variant leading-relaxed font-medium">
-            Payment of ₦{order.totalPrice.toLocaleString()} is held securely. You have 48 hours after delivery to report any issues before the rider is paid.
+            Payment of ₦{order.totalPrice.toLocaleString()} is held securely. You have 24 hours after delivery to report any issues before the rider is paid.
           </p>
         </section>
+
+        {/* Cancel Button */}
+        {(order.status === 'Awaiting Pickup Confirmation' || order.status === 'Pending Pickup') && (
+          <button 
+            onClick={handleCancelOrder}
+            className="w-full h-16 bg-error/10 text-error rounded-2xl font-headline font-black text-sm active:scale-95 transition-transform"
+          >
+            CANCEL ORDER
+          </button>
+        )}
       </main>
 
       {/* Sticky Footer */}
-      {order.status === 'Awaiting Delivery Confirmation' && (
+      {order.status === 'Ready for Delivery' && (
         <div className="fixed bottom-0 left-0 w-full p-8 bg-gradient-to-t from-surface via-surface to-transparent z-40">
           <div className="max-w-2xl mx-auto">
             <ReadyToReceiveButton 
@@ -188,7 +219,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
                   if (o.id === resolvedParams.id) {
                     return { 
                       ...o, 
-                      status: 'Ready for Delivery', 
+                      status: 'Awaiting Delivery Confirmation', 
                       color: 'bg-primary text-on-primary',
                       customerConfirmedDeliveryAt: new Date().toISOString()
                     };
