@@ -21,6 +21,8 @@ export default function RiderDashboard() {
     completedTasks: 0
   });
   const [handoverInput, setHandoverInput] = React.useState<{ [key: string]: string }>({});
+  const [orderToReject, setOrderToReject] = React.useState<string | null>(null);
+  const [notification, setNotification] = React.useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
 
   React.useEffect(() => {
     if (currentUser) {
@@ -31,7 +33,15 @@ export default function RiderDashboard() {
       setTasks(myTasks);
 
       // Orders available for pickup (not yet assigned)
-      const available = allOrders.filter((o: any) => o.status === 'Awaiting Pickup Confirmation' && !o.riderPhone);
+      // Include both Awaiting Pickup Confirmation and Pending Pickup if no rider is assigned
+      const available = allOrders.filter((o: any) => {
+        const isAvailable = (o.status === 'Awaiting Pickup Confirmation' || o.status === 'Pending Pickup') && !o.riderPhone;
+        if (!isAvailable) return false;
+        const now = new Date().getTime();
+        const createdAt = new Date(o.createdAt).getTime();
+        const ageInMinutes = (now - createdAt) / (1000 * 60);
+        return ageInMinutes <= 20;
+      });
       setAvailableOrders(available);
 
       const allUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
@@ -47,6 +57,20 @@ export default function RiderDashboard() {
 
   const handleAcceptOrder = (orderId: string) => {
     const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
+    const order = allOrders.find((o: any) => o.id === orderId);
+    
+    if (order) {
+      const now = new Date().getTime();
+      const createdAt = new Date(order.createdAt).getTime();
+      const ageInMinutes = (now - createdAt) / (1000 * 60);
+      
+      if (ageInMinutes > 20) {
+        setNotification({ message: 'Order is too old to accept (expiring soon).', type: 'error' });
+        setTimeout(() => setNotification(null), 3000);
+        return;
+      }
+    }
+
     const updated = allOrders.map((o: any) => {
       if (o.id === orderId) {
         return { 
@@ -61,30 +85,45 @@ export default function RiderDashboard() {
     });
     localStorage.setItem('qw_orders', JSON.stringify(updated));
     setTasks(updated.filter((o: any) => o.riderPhone === currentUser?.phoneNumber && !['Delivered', 'Cancelled'].includes(o.status)));
-    setAvailableOrders(updated.filter((o: any) => o.status === 'Awaiting Pickup Confirmation' && !o.riderPhone));
-    alert('Order accepted! Head to the customer location.');
+    setAvailableOrders(updated.filter((o: any) => {
+      const isAvailable = (o.status === 'Awaiting Pickup Confirmation' || o.status === 'Pending Pickup') && !o.riderPhone;
+      if (!isAvailable) return false;
+      const now = new Date().getTime();
+      const createdAt = new Date(o.createdAt).getTime();
+      const ageInMinutes = (now - createdAt) / (1000 * 60);
+      return ageInMinutes <= 20;
+    }));
+    setNotification({ message: 'Order accepted! Head to the location.', type: 'success' });
+    setTimeout(() => setNotification(null), 3000);
   };
 
   const handleRejectOrder = (orderId: string) => {
-    if (confirm('Are you sure you want to reject this order? It will be available for other riders.')) {
-      const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-      const updated = allOrders.map((o: any) => {
-        if (o.id === orderId) {
-          return { 
-            ...o, 
-            status: 'Awaiting Pickup Confirmation', 
-            riderPhone: null,
-            riderName: null,
-            color: 'bg-warning/20 text-warning'
-          };
-        }
-        return o;
-      });
-      localStorage.setItem('qw_orders', JSON.stringify(updated));
-      setTasks(updated.filter((o: any) => o.riderPhone === currentUser?.phoneNumber && !['Delivered', 'Cancelled'].includes(o.status)));
-      setAvailableOrders(updated.filter((o: any) => o.status === 'Awaiting Pickup Confirmation' && !o.riderPhone));
-      alert('Order rejected.');
-    }
+    const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
+    const updated = allOrders.map((o: any) => {
+      if (o.id === orderId) {
+        return { 
+          ...o, 
+          status: 'Pending Pickup', // Keep it ready for other riders
+          riderPhone: null,
+          riderName: null,
+          color: 'bg-warning/20 text-warning'
+        };
+      }
+      return o;
+    });
+    localStorage.setItem('qw_orders', JSON.stringify(updated));
+    setTasks(updated.filter((o: any) => o.riderPhone === currentUser?.phoneNumber && !['Delivered', 'Cancelled'].includes(o.status)));
+    setAvailableOrders(updated.filter((o: any) => {
+      const isAvailable = (o.status === 'Awaiting Pickup Confirmation' || o.status === 'Pending Pickup') && !o.riderPhone;
+      if (!isAvailable) return false;
+      const now = new Date().getTime();
+      const createdAt = new Date(o.createdAt).getTime();
+      const ageInMinutes = (now - createdAt) / (1000 * 60);
+      return ageInMinutes <= 20;
+    }));
+    setNotification({ message: 'Order rejected.', type: 'info' });
+    setTimeout(() => setNotification(null), 3000);
+    setOrderToReject(null);
   };
 
   const handleStatusUpdate = (orderId: string, newStatus: string, color: string) => {
@@ -104,7 +143,7 @@ export default function RiderDashboard() {
     if (input === order.handoverCode) {
       // Final 50% rider fee to rider
       const allUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
-      const riderFee = 1000; // Fixed + Dynamic (simulated)
+      const riderFee = order.riderFee || 1000;
       
       const updatedUsers = allUsers.map((u: any) => {
         if (u.phoneNumber === currentUser?.phoneNumber) {
@@ -130,10 +169,52 @@ export default function RiderDashboard() {
       localStorage.setItem('qw_orders', JSON.stringify(updatedOrders));
       setTasks(updatedOrders.filter((o: any) => o.riderPhone === currentUser?.phoneNumber && !['Delivered', 'Cancelled'].includes(o.status)));
 
-      alert('Handover verified! Delivery complete. Final payment credited.');
+      setNotification({ message: 'Handover verified! Delivery complete.', type: 'success' });
+      setTimeout(() => setNotification(null), 3000);
       setHandoverInput(prev => ({ ...prev, [order.id]: '' }));
     } else {
-      alert('Invalid handover code!');
+      setNotification({ message: 'Invalid handover code!', type: 'error' });
+      setTimeout(() => setNotification(null), 3000);
+    }
+  };
+
+  const handleVerifyPickup = (order: any) => {
+    const input = handoverInput[order.id];
+    if (input === order.pickupCode) {
+      // First 50% rider fee to rider on pickup
+      const allUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
+      const riderFee = order.riderFee || 1000;
+      
+      const updatedUsers = allUsers.map((u: any) => {
+        if (u.phoneNumber === currentUser?.phoneNumber) {
+          return { ...u, walletBalance: (u.walletBalance || 0) + (riderFee * 0.5) };
+        }
+        return u;
+      });
+      localStorage.setItem('qw_all_users', JSON.stringify(updatedUsers));
+
+      // Update order status
+      const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
+      const updatedOrders = allOrders.map((o: any) => {
+        if (o.id === order.id) {
+          return { 
+            ...o, 
+            status: 'Picked Up', 
+            color: 'bg-secondary text-on-secondary',
+            pickedUpAt: new Date().toISOString()
+          };
+        }
+        return o;
+      });
+      localStorage.setItem('qw_orders', JSON.stringify(updatedOrders));
+      setTasks(updatedOrders.filter((o: any) => o.riderPhone === currentUser?.phoneNumber && !['Delivered', 'Cancelled'].includes(o.status)));
+
+      setNotification({ message: 'Pickup confirmed! Head to the vendor.', type: 'success' });
+      setTimeout(() => setNotification(null), 3000);
+      setHandoverInput(prev => ({ ...prev, [order.id]: '' }));
+    } else {
+      setNotification({ message: 'Invalid pickup code!', type: 'error' });
+      setTimeout(() => setNotification(null), 3000);
     }
   };
 
@@ -151,17 +232,17 @@ export default function RiderDashboard() {
     alert('Withdrawal request submitted! You will be paid within 2 hours.');
   };
 
-  const handleStartNavigation = (location: string) => {
-    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location + ' Ogbomoso')}`;
+  const handleStartNavigation = (landmark: string) => {
+    // Use Google Maps Directions mode to show route from current location
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(landmark + ', Ogbomoso')}&travelmode=driving`;
     window.open(url, '_blank');
   };
 
   return (
-    <ProtectedRoute allowedRoles={['rider']}>
-      <div className="pb-32">
-        <TopAppBar roleLabel="Rider Station" showAudioToggle />
-        
-        <main className="pt-24 px-6 max-w-7xl mx-auto">
+    <div className="pb-32">
+      <TopAppBar roleLabel="Rider Station" showAudioToggle />
+      
+      <main className="pt-8 px-6 max-w-7xl mx-auto">
           <header className="mb-10">
             <div className="flex items-center gap-4 mb-2">
               <div className="w-12 h-12 rounded-2xl bg-primary-container flex items-center justify-center">
@@ -233,8 +314,17 @@ export default function RiderDashboard() {
                         <div key={order.id} className="bg-surface-container-low p-8 rounded-[2.5rem] border-2 border-primary/20 shadow-xl">
                           <div className="flex justify-between items-start mb-6">
                             <div>
-                              <h4 className="font-headline font-black text-xl text-on-surface">{order.customerName}</h4>
-                              <p className="text-xs font-bold text-on-surface-variant">{order.customerLandmark}</p>
+                              <h4 className="font-headline font-black text-xl text-on-surface mb-2">{order.customerName}</h4>
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2 text-primary">
+                                  <MapPin className="w-3 h-3" />
+                                  <p className="text-[10px] font-black uppercase tracking-widest">Pickup: {order.customerLandmark}</p>
+                                </div>
+                                <div className="flex items-center gap-2 text-tertiary">
+                                  <Package className="w-3 h-3" />
+                                  <p className="text-[10px] font-black uppercase tracking-widest">Vendor: {order.vendorName} ({order.vendorLandmark})</p>
+                                </div>
+                              </div>
                             </div>
                             <span className="bg-primary text-on-primary px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">₦1,000 FEE</span>
                           </div>
@@ -257,8 +347,9 @@ export default function RiderDashboard() {
                     {tasks.map((order) => {
                       const isPickup = order.status === 'Pending Pickup';
                       const isDelivery = order.status === 'Out for Delivery' || order.status === 'Ready for Delivery';
-                      const location = isPickup ? order.customerLandmark : order.vendorName;
-                      const subLocation = isPickup ? order.customerPhone : order.vendorLandmark;
+                      const destinationLandmark = isPickup ? order.customerLandmark : order.vendorLandmark;
+                      const destinationName = isPickup ? order.customerName : order.vendorName;
+                      const destinationPhone = isPickup ? order.customerPhone : order.vendorPhone;
                       
                       return (
                         <div key={order.id} className="bg-surface-container-low p-8 rounded-[2.5rem] border border-primary/5 shadow-sm">
@@ -272,9 +363,9 @@ export default function RiderDashboard() {
                               </div>
                               <div>
                                 <h4 className="font-headline font-black text-xl text-on-surface">
-                                  {isPickup ? 'Pickup from' : 'Deliver to'} {isPickup ? order.customerName : order.customerName}
+                                  {isPickup ? 'Pickup from' : 'Deliver to'} {destinationName}
                                 </h4>
-                                <p className="text-xs font-bold text-on-surface-variant">{location} • {subLocation}</p>
+                                <p className="text-xs font-bold text-on-surface-variant">{destinationLandmark} • {destinationPhone}</p>
                               </div>
                             </div>
                             <div className="flex flex-col items-end gap-2">
@@ -286,7 +377,7 @@ export default function RiderDashboard() {
                               </span>
                               {isPickup && (
                                 <button 
-                                  onClick={() => handleRejectOrder(order.id)}
+                                  onClick={() => setOrderToReject(order.id)}
                                   className="text-[10px] font-black uppercase tracking-widest text-error hover:underline"
                                 >
                                   Reject Task
@@ -297,19 +388,28 @@ export default function RiderDashboard() {
 
                           <div className="flex gap-4">
                             <button 
-                              onClick={() => handleStartNavigation(location)}
+                              onClick={() => handleStartNavigation(destinationLandmark)}
                               className="flex-1 h-14 bg-surface-container-highest text-on-surface rounded-xl font-headline font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-transform"
                             >
                               <Navigation className="w-5 h-5" /> NAVIGATE
                             </button>
                             
                             {order.status === 'Pending Pickup' && (
-                              <button 
-                                onClick={() => handleStatusUpdate(order.id, 'Picked Up', 'bg-secondary text-on-secondary')}
-                                className="flex-1 h-14 bg-primary text-on-primary rounded-xl font-headline font-black text-sm active:scale-95 transition-transform"
-                              >
-                                CONFIRM PICKUP
-                              </button>
+                              <div className="flex-1 flex gap-3">
+                                <input 
+                                  type="text" 
+                                  placeholder="Code"
+                                  value={handoverInput[order.id] || ''}
+                                  onChange={(e) => setHandoverInput(prev => ({ ...prev, [order.id]: e.target.value }))}
+                                  className="w-24 h-14 bg-surface-container-highest rounded-xl px-4 text-center font-headline font-black text-xl outline-none focus:ring-2 ring-primary"
+                                />
+                                <button 
+                                  onClick={() => handleVerifyPickup(order)}
+                                  className="flex-1 h-14 bg-primary text-on-primary rounded-xl font-headline font-black text-sm active:scale-95 transition-transform"
+                                >
+                                  PICKUP
+                                </button>
+                              </div>
                             )}
                             
                             {order.status === 'Ready for Delivery' && (
@@ -406,7 +506,62 @@ export default function RiderDashboard() {
             )}
           </AnimatePresence>
         </main>
+
+        {/* Notification Toast */}
+        <AnimatePresence>
+          {notification && (
+            <motion.div 
+              initial={{ opacity: 0, y: 50 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 50 }}
+              className={cn(
+                "fixed bottom-24 left-1/2 -translate-x-1/2 px-6 py-4 rounded-2xl shadow-2xl z-[200] flex items-center gap-3 font-headline font-black text-sm",
+                notification.type === 'success' ? "bg-success text-on-success" : 
+                notification.type === 'error' ? "bg-error text-on-error" : "bg-primary text-on-primary"
+              )}
+            >
+              {notification.type === 'success' && <CheckCircle className="w-5 h-5" />}
+              {notification.type === 'error' && <AlertTriangle className="w-5 h-5" />}
+              {notification.message}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Reject Confirmation Modal */}
+        {orderToReject && (
+          <div className="fixed inset-0 z-[210] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+              className="absolute inset-0 bg-surface/60 backdrop-blur-md"
+              onClick={() => setOrderToReject(null)}
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="relative w-full max-w-sm bg-surface-container-low rounded-[2rem] p-8 border border-error/20 shadow-2xl text-center"
+            >
+              <div className="w-16 h-16 bg-error/10 text-error rounded-full flex items-center justify-center mx-auto mb-6">
+                <AlertTriangle className="w-8 h-8" />
+              </div>
+              <h3 className="text-xl font-headline font-black mb-2">Reject Task?</h3>
+              <p className="text-on-surface-variant text-sm mb-8">Are you sure? This order will be returned to the available pool for other riders.</p>
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => setOrderToReject(null)}
+                  className="flex-1 h-12 bg-surface-container-highest text-on-surface rounded-xl font-bold text-xs"
+                >
+                  CANCEL
+                </button>
+                <button 
+                  onClick={() => handleRejectOrder(orderToReject)}
+                  className="flex-1 h-12 bg-error text-white rounded-xl font-bold text-xs shadow-lg shadow-error/20"
+                >
+                  REJECT
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
       </div>
-    </ProtectedRoute>
   );
 }

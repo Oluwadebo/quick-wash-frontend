@@ -7,14 +7,29 @@ import { cn } from '@/lib/utils';
 
 export default function SealedBagUploader() {
   const [status, setStatus] = React.useState<'idle' | 'uploading' | 'success'>('idle');
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-  const handleUpload = () => {
-    setStatus('uploading');
-    setTimeout(() => setStatus('success'), 2000);
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setStatus('uploading');
+      setTimeout(() => setStatus('success'), 2000);
+    }
+  };
+
+  const triggerUpload = () => {
+    fileInputRef.current?.click();
   };
 
   return (
     <div className="bg-surface-container-low rounded-[2.5rem] p-8 border border-primary/5 shadow-sm">
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        className="hidden" 
+        accept="image/*" 
+        capture="environment"
+        onChange={handleUpload}
+      />
       <div className="flex items-center gap-4 mb-8">
         <div className="bg-primary-container p-3 rounded-2xl">
           <ShieldCheck className="text-primary w-6 h-6 fill-current" />
@@ -34,7 +49,7 @@ export default function SealedBagUploader() {
             exit={{ opacity: 0 }}
             className="space-y-6"
           >
-            <div className="aspect-video bg-surface-container-highest rounded-3xl border-2 border-dashed border-primary/20 flex flex-col items-center justify-center text-center p-6 group cursor-pointer hover:bg-white transition-colors" onClick={handleUpload}>
+            <div className="aspect-video bg-surface-container-highest rounded-3xl border-2 border-dashed border-primary/20 flex flex-col items-center justify-center text-center p-6 group cursor-pointer hover:bg-white transition-colors" onClick={triggerUpload}>
               <div className="w-16 h-16 rounded-full bg-primary/5 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                 <Camera className="text-primary w-8 h-8" />
               </div>

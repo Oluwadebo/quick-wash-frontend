@@ -11,11 +11,10 @@ export default function AdminProfilePage() {
   const { user, logout } = useAuth();
 
   return (
-    <ProtectedRoute allowedRoles={['admin']}>
-      <div className="pb-32">
-        <TopAppBar title="Admin Profile" roleLabel="Admin" />
+    <div className="pb-32">
+      <TopAppBar title="Admin Profile" roleLabel="Admin" />
 
-        <main className="pt-24 px-6 max-w-2xl mx-auto space-y-8">
+      <main className="pt-8 px-6 max-w-2xl mx-auto space-y-8">
           <section className="flex flex-col items-center text-center space-y-4">
             <div className="w-32 h-32 rounded-[2.5rem] signature-gradient flex items-center justify-center shadow-2xl">
               <Shield className="text-white w-16 h-16" />
@@ -80,6 +79,5 @@ export default function AdminProfilePage() {
           </button>
         </main>
       </div>
-    </ProtectedRoute>
   );
 }

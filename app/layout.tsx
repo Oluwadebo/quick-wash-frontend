@@ -19,11 +19,15 @@ export const metadata: Metadata = {
   description: 'The kinetic laundry experience for modern students.',
 };
 
+import BottomNav from '@/components/shared/BottomNav';
+import Sidebar from '@/components/shared/Sidebar';
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${plusJakartaSans.variable} ${manrope.variable}`}>
       <body suppressHydrationWarning className="bg-surface text-on-surface antialiased">
         {children}
+        <BottomNav />
       </body>
     </html>
   );

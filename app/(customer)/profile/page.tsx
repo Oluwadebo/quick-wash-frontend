@@ -34,17 +34,45 @@ export default function ProfilePage() {
   }, [user]);
 
   const earnedBadges = [
-    { id: 'clean', name: 'Always Clean', icon: Sun, color: 'bg-surface-container-high text-primary', earned: (user?.badges || []).includes('✨ Always Clean'), criteria: 'Complete 5 orders without any disputes.' },
-    { id: 'early', name: 'Early Bird', icon: Sun, color: 'bg-primary-container text-on-primary-container', earned: (user?.badges || []).includes('🌅 Early Bird'), criteria: 'Place an order before 8 AM.' },
-    { id: 'loyal', name: 'Loyal Customer', icon: Leaf, color: 'bg-tertiary-container text-on-tertiary-container', earned: (user?.badges || []).includes('💎 Loyal Customer'), criteria: 'Stay with us for over 1 month.' },
-    { id: 'new', name: 'Newcomer', icon: Leaf, color: 'bg-surface-container-highest text-on-surface', earned: true, criteria: 'Welcome to Quick-Wash!' }
+    { 
+      id: 'clean', 
+      name: 'Always Clean', 
+      icon: Droplets, 
+      color: 'bg-primary/10 text-primary', 
+      earned: recentOrders.filter(o => o.status === 'Delivered').length >= 5,
+      criteria: 'Complete 5 orders without any disputes.' 
+    },
+    { 
+      id: 'early', 
+      name: 'Early Bird', 
+      icon: Sun, 
+      color: 'bg-warning/10 text-warning', 
+      earned: recentOrders.some(o => new Date(o.createdAt).getHours() < 8),
+      criteria: 'Place an order before 8 AM.' 
+    },
+    { 
+      id: 'loyal', 
+      name: 'Loyal Customer', 
+      icon: Shield, 
+      color: 'bg-tertiary/10 text-tertiary', 
+      earned: recentOrders.length > 0 && (new Date().getTime() - new Date(recentOrders[recentOrders.length - 1].createdAt).getTime() > 30 * 24 * 60 * 60 * 1000),
+      criteria: 'Stay with us for over 1 month.' 
+    },
+    { 
+      id: 'new', 
+      name: 'Newcomer', 
+      icon: Leaf, 
+      color: 'bg-success/10 text-success', 
+      earned: true, 
+      criteria: 'Welcome to Quick-Wash!' 
+    }
   ];
 
   return (
     <div className="pb-32">
       <TopAppBar title="My Profile" showAudioToggle />
 
-      <main className="pt-24 px-6 max-w-2xl mx-auto space-y-8">
+      <main className="pt-8 px-6 max-w-2xl mx-auto space-y-8">
         <section className="flex items-center gap-6">
           <div className="relative">
             <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-primary-container shadow-sm relative">
@@ -105,6 +133,16 @@ export default function ProfilePage() {
                 <Droplets className="text-on-primary-container w-6 h-6 fill-current" />
               </div>
             </div>
+            <div className="bg-primary p-6 rounded-[2rem] text-on-primary flex flex-col justify-between overflow-hidden relative group">
+              <div className="z-10">
+                <p className="font-label text-[10px] uppercase font-bold tracking-widest opacity-80">Wallet Balance</p>
+                <h3 className="text-3xl font-headline font-bold leading-tight mt-1">₦{(user?.walletBalance || 0).toLocaleString()}</h3>
+              </div>
+              <Link href="/wallet" className="z-10 mt-2 bg-on-primary text-primary font-label font-bold text-xs py-2 px-4 rounded-xl w-max active:scale-95 transition-transform">
+                Withdraw
+              </Link>
+              <Shield className="absolute -bottom-4 -right-4 w-24 h-24 opacity-10 rotate-12" />
+            </div>
             <div className="bg-secondary p-6 rounded-[2rem] text-on-secondary flex flex-col justify-between overflow-hidden relative group">
               <div className="z-10">
                 <p className="font-label text-[10px] uppercase font-bold tracking-widest opacity-80">Invite Friends</p>
@@ -126,13 +164,23 @@ export default function ProfilePage() {
             {earnedBadges.map(badge => (
               <div 
                 key={badge.id} 
-                onClick={() => alert(`${badge.name}: ${badge.criteria}\n\nStatus: ${badge.earned ? 'Earned ✅' : 'Not Earned ❌'}`)}
-                className={cn("flex-shrink-0 w-24 flex flex-col items-center space-y-2 cursor-pointer", !badge.earned && "opacity-40")}
+                className="flex-shrink-0 w-24 flex flex-col items-center space-y-2 cursor-pointer relative group"
               >
-                <div className={cn("w-16 h-16 rounded-2xl flex items-center justify-center transition-transform duration-300 hover:rotate-0", badge.color)}>
+                <div className={cn("w-16 h-16 rounded-2xl flex items-center justify-center transition-all duration-300 group-hover:scale-110", badge.color, !badge.earned && "opacity-40")}>
                   <badge.icon className="w-8 h-8 fill-current" />
                 </div>
                 <span className="text-[10px] font-label font-bold text-center leading-tight">{badge.name}</span>
+
+                {/* Hover Tooltip */}
+                <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 w-48 p-4 bg-surface-container-highest rounded-2xl shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 border border-primary/10">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-primary mb-1">{badge.name}</p>
+                  <p className="text-[10px] font-bold text-on-surface-variant leading-relaxed">{badge.criteria}</p>
+                  <div className="mt-2 pt-2 border-t border-primary/5">
+                    <p className="text-[8px] font-black uppercase tracking-widest text-on-surface-variant">
+                      Status: <span className={badge.earned ? "text-success" : "text-error"}>{badge.earned ? "Earned ✅" : "Locked 🔒"}</span>
+                    </p>
+                  </div>
+                </div>
               </div>
             ))}
           </div>

@@ -6,6 +6,7 @@ import { Droplets, User, Store, Bike, ShieldCheck, ArrowRight, Sparkles, Zap, Sh
 import { motion } from 'motion/react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
+import Footer from '@/components/shared/Footer';
 
 const roles = [
   { 
@@ -272,24 +273,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <footer className="py-24 px-6 border-t-2 border-primary/10">
-        <div className="max-w-7xl mx-auto flex flex-col items-center">
-          <div className="flex items-center justify-center gap-3 mb-8">
-            <Droplets className="text-primary w-8 h-8 fill-current" />
-            <span className="text-2xl font-headline font-black tracking-tighter">Quick-Wash</span>
-          </div>
-          
-          <div className="flex flex-wrap justify-center gap-8 mb-12">
-            <Link href="/contact" className="text-on-surface-variant font-bold hover:text-primary transition-colors">Contact Us</Link>
-            <Link href="/privacy" className="text-on-surface-variant font-bold hover:text-primary transition-colors">Privacy Policy</Link>
-            <Link href="/terms" className="text-on-surface-variant font-bold hover:text-primary transition-colors">Terms of Service</Link>
-          </div>
-
-          <p className="font-label text-[10px] font-black uppercase tracking-[0.4em] text-on-surface-variant opacity-40 text-center">
-            Built for the Modern Campus • 2024
-          </p>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 }

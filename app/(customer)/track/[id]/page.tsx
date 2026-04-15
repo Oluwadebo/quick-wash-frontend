@@ -5,7 +5,7 @@ import TopAppBar from '@/components/shared/TopAppBar';
 import SealedBagUploader from '@/components/shared/SealedBagUploader';
 import ReadyToReceiveButton from '@/components/shared/ReadyToReceiveButton';
 import Link from 'next/link';
-import { ArrowLeft, ShieldCheck, ShoppingBag, WashingMachine, CheckCircle, MessageCircle, Shield, Package, DoorOpen, Info } from 'lucide-react';
+import { ArrowLeft, ShieldCheck, ShoppingBag, WashingMachine, CheckCircle, MessageCircle, Shield, Package, DoorOpen, Info, Phone, Copy } from 'lucide-react';
 import { motion } from 'motion/react';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
@@ -26,7 +26,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
     if (found?.riderPhone) {
       const allUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
       const riderInfo = allUsers.find((u: any) => u.phoneNumber === found.riderPhone);
-      setRider(riderInfo);
+      setRider(riderInfo || { fullName: found.riderName, phoneNumber: found.riderPhone });
     }
     setLoading(false);
   }, [resolvedParams.id]);
@@ -136,7 +136,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
                 {order.status === 'Pending Pickup' ? 'Give this to Rider at Pickup' : 'Your Handover Code'}
               </p>
               <div className="flex justify-center gap-4">
-                {(order.handoverCode || '----').split('').map((num: string, i: number) => (
+                {((order.status === 'Pending Pickup' ? order.pickupCode : order.handoverCode) || '----').split('').map((num: string, i: number) => (
                   <motion.span 
                     key={i}
                     initial={{ scale: 0.8, opacity: 0 }}
@@ -183,12 +183,29 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
             </p>
           </div>
           {rider && (
-            <button 
-              onClick={handleWhatsApp}
-              className="w-16 h-16 rounded-2xl bg-[#25D366] text-white flex items-center justify-center shadow-xl active:scale-90 transition-transform"
-            >
-              <MessageCircle className="w-8 h-8 fill-current" />
-            </button>
+            <div className="flex gap-2">
+              <button 
+                onClick={() => window.open(`tel:${rider.phoneNumber}`)}
+                className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center active:scale-90 transition-transform"
+              >
+                <Phone className="w-5 h-5" />
+              </button>
+              <button 
+                onClick={() => {
+                  navigator.clipboard.writeText(rider.phoneNumber);
+                  alert('Phone number copied!');
+                }}
+                className="w-12 h-12 rounded-xl bg-surface-container-highest text-on-surface-variant flex items-center justify-center active:scale-90 transition-transform"
+              >
+                <Copy className="w-5 h-5" />
+              </button>
+              <button 
+                onClick={handleWhatsApp}
+                className="w-12 h-12 rounded-xl bg-[#25D366] text-white flex items-center justify-center shadow-lg active:scale-90 transition-transform"
+              >
+                <MessageCircle className="w-6 h-6 fill-current" />
+              </button>
+            </div>
           )}
         </section>
 

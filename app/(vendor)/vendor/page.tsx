@@ -242,11 +242,10 @@ export default function VendorDashboard() {
   };
 
   return (
-    <ProtectedRoute allowedRoles={['vendor']}>
-      <div className="pb-32">
-        <TopAppBar roleLabel="Vendor Station" showAudioToggle />
-        
-        <main className="pt-24 px-6 max-w-7xl mx-auto">
+    <div className="pb-32">
+      <TopAppBar roleLabel="Vendor Station" showAudioToggle />
+      
+      <main className="pt-8 px-6 max-w-7xl mx-auto">
           <header className="mb-10">
             <div className="flex items-center gap-4 mb-2">
               <div className="w-12 h-12 rounded-2xl bg-primary-container flex items-center justify-center">
@@ -721,6 +720,5 @@ export default function VendorDashboard() {
           )}
         </AnimatePresence>
       </div>
-    </ProtectedRoute>
   );
 }

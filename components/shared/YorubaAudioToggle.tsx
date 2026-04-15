@@ -19,6 +19,11 @@ export default function YorubaAudioToggle() {
     
     // Play a small feedback sound if enabled
     if (newState) {
+      if ('speechSynthesis' in window) {
+        const msg = new SpeechSynthesisUtterance('Ẹ káàbọ̀ sí Quick Wash');
+        msg.lang = 'yo-NG'; // Yoruba Nigeria
+        window.speechSynthesis.speak(msg);
+      }
       console.log('Yoruba Audio Enabled: "Ẹ káàbọ̀!"');
     }
   };

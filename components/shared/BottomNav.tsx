@@ -51,14 +51,14 @@ export default function BottomNav() {
     setUser(u);
   }, [pathname]);
   
-  if (pathname === '/' || pathname.startsWith('/auth') || pathname.startsWith('/admin')) return null;
+  if (pathname === '/' || pathname.startsWith('/auth') || pathname.startsWith('/admin') || !user) return null;
 
   let items = customerItems;
   if (user?.role === 'vendor') items = vendorItems;
   else if (user?.role === 'rider') items = riderItems;
 
   return (
-    <nav className="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 pt-3 pb-8 bg-zinc-900 backdrop-blur-2xl rounded-t-[2.5rem] shadow-[0_-8px_32px_rgba(0,0,0,0.2)]">
+    <nav className="fixed bottom-0 left-0 w-full z-50 flex lg:hidden justify-around items-center px-4 pt-3 pb-8 bg-zinc-900 backdrop-blur-2xl rounded-t-[2.5rem] shadow-[0_-8px_32px_rgba(0,0,0,0.2)]">
       {items.map((item) => {
         const isActive = pathname === item.href;
         

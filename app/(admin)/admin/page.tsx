@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
 import Image from 'next/image';
+import { useSearchParams } from 'next/navigation';
 
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -24,8 +25,16 @@ type AdminTab = 'overview' | 'orders' | 'disputes' | 'users' | 'wallets' | 'anal
 type UserSection = 'all' | 'admin' | 'vendor' | 'rider' | 'customer' | 'marketing';
 
 export default function AdminDashboard() {
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get('tab') as AdminTab;
   const { approveUser, user: currentUser } = useAuth();
   const [activeTab, setActiveTab] = React.useState<AdminTab>('overview');
+
+  React.useEffect(() => {
+    if (tabParam) {
+      setActiveTab(tabParam);
+    }
+  }, [tabParam]);
   const [userSection, setUserSection] = React.useState<UserSection>('all');
   const [pendingUsers, setPendingUsers] = React.useState<any[]>([]);
   const [allUsers, setAllUsers] = React.useState<any[]>([]);
@@ -96,6 +105,61 @@ export default function AdminDashboard() {
   const [isOverriding, setIsOverriding] = React.useState(false);
   const [overrideData, setOverrideData] = React.useState({ action: '', reason: '' });
 
+  const [campaigns, setCampaigns] = React.useState<any[]>([]);
+  const [isCampaignModalOpen, setIsCampaignModalOpen] = React.useState(false);
+  const [editingCampaign, setEditingCampaign] = React.useState<any>(null);
+  const [campaignToDelete, setCampaignToDelete] = React.useState<number | null>(null);
+  const [campaignForm, setCampaignForm] = React.useState({
+    name: '',
+    status: 'Active',
+    reach: '0',
+    conversion: '0%',
+    color: 'bg-primary'
+  });
+
+  const handleAddCampaign = React.useCallback((e: React.FormEvent) => {
+    e.preventDefault();
+    const updated = editingCampaign 
+      ? campaigns.map(c => c.id === editingCampaign.id ? { ...campaignForm, id: c.id } : c)
+      : [...campaigns, { ...campaignForm, id: Date.now() }];
+    
+    localStorage.setItem('qw_campaigns', JSON.stringify(updated));
+    setCampaigns(updated);
+    setIsCampaignModalOpen(false);
+    setEditingCampaign(null);
+    setCampaignForm({ name: '', status: 'Active', reach: '0', conversion: '0%', color: 'bg-primary' });
+    
+    // Audit Log
+    const logs = JSON.parse(localStorage.getItem('qw_audit_logs') || '[]');
+    logs.push({
+      id: Date.now(),
+      action: editingCampaign ? 'Campaign Updated' : 'Campaign Created',
+      target: campaignForm.name,
+      admin: currentUser?.phoneNumber,
+      time: new Date().toISOString(),
+      details: `Admin ${currentUser?.fullName} ${editingCampaign ? 'updated' : 'created'} campaign: ${campaignForm.name}`
+    });
+    localStorage.setItem('qw_audit_logs', JSON.stringify(logs));
+  }, [campaigns, editingCampaign, campaignForm, currentUser]);
+
+  const handleDeleteCampaign = React.useCallback((id: number) => {
+    const updated = campaigns.filter(c => c.id !== id);
+    localStorage.setItem('qw_campaigns', JSON.stringify(updated));
+    setCampaigns(updated);
+    
+    // Audit Log
+    const logs = JSON.parse(localStorage.getItem('qw_audit_logs') || '[]');
+    logs.push({
+      id: Date.now(),
+      action: 'Campaign Deleted',
+      target: id.toString(),
+      admin: currentUser?.phoneNumber,
+      time: new Date().toISOString()
+    });
+    localStorage.setItem('qw_audit_logs', JSON.stringify(logs));
+    setCampaignToDelete(null);
+  }, [campaigns, currentUser]);
+
   const clearAlerts = () => {
     localStorage.setItem('qw_alerts', JSON.stringify([]));
     setAlerts([]);
@@ -149,6 +213,19 @@ export default function AdminDashboard() {
       { label: 'Total Users', value: users.length.toString(), trend: '+12.1%', icon: Users, color: 'text-on-surface' },
       { label: 'System Health', value: '99.9%', trend: 'Stable', icon: Activity, color: 'text-primary' }
     ]);
+
+    const storedCampaigns = JSON.parse(localStorage.getItem('qw_campaigns') || '[]');
+    if (storedCampaigns.length === 0) {
+      const defaultCampaigns = [
+        { id: 1, name: 'Freshman Welcome', status: 'Active', reach: '1.2k', conversion: '15%', color: 'bg-primary' },
+        { id: 2, name: 'Weekend Flash Sale', status: 'Scheduled', reach: '4.5k', conversion: '-', color: 'bg-tertiary' },
+        { id: 3, name: 'Loyalty Rewards', status: 'Active', reach: '850', conversion: '22%', color: 'bg-success' }
+      ];
+      localStorage.setItem('qw_campaigns', JSON.stringify(defaultCampaigns));
+      setCampaigns(defaultCampaigns);
+    } else {
+      setCampaigns(storedCampaigns);
+    }
   }, []);
 
   const assignRider = (orderId: string, riderPhone: string) => {
@@ -196,46 +273,11 @@ export default function AdminDashboard() {
   ];
 
   return (
-    <ProtectedRoute allowedRoles={['admin']}>
-      <div className="pb-32 bg-surface">
-        <TopAppBar roleLabel={currentUser?.phoneNumber === '09012345678' ? 'Super Admin' : 'Moderator Admin'} />
-        
-        <div className="flex pt-20 h-screen overflow-hidden">
-          {/* Sidebar */}
-          <aside className="w-72 bg-surface-container-low border-r border-primary/5 p-6 hidden lg:flex flex-col gap-2 overflow-y-auto">
-            <div className="mb-8 px-4">
-              <p className="font-label text-[10px] font-black uppercase tracking-[0.2em] text-primary mb-1">Control Panel</p>
-              <h2 className="text-2xl font-headline font-black text-on-surface tracking-tighter">Quick-Wash</h2>
-            </div>
-            
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={cn(
-                  "flex items-center gap-4 px-6 py-4 rounded-2xl font-headline font-bold text-sm transition-all active:scale-95",
-                  activeTab === tab.id 
-                    ? "signature-gradient text-white shadow-lg" 
-                    : "text-on-surface-variant hover:bg-surface-container-highest"
-                )}
-              >
-                <tab.icon className={cn("w-5 h-5", activeTab === tab.id && "fill-current")} />
-                {tab.label}
-              </button>
-            ))}
-
-            <div className="mt-auto p-6 bg-primary/5 rounded-3xl border border-primary/10">
-              <p className="text-[10px] font-black uppercase tracking-widest text-primary mb-2">System Status</p>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-success rounded-full animate-pulse"></div>
-                <span className="text-xs font-bold text-on-surface">All Systems Operational</span>
-              </div>
-            </div>
-          </aside>
-
-          {/* Main Content */}
-          <main className="flex-1 overflow-y-auto p-8">
-            <header className="mb-10 flex justify-between items-end">
+    <div className="pb-32 bg-surface">
+      <TopAppBar roleLabel={currentUser?.phoneNumber === '09012345678' ? 'Super Admin' : 'Moderator Admin'} />
+      
+      <div className="flex-1 overflow-y-auto p-8">
+        <header className="mb-10 flex justify-between items-end">
               <div>
                 <h1 className="text-4xl font-headline font-black text-on-surface tracking-tighter capitalize">
                   {activeTab}
@@ -854,17 +896,20 @@ export default function AdminDashboard() {
                     <div className="lg:col-span-2 bg-surface-container-low p-8 rounded-[2.5rem] border border-primary/5">
                       <div className="flex justify-between items-center mb-8">
                         <h2 className="text-2xl font-headline font-black text-on-surface">Active Campaigns</h2>
-                        <button className="signature-gradient text-white px-6 py-3 rounded-xl font-headline font-bold text-xs shadow-lg">
+                        <button 
+                          onClick={() => {
+                            setEditingCampaign(null);
+                            setCampaignForm({ name: '', status: 'Active', reach: '0', conversion: '0%', color: 'bg-primary' });
+                            setIsCampaignModalOpen(true);
+                          }}
+                          className="signature-gradient text-white px-6 py-3 rounded-xl font-headline font-bold text-xs shadow-lg active:scale-95 transition-transform"
+                        >
                           Create New
                         </button>
                       </div>
                       <div className="space-y-4">
-                        {[
-                          { name: 'Freshman Welcome', status: 'Active', reach: '1.2k', conversion: '15%', color: 'bg-primary' },
-                          { name: 'Weekend Flash Sale', status: 'Scheduled', reach: '4.5k', conversion: '-', color: 'bg-tertiary' },
-                          { name: 'Loyalty Rewards', status: 'Active', reach: '850', conversion: '22%', color: 'bg-success' }
-                        ].map(c => (
-                          <div key={c.name} className="flex items-center justify-between p-6 bg-surface-container-lowest rounded-3xl border border-primary/5">
+                        {campaigns.map(c => (
+                          <div key={c.id} className="flex items-center justify-between p-6 bg-surface-container-lowest rounded-3xl border border-primary/5 group">
                             <div className="flex items-center gap-4">
                               <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center text-white", c.color)}>
                                 <Megaphone className="w-6 h-6" />
@@ -874,20 +919,79 @@ export default function AdminDashboard() {
                                 <p className="text-xs text-on-surface-variant">Status: {c.status}</p>
                               </div>
                             </div>
-                            <div className="flex gap-8 text-right">
-                              <div>
+                            <div className="flex gap-8 items-center">
+                              <div className="text-right">
                                 <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Reach</p>
                                 <p className="font-headline font-black">{c.reach}</p>
                               </div>
-                              <div>
+                              <div className="text-right">
                                 <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Conv.</p>
                                 <p className="font-headline font-black text-primary">{c.conversion}</p>
+                              </div>
+                              <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button 
+                                  onClick={() => {
+                                    setEditingCampaign(c);
+                                    setCampaignForm({ ...c });
+                                    setIsCampaignModalOpen(true);
+                                  }}
+                                  className="p-2 rounded-lg bg-surface-container-highest text-on-surface-variant hover:text-primary transition-colors"
+                                >
+                                  <Edit3 className="w-4 h-4" />
+                                </button>
+                                <button 
+                                  onClick={() => setCampaignToDelete(c.id)}
+                                  className="p-2 rounded-lg bg-surface-container-highest text-on-surface-variant hover:text-error transition-colors"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
                               </div>
                             </div>
                           </div>
                         ))}
+                        {campaigns.length === 0 && (
+                          <div className="py-20 text-center border-2 border-dashed border-primary/10 rounded-3xl">
+                            <p className="text-on-surface-variant font-medium">No active campaigns.</p>
+                          </div>
+                        )}
                       </div>
                     </div>
+
+                    {/* Delete Confirmation Modal */}
+                    {campaignToDelete && (
+                      <div className="fixed inset-0 z-[110] flex items-center justify-center p-6">
+                        <motion.div 
+                          initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                          className="absolute inset-0 bg-surface/60 backdrop-blur-md"
+                          onClick={() => setCampaignToDelete(null)}
+                        />
+                        <motion.div 
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          className="relative w-full max-w-sm bg-surface-container-low rounded-[2rem] p-8 border border-error/20 shadow-2xl text-center"
+                        >
+                          <div className="w-16 h-16 bg-error/10 text-error rounded-full flex items-center justify-center mx-auto mb-6">
+                            <Trash2 className="w-8 h-8" />
+                          </div>
+                          <h3 className="text-xl font-headline font-black mb-2">Delete Campaign?</h3>
+                          <p className="text-on-surface-variant text-sm mb-8">This action cannot be undone. All campaign data will be permanently removed.</p>
+                          <div className="flex gap-4">
+                            <button 
+                              onClick={() => setCampaignToDelete(null)}
+                              className="flex-1 h-12 bg-surface-container-highest text-on-surface rounded-xl font-bold text-xs"
+                            >
+                              CANCEL
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteCampaign(campaignToDelete)}
+                              className="flex-1 h-12 bg-error text-white rounded-xl font-bold text-xs shadow-lg shadow-error/20"
+                            >
+                              DELETE
+                            </button>
+                          </div>
+                        </motion.div>
+                      </div>
+                    )}
 
                     <div className="bg-surface-container-low p-8 rounded-[2.5rem] border border-primary/5">
                       <h2 className="text-2xl font-headline font-black text-on-surface mb-8">Push Notifications</h2>
@@ -929,6 +1033,105 @@ export default function AdminDashboard() {
                   </div>
                 </motion.div>
               )}
+              {/* Campaign Modal */}
+              {isCampaignModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+                  <motion.div 
+                    initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                    className="absolute inset-0 bg-surface/80 backdrop-blur-xl"
+                    onClick={() => setIsCampaignModalOpen(false)}
+                  />
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    className="relative w-full max-w-lg bg-surface-container-low rounded-[3rem] p-10 border border-primary/10 shadow-2xl overflow-y-auto max-h-[90vh]"
+                  >
+                    <h2 className="text-3xl font-headline font-black text-on-surface mb-8 tracking-tighter">
+                      {editingCampaign ? 'Edit Campaign' : 'Create New Campaign'}
+                    </h2>
+                    <form onSubmit={handleAddCampaign} className="space-y-6">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Campaign Name</label>
+                        <input 
+                          type="text" 
+                          required
+                          value={campaignForm.name}
+                          onChange={(e) => setCampaignForm({ ...campaignForm, name: e.target.value })}
+                          className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Status</label>
+                          <select 
+                            value={campaignForm.status}
+                            onChange={(e) => setCampaignForm({ ...campaignForm, status: e.target.value })}
+                            className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
+                          >
+                            <option value="Active">Active</option>
+                            <option value="Scheduled">Scheduled</option>
+                            <option value="Paused">Paused</option>
+                            <option value="Completed">Completed</option>
+                          </select>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Color Theme</label>
+                          <select 
+                            value={campaignForm.color}
+                            onChange={(e) => setCampaignForm({ ...campaignForm, color: e.target.value })}
+                            className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
+                          >
+                            <option value="bg-primary">Purple (Primary)</option>
+                            <option value="bg-secondary">Blue (Secondary)</option>
+                            <option value="bg-tertiary">Teal (Tertiary)</option>
+                            <option value="bg-success">Green (Success)</option>
+                            <option value="bg-warning">Orange (Warning)</option>
+                            <option value="bg-error">Red (Error)</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Reach</label>
+                          <input 
+                            type="text" 
+                            required
+                            value={campaignForm.reach}
+                            onChange={(e) => setCampaignForm({ ...campaignForm, reach: e.target.value })}
+                            className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Conversion</label>
+                          <input 
+                            type="text" 
+                            required
+                            value={campaignForm.conversion}
+                            onChange={(e) => setCampaignForm({ ...campaignForm, conversion: e.target.value })}
+                            className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex gap-4 pt-4">
+                        <button 
+                          type="button"
+                          onClick={() => setIsCampaignModalOpen(false)}
+                          className="flex-1 h-14 bg-surface-container-highest text-on-surface rounded-2xl font-headline font-black text-sm active:scale-95 transition-transform"
+                        >
+                          CANCEL
+                        </button>
+                        <button 
+                          type="submit"
+                          className="flex-1 h-14 signature-gradient text-white rounded-2xl font-headline font-black text-sm shadow-lg active:scale-95 transition-transform"
+                        >
+                          {editingCampaign ? 'SAVE CHANGES' : 'CREATE CAMPAIGN'}
+                        </button>
+                      </div>
+                    </form>
+                  </motion.div>
+                </div>
+              )}
+
               {/* Add User Modal */}
               {isAddUserModalOpen && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
@@ -1309,9 +1512,7 @@ export default function AdminDashboard() {
                 </div>
               )}
             </AnimatePresence>
-          </main>
-        </div>
       </div>
-    </ProtectedRoute>
+    </div>
   );
 }

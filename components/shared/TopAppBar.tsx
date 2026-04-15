@@ -27,10 +27,10 @@ export default function TopAppBar({
   const profileLink = user?.role === 'customer' ? '/profile' : (user?.role ? `/${user.role}/profile` : '/profile');
 
   return (
-    <header className="fixed top-0 w-full z-50 bg-surface/80 backdrop-blur-2xl border-b-2 border-primary/10">
-      <div className="flex justify-between items-center px-6 h-20 max-w-7xl mx-auto w-full">
+    <header className="sticky top-0 w-full z-50 bg-surface/80 backdrop-blur-2xl border-b-2 border-primary/10">
+      <div className="flex justify-between items-center px-6 h-20 w-full">
         <div className="flex items-center gap-4">
-          <Link href={homeLink} className="flex items-center gap-2 group">
+          <Link href={homeLink} className="flex lg:hidden items-center gap-2 group">
             <div className="w-10 h-10 rounded-xl signature-gradient flex items-center justify-center shadow-lg group-active:scale-95 transition-transform">
               <Droplets className="text-white w-6 h-6 fill-current" />
             </div>
@@ -38,8 +38,8 @@ export default function TopAppBar({
           </Link>
           
           {title && (
-            <div className="flex items-center gap-2">
-              <span className="h-4 w-px bg-outline-variant/30 hidden xs:block"></span>
+            <div className="flex items-center gap-2 lg:ml-0">
+              <span className="h-4 w-px bg-outline-variant/30 hidden xs:block lg:hidden"></span>
               <h1 className="text-on-surface font-black font-headline text-lg tracking-tight">{title}</h1>
             </div>
           )}
@@ -65,7 +65,7 @@ export default function TopAppBar({
               {user && (
                 <button 
                   onClick={logout}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-error/10 text-error font-headline font-black text-xs uppercase tracking-widest hover:bg-error/20 transition-colors active:scale-95"
+                  className="flex lg:hidden items-center gap-2 px-4 py-2 rounded-xl bg-error/10 text-error font-headline font-black text-xs uppercase tracking-widest hover:bg-error/20 transition-colors active:scale-95"
                 >
                   <LogOut className="w-4 h-4 md:hidden" />
                   <span className="hidden md:inline">Logout</span>

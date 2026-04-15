@@ -94,6 +94,28 @@ function OrderPageContent() {
   const [isPaid, setIsPaid] = React.useState(false);
   const [isPaying, setIsPaying] = React.useState(false);
   const [vendor, setVendor] = React.useState<any>(null);
+  const [currentUser, setCurrentUser] = React.useState<any>(null);
+  const [existingOrderId, setExistingOrderId] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    const storedUser = localStorage.getItem('qw_user');
+    if (storedUser) {
+      const user = JSON.parse(storedUser);
+      setCurrentUser(user);
+      
+      // Check for existing paid but unconfirmed orders
+      const orders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
+      const existing = orders.find((o: any) => 
+        o.customerPhone === user.phoneNumber && 
+        o.status === 'Awaiting Pickup Confirmation' &&
+        (vendorId ? o.vendorId === vendorId : true)
+      );
+      if (existing) {
+        setExistingOrderId(existing.id);
+        setIsPaid(true);
+      }
+    }
+  }, [vendorId]);
 
   // Load vendor services
   React.useEffect(() => {
@@ -132,7 +154,8 @@ function OrderPageContent() {
 
   // Persistence: Load from localStorage if exists
   React.useEffect(() => {
-    const savedCart = localStorage.getItem('qw_pending_cart');
+    if (!currentUser?.phoneNumber) return;
+    const savedCart = localStorage.getItem(`qw_pending_cart_${currentUser.phoneNumber}`);
     if (savedCart) {
       try {
         const parsed = JSON.parse(savedCart);
@@ -156,12 +179,14 @@ function OrderPageContent() {
         console.error('Failed to parse saved cart', e);
       }
     }
-  }, []);
+  }, [currentUser]);
 
   // Save to localStorage whenever cart changes
   React.useEffect(() => {
-    localStorage.setItem('qw_pending_cart', JSON.stringify(cart));
-  }, [cart]);
+    if (currentUser?.phoneNumber) {
+      localStorage.setItem(`qw_pending_cart_${currentUser.phoneNumber}`, JSON.stringify(cart));
+    }
+  }, [cart, currentUser]);
 
   const updateCount = (id: string, delta: number) => {
     setCart(prev => prev.map(item => 
@@ -209,13 +234,26 @@ function OrderPageContent() {
   const totalItems = cart.reduce((acc, item) => acc + item.count, 0);
   const totalPrice = cart.reduce((acc, item) => acc + getItemPrice(item), 0);
 
+  // Load existing order details if any
+  const [existingOrder, setExistingOrder] = React.useState<any>(null);
+  React.useEffect(() => {
+    if (existingOrderId) {
+      const orders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
+      const found = orders.find((o: any) => o.id === existingOrderId);
+      setExistingOrder(found);
+    }
+  }, [existingOrderId]);
+
   const handlePayment = async () => {
     setIsPaying(true);
     await new Promise(resolve => setTimeout(resolve, 2000));
     
     const orders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-    const currentUser = JSON.parse(localStorage.getItem('qw_user') || '{}');
     const allUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
+    const currentUserData = allUsers.find((u: any) => u.phoneNumber === currentUser?.phoneNumber) || currentUser;
+    
+    // Check wallet balance
+    const useWallet = (currentUserData.walletBalance || 0) >= totalPrice;
     
     const itemsDescription = cart.filter(i => i.count > 0).map(i => {
       if (i.subItems) {
@@ -236,9 +274,9 @@ function OrderPageContent() {
     
     const newOrder = {
       id: newOrderId,
-      customerName: currentUser.fullName || 'Guest',
-      customerPhone: currentUser.phoneNumber,
-      customerLandmark: currentUser.landmark || 'Main Gate',
+      customerName: currentUserData.fullName || 'Guest',
+      customerPhone: currentUserData.phoneNumber,
+      customerLandmark: currentUserData.landmark || 'Main Gate',
       items: itemsDescription,
       totalPrice,
       commission,
@@ -249,13 +287,21 @@ function OrderPageContent() {
       vendorId: vendorId || 'campus-cleans',
       vendorName: vendor?.shopName || 'Quick-Wash Partner',
       vendorLandmark: vendor?.landmark || 'Campus Center',
+      vendorPhone: vendor?.phoneNumber || '08012345678',
       handoverCode: handoverCode,
       createdAt: new Date().toISOString(),
-      paidAt: new Date().toISOString()
+      paidAt: new Date().toISOString(),
+      paymentMethod: useWallet ? 'Wallet' : 'Card'
     };
 
-    // Move commission to admin wallet
+    // Update users (Wallet deduction and Admin commission)
     const updatedUsers = allUsers.map((u: any) => {
+      if (u.phoneNumber === currentUserData.phoneNumber && useWallet) {
+        const updated = { ...u, walletBalance: u.walletBalance - totalPrice };
+        localStorage.setItem('qw_user', JSON.stringify(updated));
+        setCurrentUser(updated);
+        return updated;
+      }
       if (u.role === 'admin' && u.phoneNumber === '09012345678') {
         return { ...u, walletBalance: (u.walletBalance || 0) + commission };
       }
@@ -266,15 +312,17 @@ function OrderPageContent() {
     orders.push(newOrder);
     localStorage.setItem('qw_orders', JSON.stringify(orders));
     localStorage.setItem('qw_current_order_id', newOrderId);
-    localStorage.removeItem('qw_pending_cart');
+    if (currentUser?.phoneNumber) {
+      localStorage.removeItem(`qw_pending_cart_${currentUser.phoneNumber}`);
+    }
     
     setIsPaid(true);
     setIsPaying(false);
-    alert('Payment Successful! Please click "I\'M READY FOR PICKUP" when you are ready.');
+    alert(useWallet ? `₦${totalPrice} deducted from wallet. Payment Successful!` : 'Payment Successful! Please click "I\'M READY FOR PICKUP" when you are ready.');
   };
 
   const handlePickupRequest = React.useCallback(() => {
-    const orderId = localStorage.getItem('qw_current_order_id');
+    const orderId = existingOrderId || localStorage.getItem('qw_current_order_id');
     if (!orderId) return;
 
     const orders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
@@ -283,6 +331,7 @@ function OrderPageContent() {
         return { 
           ...o, 
           status: 'Pending Pickup', 
+          pickupCode: Math.floor(1000 + Math.random() * 9000).toString(),
           color: 'bg-primary-container text-on-primary-container',
           confirmedAt: new Date().toISOString()
         };
@@ -294,13 +343,13 @@ function OrderPageContent() {
     localStorage.removeItem('qw_current_order_id');
     alert('Order confirmed! A rider will be assigned shortly.');
     router.push('/track');
-  }, [router]);
+  }, [router, existingOrderId]);
 
   return (
     <div className="pb-64">
       <TopAppBar showAudioToggle />
       
-      <main className="pt-28 px-6 max-w-7xl mx-auto">
+      <main className="pt-8 px-6 max-w-7xl mx-auto">
         <header className="mb-12">
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
@@ -463,12 +512,20 @@ function OrderPageContent() {
           <div className="max-w-3xl mx-auto">
             <div className="flex justify-between items-end mb-10">
               <div>
-                <p className="font-label text-xs uppercase tracking-[0.3em] text-on-surface-variant font-black mb-2">Cart Summary</p>
-                <h3 className="font-headline font-black text-3xl text-on-surface">{totalItems.toString().padStart(2, '0')} Items Selected</h3>
+                <p className="font-label text-xs uppercase tracking-[0.3em] text-on-surface-variant font-black mb-2">
+                  {isPaid ? 'Order Paid' : 'Cart Summary'}
+                </p>
+                <h3 className="font-headline font-black text-3xl text-on-surface">
+                  {isPaid ? `Order #${existingOrder?.id || '...'}` : `${totalItems.toString().padStart(2, '0')} Items Selected`}
+                </h3>
               </div>
               <div className="text-right">
-                <p className="font-label text-xs uppercase tracking-[0.3em] text-on-surface-variant font-black mb-2">Estimated Total</p>
-                <h3 className="font-headline font-black text-5xl text-primary tracking-tighter">₦{(totalPrice || 0).toLocaleString()}</h3>
+                <p className="font-label text-xs uppercase tracking-[0.3em] text-on-surface-variant font-black mb-2">
+                  {isPaid ? 'Total Paid' : 'Estimated Total'}
+                </p>
+                <h3 className="font-headline font-black text-5xl text-primary tracking-tighter">
+                  ₦{(isPaid ? (existingOrder?.totalPrice || 0) : (totalPrice || 0)).toLocaleString()}
+                </h3>
               </div>
             </div>
             

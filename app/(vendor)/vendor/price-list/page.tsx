@@ -184,7 +184,7 @@ export default function PriceListPage() {
       <div className="pb-32">
         <TopAppBar roleLabel="Vendor" showAudioToggle />
         
-        <main className="pt-24 px-6 max-w-7xl mx-auto">
+        <main className="pt-8 px-6 max-w-7xl mx-auto">
           <header className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6">
             <div>
               <div className="flex items-center gap-3 mb-2">

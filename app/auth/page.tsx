@@ -135,7 +135,7 @@ function AuthContent() {
                     />
                   </div>
 
-                  {(role === 'customer' || role === 'rider') && (
+                  {(role === 'customer' || role === 'rider' || role === 'vendor') && (
                     <div className="relative">
                       <MapPin className="absolute left-5 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5" />
                       <select 
@@ -147,6 +147,8 @@ function AuthContent() {
                         <option value="Adenike">Adenike (Off-Campus)</option>
                         <option value="Main Gate">Main Gate (Entrance)</option>
                         <option value="Aroje">Aroje (Residential)</option>
+                        <option value="Stadium">Stadium Area</option>
+                        <option value="General">General Area</option>
                       </select>
                     </div>
                   )}

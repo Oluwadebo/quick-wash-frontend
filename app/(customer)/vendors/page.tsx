@@ -77,7 +77,7 @@ export default function VendorSelectionPage() {
     <div className="pb-32">
       <TopAppBar showAudioToggle />
       
-      <main className="pt-24 px-6 max-w-7xl mx-auto">
+      <main className="pt-8 px-6 max-w-7xl mx-auto">
         <header className="mb-12">
           <motion.h2 
             initial={{ opacity: 0, x: -20 }}

@@ -12,6 +12,11 @@ export default function ReadyToReceiveButton({ onClick }: { onClick?: () => void
     const audioEnabled = localStorage.getItem('yoruba-audio-enabled') === 'true';
     if (audioEnabled) {
       setIsPlaying(true);
+      if ('speechSynthesis' in window) {
+        const msg = new SpeechSynthesisUtterance('Mo ti ṣe tán láti gba aṣọ mi');
+        msg.lang = 'yo-NG';
+        window.speechSynthesis.speak(msg);
+      }
       console.log('Playing Yoruba Audio: "Mo ti ṣe tán láti gba aṣọ mi"');
       setTimeout(() => setIsPlaying(false), 2000);
     }
