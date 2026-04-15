@@ -204,7 +204,7 @@ export default function AdminDashboard() {
     const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
     setOrders(allOrders);
 
-    const totalRevenue = allOrders.reduce((acc: number, o: any) => acc + (o.totalPrice || 0), 0);
+    const totalRevenue = allOrders.reduce((acc: number, o: any) => acc + (Number(o.totalPrice) || 0), 0);
     const activeOrders = allOrders.filter((o: any) => o.status !== 'Delivered' && !o.status.includes('Cancelled')).length;
     
     setStats([
@@ -1265,7 +1265,7 @@ export default function AdminDashboard() {
                         <input 
                           type="number" 
                           value={editingUser.trustPoints || 0}
-                          onChange={(e) => setEditingUser({ ...editingUser, trustPoints: parseInt(e.target.value) })}
+                          onChange={(e) => setEditingUser({ ...editingUser, trustPoints: parseInt(e.target.value) || 0 })}
                           className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
                         />
                       </div>

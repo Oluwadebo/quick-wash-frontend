@@ -107,7 +107,7 @@ function OrderPageContent() {
       const orders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
       const existing = orders.find((o: any) => 
         o.customerPhone === user.phoneNumber && 
-        o.status === 'Awaiting Pickup Confirmation' &&
+        o.status === 'confirm' &&
         (vendorId ? o.vendorId === vendorId : true)
       );
       if (existing) {
@@ -221,14 +221,15 @@ function OrderPageContent() {
 
   const getItemPrice = (item: any) => {
     if (item.subItems) {
-      const subTotal = item.subItems.reduce((acc: number, si: any) => acc + (si.count * (si.price || 0)), 0);
-      const stainPrice = item.hasStainRemover ? (item.stainRemoverPrice || 0) : 0;
-      return subTotal + (item.count > 0 ? stainPrice : 0);
+      const subTotal = item.subItems.reduce((acc: number, si: any) => acc + ((Number(si.count) || 0) * (Number(si.price) || 0)), 0);
+      const stainPrice = item.hasStainRemover ? (Number(item.stainRemoverPrice) || 0) : 0;
+      return subTotal + ((Number(item.count) || 0) > 0 ? stainPrice : 0);
     }
     const service = item.services?.find((s: any) => s.name === item.selectedService);
     const servicePrice = service ? (service.price ?? item.basePrice ?? 0) : (item.basePrice ?? 0);
-    const stainPrice = item.hasStainRemover ? (item.stainRemoverPrice || 0) : 0;
-    return (item.count * servicePrice) + (item.count > 0 ? stainPrice : 0);
+    const stainPrice = item.hasStainRemover ? (Number(item.stainRemoverPrice) || 0) : 0;
+    const count = Number(item.count) || 0;
+    return (count * (Number(servicePrice) || 0)) + (count > 0 ? stainPrice : 0);
   };
 
   const totalItems = cart.reduce((acc, item) => acc + item.count, 0);
@@ -244,16 +245,22 @@ function OrderPageContent() {
     }
   }, [existingOrderId]);
 
-  const handlePayment = async () => {
-    setIsPaying(true);
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    const orders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
+  const handlePayment = React.useCallback(async () => {
     const allUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
     const currentUserData = allUsers.find((u: any) => u.phoneNumber === currentUser?.phoneNumber) || currentUser;
     
     // Check wallet balance
-    const useWallet = (currentUserData.walletBalance || 0) >= totalPrice;
+    if ((currentUserData.walletBalance || 0) < totalPrice) {
+      if (confirm(`Insufficient balance. Your balance is ₦${(currentUserData.walletBalance || 0).toLocaleString()}. Would you like to fund your wallet now?`)) {
+        router.push('/wallet');
+      }
+      return;
+    }
+
+    setIsPaying(true);
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    const orders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
     
     const itemsDescription = cart.filter(i => i.count > 0).map(i => {
       if (i.subItems) {
@@ -281,7 +288,7 @@ function OrderPageContent() {
       totalPrice,
       commission,
       riderFee,
-      status: 'Awaiting Pickup Confirmation',
+      status: 'confirm',
       time: new Date().toISOString(),
       color: 'bg-warning/20 text-warning',
       vendorId: vendorId || 'campus-cleans',
@@ -291,12 +298,12 @@ function OrderPageContent() {
       handoverCode: handoverCode,
       createdAt: new Date().toISOString(),
       paidAt: new Date().toISOString(),
-      paymentMethod: useWallet ? 'Wallet' : 'Card'
+      paymentMethod: 'Wallet'
     };
 
     // Update users (Wallet deduction and Admin commission)
     const updatedUsers = allUsers.map((u: any) => {
-      if (u.phoneNumber === currentUserData.phoneNumber && useWallet) {
+      if (u.phoneNumber === currentUserData.phoneNumber) {
         const updated = { ...u, walletBalance: u.walletBalance - totalPrice };
         localStorage.setItem('qw_user', JSON.stringify(updated));
         setCurrentUser(updated);
@@ -309,6 +316,17 @@ function OrderPageContent() {
     });
     localStorage.setItem('qw_all_users', JSON.stringify(updatedUsers));
 
+    // Record Wallet History
+    const newHistory = {
+      id: `pay_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      type: 'payment',
+      amount: totalPrice,
+      date: new Date().toISOString(),
+      desc: `Payment for Order #${newOrderId}`
+    };
+    const currentHistory = JSON.parse(localStorage.getItem(`qw_wallet_history_${currentUserData.phoneNumber}`) || '[]');
+    localStorage.setItem(`qw_wallet_history_${currentUserData.phoneNumber}`, JSON.stringify([newHistory, ...currentHistory]));
+
     orders.push(newOrder);
     localStorage.setItem('qw_orders', JSON.stringify(orders));
     localStorage.setItem('qw_current_order_id', newOrderId);
@@ -318,8 +336,8 @@ function OrderPageContent() {
     
     setIsPaid(true);
     setIsPaying(false);
-    alert(useWallet ? `₦${totalPrice} deducted from wallet. Payment Successful!` : 'Payment Successful! Please click "I\'M READY FOR PICKUP" when you are ready.');
-  };
+    alert(`₦${totalPrice.toLocaleString()} deducted from wallet. Payment Successful! Please click "I'M READY FOR PICKUP" when you are ready.`);
+  }, [currentUser, totalPrice, vendorId, vendor, router, cart]);
 
   const handlePickupRequest = React.useCallback(() => {
     const orderId = existingOrderId || localStorage.getItem('qw_current_order_id');
@@ -330,7 +348,7 @@ function OrderPageContent() {
       if (o.id === orderId) {
         return { 
           ...o, 
-          status: 'Pending Pickup', 
+          status: 'rider_assign_pickup', 
           pickupCode: Math.floor(1000 + Math.random() * 9000).toString(),
           color: 'bg-primary-container text-on-primary-container',
           confirmedAt: new Date().toISOString()
@@ -390,7 +408,7 @@ function OrderPageContent() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.1 }}
               className={cn(
-                "rounded-[3rem] p-8 border border-primary/5 transition-all hover:shadow-2xl hover:shadow-primary/5 bg-surface-container-low flex flex-col",
+                "rounded-[3rem] p-8 border border-primary/5 transition-all hover:shadow-2xl hover:shadow-primary/5 bg-surface-container-low flex flex-col min-h-[600px]",
                 item.count > 0 && "ring-4 ring-primary-container"
               )}
             >
@@ -423,75 +441,88 @@ function OrderPageContent() {
                 )}
               </div>
 
-              {item.subItems && (
-                <div className="grid grid-cols-1 gap-4 mb-8">
-                  {item.subItems.map(si => (
-                    <div key={si.id} className="bg-white p-6 rounded-3xl shadow-sm border border-primary/5 flex items-center justify-between">
-                      <div>
-                        <p className="font-headline font-black text-sm">{si.name}</p>
-                        <p className="text-[10px] font-bold text-on-surface-variant">₦{si.price}</p>
+              <div className="flex flex-col flex-1">
+                {item.subItems && (
+                  <div className="grid grid-cols-1 gap-3 mb-6">
+                    {item.subItems.map(si => (
+                      <div key={si.id} className="bg-white/50 p-4 rounded-2xl border border-primary/5 flex items-center justify-between">
+                        <div>
+                          <p className="font-headline font-black text-xs">{si.name}</p>
+                          <p className="text-[10px] font-bold text-on-surface-variant">₦{si.price}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button 
+                            onClick={() => updateSubItemCount(item.id, si.id, -1)}
+                            className="w-7 h-7 flex items-center justify-center rounded-lg bg-surface-container active:scale-90 transition-transform"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </button>
+                          <span className="font-headline font-black text-sm min-w-[1.5ch] text-center">{si.count}</span>
+                          <button 
+                            onClick={() => updateSubItemCount(item.id, si.id, 1)}
+                            className="w-7 h-7 flex items-center justify-center rounded-lg bg-primary text-white active:scale-90 transition-transform"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                        </div>
                       </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="mt-auto space-y-4">
+                  {/* Stain Remover Toggle Row */}
+                  {item.count > 0 && (
+                    <div 
+                      onClick={() => toggleStainRemover(item.id)}
+                      className={cn(
+                        "flex items-center justify-between p-4 rounded-2xl border cursor-pointer transition-all",
+                        item.hasStainRemover 
+                          ? "bg-tertiary/10 border-tertiary/30" 
+                          : "bg-white/40 border-primary/5 opacity-60"
+                      )}
+                    >
                       <div className="flex items-center gap-3">
-                        <button 
-                          onClick={() => updateSubItemCount(item.id, si.id, -1)}
-                          className="w-8 h-8 flex items-center justify-center rounded-xl bg-surface-container active:scale-90 transition-transform"
-                        >
-                          <Minus className="w-4 h-4" />
-                        </button>
-                        <span className="font-headline font-black text-lg min-w-[1.5ch] text-center">{si.count}</span>
-                        <button 
-                          onClick={() => updateSubItemCount(item.id, si.id, 1)}
-                          className="w-8 h-8 flex items-center justify-center rounded-xl bg-primary text-white active:scale-90 transition-transform"
-                        >
-                          <Plus className="w-4 h-4" />
-                        </button>
+                        <Sparkles className={cn("w-4 h-4", item.hasStainRemover ? "text-tertiary fill-current" : "text-on-surface-variant")} />
+                        <span className="font-headline font-black text-[10px] uppercase tracking-wider">Stain Remover</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold text-on-surface-variant">+₦{item.stainRemoverPrice}</span>
+                        <div className={cn(
+                          "w-8 h-4 rounded-full relative transition-colors",
+                          item.hasStainRemover ? "bg-tertiary" : "bg-outline/20"
+                        )}>
+                          <motion.div 
+                            animate={{ x: item.hasStainRemover ? 16 : 2 }}
+                            className="absolute top-1 w-2 h-2 bg-white rounded-full"
+                          />
+                        </div>
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
+                  )}
 
-              <div className="flex flex-wrap gap-3 mb-8 mt-auto">
-                {item.services.map(service => (
-                  <button 
-                    key={service.name}
-                    onClick={() => updateService(item.id, service.name)}
-                    className={cn(
-                      "px-6 py-3 rounded-2xl font-headline font-black text-xs shadow-sm transition-all active:scale-95",
-                      item.selectedService === service.name 
-                        ? "signature-gradient text-white shadow-lg" 
-                        : "bg-white text-on-surface-variant hover:bg-surface-container-highest"
-                    )}
-                  >
-                    {service.name} {service.price > 0 && `(₦${service.price})`}
-                  </button>
-                ))}
+                  {/* Service Grid */}
+                  <div className="grid grid-cols-2 gap-2">
+                    {item.services.map(service => (
+                      <button 
+                        key={service.name}
+                        onClick={() => updateService(item.id, service.name)}
+                        className={cn(
+                          "px-3 py-3 rounded-xl font-headline font-black text-[10px] uppercase tracking-wider transition-all active:scale-95 text-center",
+                          item.selectedService === service.name 
+                            ? "signature-gradient text-white shadow-md" 
+                            : "bg-white text-on-surface-variant hover:bg-surface-container-highest border border-primary/5"
+                        )}
+                      >
+                        {service.name}
+                        <span className="block text-[8px] opacity-60 mt-0.5">₦{service.price}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
 
-              {item.count > 0 && (
-                <button 
-                  onClick={() => toggleStainRemover(item.id)}
-                  className={cn(
-                    "w-full flex items-center justify-between p-6 rounded-3xl border transition-all mb-8",
-                    item.hasStainRemover 
-                      ? "bg-tertiary-container/20 border-tertiary-container shadow-inner" 
-                      : "bg-white border-primary/5 opacity-60"
-                  )}
-                >
-                  <div className="flex items-center gap-4">
-                    <Sparkles className={cn("w-6 h-6 fill-current", item.hasStainRemover ? "text-tertiary" : "text-on-surface-variant")} />
-                    <div className="text-left">
-                      <span className="font-headline font-black text-sm block">Stain Remover</span>
-                      <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Deep cleaning</span>
-                    </div>
-                  </div>
-                  <span className={cn("font-label text-sm font-black", item.hasStainRemover ? "text-tertiary" : "text-on-surface-variant")}>
-                    +₦{item.stainRemoverPrice}
-                  </span>
-                </button>
-              )}
-
-              <div className="flex items-center justify-between pt-6 border-t border-primary/5">
+              <div className="flex items-center justify-between pt-6 mt-6 border-t border-primary/5">
                 <div className="flex items-center gap-2 text-on-surface-variant opacity-60">
                   <CreditCard className="w-5 h-5" />
                   <span className="text-[10px] font-label font-bold uppercase tracking-widest">

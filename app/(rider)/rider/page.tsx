@@ -50,7 +50,7 @@ export default function RiderDashboard() {
       setStats({
         walletBalance: me?.walletBalance || 0,
         trustScore: me?.trustScore || 100,
-        completedTasks: allOrders.filter((o: any) => o.riderPhone === currentUser.phoneNumber && o.status === 'Delivered').length
+        completedTasks: allOrders.filter((o: any) => o.riderPhone === currentUser.phoneNumber && o.status === 'completed').length
       });
     }
   }, [currentUser]);
@@ -75,7 +75,7 @@ export default function RiderDashboard() {
       if (o.id === orderId) {
         return { 
           ...o, 
-          status: 'Pending Pickup', 
+          status: o.status === 'ready' ? 'rider_assign_delivery' : 'rider_assign_pickup', 
           riderPhone: currentUser?.phoneNumber,
           riderName: currentUser?.fullName,
           color: 'bg-primary text-on-primary'
@@ -84,9 +84,9 @@ export default function RiderDashboard() {
       return o;
     });
     localStorage.setItem('qw_orders', JSON.stringify(updated));
-    setTasks(updated.filter((o: any) => o.riderPhone === currentUser?.phoneNumber && !['Delivered', 'Cancelled'].includes(o.status)));
+    setTasks(updated.filter((o: any) => o.riderPhone === currentUser?.phoneNumber && !['delivered', 'completed', 'Cancelled'].includes(o.status)));
     setAvailableOrders(updated.filter((o: any) => {
-      const isAvailable = (o.status === 'Awaiting Pickup Confirmation' || o.status === 'Pending Pickup') && !o.riderPhone;
+      const isAvailable = (o.status === 'rider_assign_pickup' || o.status === 'ready') && !o.riderPhone;
       if (!isAvailable) return false;
       const now = new Date().getTime();
       const createdAt = new Date(o.createdAt).getTime();
@@ -103,7 +103,7 @@ export default function RiderDashboard() {
       if (o.id === orderId) {
         return { 
           ...o, 
-          status: 'Pending Pickup', // Keep it ready for other riders
+          status: o.status === 'ready' ? 'ready' : 'rider_assign_pickup', // Keep it ready for other riders
           riderPhone: null,
           riderName: null,
           color: 'bg-warning/20 text-warning'
@@ -112,9 +112,9 @@ export default function RiderDashboard() {
       return o;
     });
     localStorage.setItem('qw_orders', JSON.stringify(updated));
-    setTasks(updated.filter((o: any) => o.riderPhone === currentUser?.phoneNumber && !['Delivered', 'Cancelled'].includes(o.status)));
+    setTasks(updated.filter((o: any) => o.riderPhone === currentUser?.phoneNumber && !['delivered', 'completed', 'Cancelled'].includes(o.status)));
     setAvailableOrders(updated.filter((o: any) => {
-      const isAvailable = (o.status === 'Awaiting Pickup Confirmation' || o.status === 'Pending Pickup') && !o.riderPhone;
+      const isAvailable = (o.status === 'rider_assign_pickup' || o.status === 'ready') && !o.riderPhone;
       if (!isAvailable) return false;
       const now = new Date().getTime();
       const createdAt = new Date(o.createdAt).getTime();
@@ -159,7 +159,7 @@ export default function RiderDashboard() {
         if (o.id === order.id) {
           return { 
             ...o, 
-            status: 'Delivered', 
+            status: 'delivered', 
             color: 'bg-success text-on-success',
             deliveredAt: new Date().toISOString()
           };
@@ -167,7 +167,7 @@ export default function RiderDashboard() {
         return o;
       });
       localStorage.setItem('qw_orders', JSON.stringify(updatedOrders));
-      setTasks(updatedOrders.filter((o: any) => o.riderPhone === currentUser?.phoneNumber && !['Delivered', 'Cancelled'].includes(o.status)));
+      setTasks(updatedOrders.filter((o: any) => o.riderPhone === currentUser?.phoneNumber && !['delivered', 'completed', 'Cancelled'].includes(o.status)));
 
       setNotification({ message: 'Handover verified! Delivery complete.', type: 'success' });
       setTimeout(() => setNotification(null), 3000);
@@ -199,7 +199,7 @@ export default function RiderDashboard() {
         if (o.id === order.id) {
           return { 
             ...o, 
-            status: 'Picked Up', 
+            status: 'picked_up', 
             color: 'bg-secondary text-on-secondary',
             pickedUpAt: new Date().toISOString()
           };
@@ -207,7 +207,7 @@ export default function RiderDashboard() {
         return o;
       });
       localStorage.setItem('qw_orders', JSON.stringify(updatedOrders));
-      setTasks(updatedOrders.filter((o: any) => o.riderPhone === currentUser?.phoneNumber && !['Delivered', 'Cancelled'].includes(o.status)));
+      setTasks(updatedOrders.filter((o: any) => o.riderPhone === currentUser?.phoneNumber && !['delivered', 'completed', 'Cancelled'].includes(o.status)));
 
       setNotification({ message: 'Pickup confirmed! Head to the vendor.', type: 'success' });
       setTimeout(() => setNotification(null), 3000);

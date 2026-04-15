@@ -41,7 +41,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
   };
 
   const handleCancelOrder = () => {
-    if (order?.status === 'Awaiting Pickup Confirmation' || order?.status === 'Pending Pickup') {
+    if (order?.status === 'confirm' || order?.status === 'rider_assign_pickup') {
       if (confirm('Are you sure you want to cancel this order?')) {
         const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
         const updated = allOrders.map((o: any) => o.id === order.id ? { ...o, status: 'Cancelled', color: 'bg-error/10 text-error' } : o);
@@ -55,16 +55,58 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
   };
 
   const steps = [
-    { id: 'Awaiting Pickup Confirmation', label: 'Confirmed' },
-    { id: 'Pending Pickup', label: 'Pickup' },
-    { id: 'Picked Up', label: 'Picked up' },
-    { id: 'Wash', label: 'Washing' },
-    { id: 'Ready for Delivery', label: 'Ready' },
-    { id: 'Delivered', label: 'Delivered' }
+    { id: 'confirm', label: 'Confirmed' },
+    { id: 'rider_assign_pickup', label: 'Pickup' },
+    { id: 'picked_up', label: 'Picked up' },
+    { id: 'washing', label: 'Washing' },
+    { id: 'ready', label: 'Ready' },
+    { id: 'rider_assign_delivery', label: 'Delivery' },
+    { id: 'delivered', label: 'Delivered' },
+    { id: 'completed', label: 'Completed' }
   ];
 
   const currentStepIdx = steps.findIndex(s => s.id === order.status);
   const progress = ((currentStepIdx + 1) / steps.length) * 100;
+
+  const handleNoIssue = () => {
+    const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
+    const updated = allOrders.map((o: any) => {
+      if (o.id === order.id) {
+        return { 
+          ...o, 
+          status: 'completed', 
+          color: 'bg-success text-on-success',
+          completedAt: new Date().toISOString()
+        };
+      }
+      return o;
+    });
+    localStorage.setItem('qw_orders', JSON.stringify(updated));
+    setOrder(updated.find((o: any) => o.id === order.id));
+    alert('Thank you for confirming! Your order is now completed.');
+  };
+
+  const handleRaiseIssue = () => {
+    const issue = prompt('Please describe the issue with your order:');
+    if (issue) {
+      const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
+      const updated = allOrders.map((o: any) => {
+        if (o.id === order.id) {
+          return { 
+            ...o, 
+            status: 'disputed', 
+            color: 'bg-error text-on-error',
+            issueDescription: issue,
+            disputedAt: new Date().toISOString()
+          };
+        }
+        return o;
+      });
+      localStorage.setItem('qw_orders', JSON.stringify(updated));
+      setOrder(updated.find((o: any) => o.id === order.id));
+      alert('Your issue has been reported. Our support team will contact you shortly.');
+    }
+  };
 
   return (
     <div className="pb-64">
@@ -125,7 +167,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
         </section>
 
         {/* Handover Code Section */}
-        {['Pending Pickup', 'Out for Delivery', 'Ready for Delivery'].includes(order.status) && (
+        {['rider_assign_pickup', 'rider_assign_delivery', 'ready'].includes(order.status) && (
           <section className="bg-surface-container-lowest rounded-[3rem] p-10 text-center space-y-8 shadow-2xl border-4 border-primary-container relative overflow-hidden">
             <div className="absolute top-0 right-0 p-4">
               <ShieldCheck className="text-primary/10 w-24 h-24" />
@@ -133,10 +175,10 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
             
             <div className="relative z-10">
               <p className="font-label text-xs uppercase tracking-[0.3em] font-black text-on-surface-variant mb-8">
-                {order.status === 'Pending Pickup' ? 'Give this to Rider at Pickup' : 'Your Handover Code'}
+                {order.status === 'rider_assign_pickup' ? 'Give this to Rider at Pickup' : 'Your Handover Code'}
               </p>
               <div className="flex justify-center gap-4">
-                {((order.status === 'Pending Pickup' ? order.pickupCode : order.handoverCode) || '----').split('').map((num: string, i: number) => (
+                {((order.status === 'rider_assign_pickup' ? order.pickupCode : order.handoverCode) || '----').split('').map((num: string, i: number) => (
                   <motion.span 
                     key={i}
                     initial={{ scale: 0.8, opacity: 0 }}
@@ -151,7 +193,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
               <div className="mt-10 flex items-center justify-center gap-3 bg-primary/5 p-4 rounded-2xl border border-primary/10">
                 <Info className="text-primary w-5 h-5" />
                 <p className="text-xs font-bold text-on-surface-variant leading-relaxed">
-                  {order.status === 'Pending Pickup' 
+                  {order.status === 'rider_assign_pickup' 
                     ? 'The rider needs this code to confirm they have picked up your laundry.'
                     : 'Show this code to the rider only after receiving your laundry.'}
                 </p>
@@ -161,7 +203,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
         )}
 
         {/* Sealed Bag Uploader - Only at pickup stage */}
-        {(order.status === 'Awaiting Pickup Confirmation' || order.status === 'Pending Pickup') && (
+        {(order.status === 'confirm' || order.status === 'rider_assign_pickup') && (
           <SealedBagUploader />
         )}
 
@@ -218,6 +260,23 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
           <p className="text-sm text-on-surface-variant leading-relaxed font-medium">
             Payment of ₦{(order.totalPrice || 0).toLocaleString()} is held securely. 20% (₦{(order.totalPrice * 0.2 || 0).toLocaleString()}) is held for 24 hours after delivery to ensure your satisfaction.
           </p>
+          
+          {order.status === 'delivered' && (
+            <div className="mt-8 grid grid-cols-2 gap-4">
+              <button 
+                onClick={handleRaiseIssue}
+                className="h-16 rounded-2xl bg-error/10 text-error font-headline font-black text-xs active:scale-95 transition-transform"
+              >
+                RAISE ISSUE
+              </button>
+              <button 
+                onClick={handleNoIssue}
+                className="h-16 rounded-2xl bg-success text-white font-headline font-black text-xs shadow-lg active:scale-95 transition-transform"
+              >
+                NO ISSUE
+              </button>
+            </div>
+          )}
         </section>
 
         {/* Cancel Button */}
@@ -232,7 +291,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
       </main>
 
       {/* Sticky Footer */}
-      {order.status === 'Ready for Delivery' && (
+      {order.status === 'ready' && (
         <div className="fixed bottom-0 left-0 w-full p-8 bg-gradient-to-t from-surface via-surface to-transparent z-40">
           <div className="max-w-2xl mx-auto">
             <ReadyToReceiveButton 
@@ -242,7 +301,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
                   if (o.id === resolvedParams.id) {
                     return { 
                       ...o, 
-                      status: 'Awaiting Delivery Confirmation', 
+                      status: 'rider_assign_delivery', 
                       color: 'bg-primary text-on-primary',
                       customerConfirmedDeliveryAt: new Date().toISOString()
                     };

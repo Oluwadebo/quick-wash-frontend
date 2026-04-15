@@ -62,7 +62,7 @@ export default function VendorDashboard() {
 
       if (penaltyApplied) {
         const updatedAllOrders = allOrders.map((o: any) => {
-          const match = checkedOrders.find(co => co.id === o.id);
+          const match = checkedOrders.find((co: any) => co.id === o.id);
           return match || o;
         });
         localStorage.setItem('qw_orders', JSON.stringify(updatedAllOrders));
@@ -85,12 +85,13 @@ export default function VendorDashboard() {
       
       const updatedOrders = allOrders.map((o: any) => {
         if (o.vendorId === currentUser.phoneNumber && 
-            o.status === 'Delivered' && 
+            o.status === 'delivered' && 
             o.deliveredAt && 
             !o.payoutReleased && 
             !o.disputed) {
           const deliveredTime = new Date(o.deliveredAt).getTime();
           if (now - deliveredTime >= twentyFourHours) {
+            o.status = 'completed'; // Mark as completed after 24h
             o.payoutReleased = true;
             payoutHappened = true;
             
@@ -124,7 +125,7 @@ export default function VendorDashboard() {
       setStats({
         totalEarnings: me?.walletBalance || 0,
         pendingBalance: me?.pendingBalance || 0,
-        activeOrders: vendorOrders.filter((o: any) => !['Delivered', 'Cancelled'].includes(o.status)).length,
+        activeOrders: vendorOrders.filter((o: any) => !['delivered', 'completed', 'Cancelled'].includes(o.status)).length,
         trustScore: me?.trustScore || 100
       });
     }
@@ -166,7 +167,7 @@ export default function VendorDashboard() {
       });
       localStorage.setItem('qw_all_users', JSON.stringify(updatedUsers));
 
-      handleStatusUpdate(order.id, 'Wash', 'bg-primary text-on-primary');
+      handleStatusUpdate(order.id, 'washing', 'bg-primary text-on-primary');
       alert('Handover verified! Order is now in WASHING stage. 80% payment credited, 20% pending.');
       setHandoverInput('');
     } else {
@@ -175,7 +176,21 @@ export default function VendorDashboard() {
   };
 
   const toggleReadyForDelivery = (orderId: string, isReady: boolean) => {
-    handleStatusUpdate(orderId, isReady ? 'Ready for Delivery' : 'Wash', isReady ? 'bg-success text-on-success' : 'bg-primary text-on-primary');
+    const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
+    const updated = allOrders.map((o: any) => {
+      if (o.id === orderId) {
+        return { 
+          ...o, 
+          status: isReady ? 'ready' : 'washing', 
+          color: isReady ? 'bg-success text-on-success' : 'bg-primary text-on-primary',
+          readyForDeliveryAt: isReady ? new Date().toISOString() : null
+        };
+      }
+      return o;
+    });
+    localStorage.setItem('qw_orders', JSON.stringify(updated));
+    setOrders(updated.filter((o: any) => o.vendorId === currentUser?.phoneNumber));
+    setSelectedOrder(null);
   };
 
   const handleSaveService = (e: React.FormEvent) => {
@@ -374,7 +389,7 @@ export default function VendorDashboard() {
                 animate={{ opacity: 1, y: 0 }}
                 className="space-y-6"
               >
-                {orders.filter(o => !['Delivered', 'Cancelled'].includes(o.status)).map((order) => (
+                {orders.filter(o => !['delivered', 'completed', 'Cancelled'].includes(o.status)).map((order) => (
                   <div 
                     key={order.id}
                     className="bg-surface-container-low p-8 rounded-[2.5rem] border border-primary/5 shadow-sm hover:shadow-xl transition-all"
@@ -402,7 +417,7 @@ export default function VendorDashboard() {
                     </p>
 
                     <div className="flex gap-4">
-                      {order.status === 'Picked Up' && (
+                      {order.status === 'picked_up' && (
                         <div className="flex-1 flex gap-3">
                           <input 
                             type="text" 
@@ -419,7 +434,7 @@ export default function VendorDashboard() {
                           </button>
                         </div>
                       )}
-                      {order.status === 'Wash' && (
+                      {order.status === 'washing' && (
                         <button 
                           onClick={() => toggleReadyForDelivery(order.id, true)}
                           className="flex-1 h-14 bg-success text-on-success rounded-xl font-headline font-black text-sm shadow-lg shadow-success/20 active:scale-95 transition-transform"
@@ -427,7 +442,7 @@ export default function VendorDashboard() {
                           READY FOR DELIVERY
                         </button>
                       )}
-                      {order.status === 'Ready for Delivery' && (
+                      {order.status === 'ready' && (
                         <button 
                           onClick={() => toggleReadyForDelivery(order.id, false)}
                           className="flex-1 h-14 bg-surface-container-highest text-on-surface rounded-xl font-headline font-black text-sm active:scale-95 transition-transform"
@@ -459,7 +474,7 @@ export default function VendorDashboard() {
                 animate={{ opacity: 1, x: 0 }}
                 className="space-y-4"
               >
-                {orders.filter(o => ['Delivered', 'Cancelled'].includes(o.status)).map((order) => (
+                {orders.filter(o => ['delivered', 'completed', 'Cancelled'].includes(o.status)).map((order) => (
                   <div key={order.id} className="bg-surface-container-low p-6 rounded-3xl border border-primary/5 flex justify-between items-center">
                     <div className="flex items-center gap-4">
                       <div className="w-12 h-12 rounded-xl bg-surface-container-highest flex items-center justify-center">
@@ -472,13 +487,13 @@ export default function VendorDashboard() {
                     </div>
                     <span className={cn(
                       "px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest",
-                      order.status === 'Delivered' ? "bg-success/10 text-success" : "bg-error/10 text-error"
+                      ['delivered', 'completed'].includes(order.status) ? "bg-success/10 text-success" : "bg-error/10 text-error"
                     )}>
                       {order.status}
                     </span>
                   </div>
                 ))}
-                {orders.filter(o => ['Delivered', 'Cancelled'].includes(o.status)).length === 0 && (
+                {orders.filter(o => ['delivered', 'completed', 'Cancelled'].includes(o.status)).length === 0 && (
                   <div className="py-20 text-center">
                     <p className="text-on-surface-variant font-medium">No order history yet.</p>
                   </div>
@@ -655,48 +670,48 @@ export default function VendorDashboard() {
                   </div>
                   
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Wash Only (₦)</label>
-                      <input 
-                        type="number" 
-                        required
-                        value={editingService.washPrice}
-                        onChange={(e) => setEditingService({ ...editingService, washPrice: parseInt(e.target.value) })}
-                        className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
-                      />
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Wash Only (₦)</label>
+                        <input 
+                          type="number" 
+                          required
+                          value={editingService.washPrice || 0}
+                          onChange={(e) => setEditingService({ ...editingService, washPrice: parseInt(e.target.value) || 0 })}
+                          className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Iron Only (₦)</label>
+                        <input 
+                          type="number" 
+                          required
+                          value={editingService.ironPrice || 0}
+                          onChange={(e) => setEditingService({ ...editingService, ironPrice: parseInt(e.target.value) || 0 })}
+                          className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
+                        />
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Iron Only (₦)</label>
-                      <input 
-                        type="number" 
-                        required
-                        value={editingService.ironPrice}
-                        onChange={(e) => setEditingService({ ...editingService, ironPrice: parseInt(e.target.value) })}
-                        className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Wash + Iron (₦)</label>
-                      <input 
-                        type="number" 
-                        required
-                        value={editingService.washIronPrice}
-                        onChange={(e) => setEditingService({ ...editingService, washIronPrice: parseInt(e.target.value) })}
-                        className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">White Premium (+₦)</label>
-                      <input 
-                        type="number" 
-                        value={editingService.whitePremium}
-                        onChange={(e) => setEditingService({ ...editingService, whitePremium: parseInt(e.target.value) })}
-                        className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
-                      />
-                    </div>
+  
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Wash + Iron (₦)</label>
+                        <input 
+                          type="number" 
+                          required
+                          value={editingService.washIronPrice || 0}
+                          onChange={(e) => setEditingService({ ...editingService, washIronPrice: parseInt(e.target.value) || 0 })}
+                          className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">White Premium (+₦)</label>
+                        <input 
+                          type="number" 
+                          value={editingService.whitePremium || 0}
+                          onChange={(e) => setEditingService({ ...editingService, whitePremium: parseInt(e.target.value) || 0 })}
+                          className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
+                        />
+                      </div>
                   </div>
 
                   <div className="flex gap-4 pt-4">

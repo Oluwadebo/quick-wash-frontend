@@ -35,7 +35,7 @@ export default function LandmarkSelectionPage() {
       // Check for paid but unconfirmed order
       const unconfirmed = allOrders.find((o: any) => 
         o.customerPhone === currentUser.phoneNumber && 
-        o.status === 'Awaiting Pickup Confirmation'
+        o.status === 'confirm'
       );
       setUnconfirmedOrder(unconfirmed);
     }
@@ -44,13 +44,14 @@ export default function LandmarkSelectionPage() {
     setAlerts(activeAlerts.filter((a: any) => a.type === 'Weather'));
     
     const checkExpiredOrders = () => {
+      const allOrdersNow = JSON.parse(localStorage.getItem('qw_orders') || '[]');
       const now = new Date().getTime();
       const thirtyMinutes = 30 * 60 * 1000;
       let changed = false;
       let refundTotal = 0;
 
-      const updated = allOrders.map((o: any) => {
-        if (o.status === 'Awaiting Pickup Confirmation' && o.paidAt) {
+      const updated = allOrdersNow.map((o: any) => {
+        if (o.status === 'confirm' && o.paidAt) {
           const paidTime = new Date(o.paidAt).getTime();
           if (now - paidTime > thirtyMinutes) {
             changed = true;
@@ -59,7 +60,7 @@ export default function LandmarkSelectionPage() {
             return { ...o, status: 'Cancelled (Auto)', color: 'bg-error text-on-error', refundAmount: refund };
           }
         }
-        if (o.status === 'Awaiting Delivery Confirmation' && o.readyForDeliveryAt) {
+        if (o.status === 'ready' && o.readyForDeliveryAt) {
           const readyTime = new Date(o.readyForDeliveryAt).getTime();
           if (now - readyTime > thirtyMinutes) {
             changed = true;
@@ -84,6 +85,18 @@ export default function LandmarkSelectionPage() {
               const updatedUser = { ...u, walletBalance: newBalance };
               localStorage.setItem('qw_user', JSON.stringify(updatedUser));
               setUser(updatedUser);
+              
+              // Record Wallet History
+              const newHistory = {
+                id: Math.random().toString(36).substr(2, 9),
+                type: 'deposit',
+                amount: refundTotal,
+                date: new Date().toISOString(),
+                desc: 'Auto-Cancellation Refund'
+              };
+              const currentHistory = JSON.parse(localStorage.getItem(`qw_wallet_history_${u.phoneNumber}`) || '[]');
+              localStorage.setItem(`qw_wallet_history_${u.phoneNumber}`, JSON.stringify([newHistory, ...currentHistory]));
+
               return updatedUser;
             }
             return u;
@@ -92,14 +105,71 @@ export default function LandmarkSelectionPage() {
           alert(`Some orders were auto-cancelled due to inactivity. ₦${refundTotal} has been refunded to your wallet.`);
         }
 
+        // Re-check unconfirmed order to clear alert
+        const stillUnconfirmed = updated.find((o: any) => 
+          o.customerPhone === currentUser.phoneNumber && 
+          o.status === 'confirm'
+        );
+        setUnconfirmedOrder(stillUnconfirmed);
+
         return updated.filter((o: any) => o.customerPhone === currentUser.phoneNumber);
       }
-      return allOrders.filter((o: any) => o.customerPhone === currentUser.phoneNumber);
+      return allOrdersNow.filter((o: any) => o.customerPhone === currentUser.phoneNumber);
     };
 
     const filtered = checkExpiredOrders();
     setRecentOrders(filtered.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
   }, []);
+
+  const allBadges = [
+    { 
+      id: 'clean', 
+      name: 'Always Clean', 
+      icon: Droplets, 
+      color: 'bg-primary/10 text-primary', 
+      earned: recentOrders.filter(o => o.status === 'completed').length >= 5,
+      progress: recentOrders.filter(o => o.status === 'completed').length,
+      goal: 5,
+      reward: '+10% Trust Points',
+      criteria: 'Complete 5 orders with "No Issue" reported.' 
+    },
+    { 
+      id: 'early', 
+      name: 'Early Bird', 
+      icon: Sun, 
+      color: 'bg-warning/10 text-warning', 
+      earned: recentOrders.some(o => new Date(o.createdAt).getHours() < 8),
+      progress: recentOrders.some(o => new Date(o.createdAt).getHours() < 8) ? 1 : 0,
+      goal: 1,
+      reward: '+5% Trust Points',
+      criteria: 'Place an order before 8 AM.' 
+    },
+    { 
+      id: 'loyal', 
+      name: 'Loyal Customer', 
+      icon: Shield, 
+      color: 'bg-tertiary/10 text-tertiary', 
+      earned: recentOrders.length > 0 && (new Date().getTime() - new Date(recentOrders[recentOrders.length - 1].createdAt).getTime() > 30 * 24 * 60 * 60 * 1000),
+      progress: recentOrders.length > 0 ? Math.floor((new Date().getTime() - new Date(recentOrders[recentOrders.length - 1].createdAt).getTime()) / (24 * 60 * 60 * 1000)) : 0,
+      goal: 30,
+      reward: '+15% Trust Points',
+      criteria: 'Stay active with us for over 30 days.' 
+    },
+    { 
+      id: 'new', 
+      name: 'Newcomer', 
+      icon: Leaf, 
+      color: 'bg-success/10 text-success', 
+      earned: true, 
+      progress: 1,
+      goal: 1,
+      reward: '+2% Trust Points',
+      criteria: 'Complete your first registration.' 
+    }
+  ];
+
+  const [showAllBadges, setShowAllBadges] = React.useState(false);
+  const badgesToDisplay = showAllBadges ? allBadges : allBadges.filter(b => b.earned);
 
   return (
     <div className="pb-32">
@@ -224,68 +294,61 @@ export default function LandmarkSelectionPage() {
           </section>
         )}
 
-        {/* Earned Badges */}
+        {/* Your Achievements */}
         <section className="mb-12">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="font-label text-xs uppercase tracking-[0.2em] font-bold text-outline">Your Earned Badges</h3>
-            <Link href="/profile" className="text-primary font-headline font-bold text-xs">View All</Link>
+            <h3 className="font-label text-xs uppercase tracking-[0.2em] font-bold text-outline">Your Achievements</h3>
+            <button 
+              onClick={() => setShowAllBadges(!showAllBadges)}
+              className="text-primary font-headline font-bold text-xs"
+            >
+              {showAllBadges ? 'Show Earned' : 'View All'}
+            </button>
           </div>
-          <div className="flex gap-4 overflow-x-auto pb-4 hide-scrollbar">
-            {[
-              { 
-                id: 'clean', 
-                name: 'Always Clean', 
-                icon: Droplets, 
-                color: 'bg-primary/10 text-primary', 
-                earned: recentOrders.filter(o => o.status === 'Delivered').length >= 5,
-                criteria: 'Complete 5 orders without any disputes.' 
-              },
-              { 
-                id: 'early', 
-                name: 'Early Bird', 
-                icon: Sun, 
-                color: 'bg-warning/10 text-warning', 
-                earned: recentOrders.some(o => new Date(o.createdAt).getHours() < 8),
-                criteria: 'Place an order before 8 AM.' 
-              },
-              { 
-                id: 'loyal', 
-                name: 'Loyal Customer', 
-                icon: Shield, 
-                color: 'bg-tertiary/10 text-tertiary', 
-                earned: recentOrders.length > 0 && (new Date().getTime() - new Date(recentOrders[recentOrders.length - 1].createdAt).getTime() > 30 * 24 * 60 * 60 * 1000),
-                criteria: 'Stay with us for over 1 month.' 
-              },
-              { 
-                id: 'new', 
-                name: 'Newcomer', 
-                icon: Leaf, 
-                color: 'bg-success/10 text-success', 
-                earned: true, 
-                criteria: 'Welcome to Quick-Wash!' 
-              }
-            ].map((badge) => (
+          <div className="flex gap-4 overflow-x-auto pb-6 hide-scrollbar">
+            {badgesToDisplay.map((badge) => (
               <div 
                 key={badge.id} 
-                className="flex-shrink-0 w-24 flex flex-col items-center space-y-2 cursor-pointer relative group"
+                className="flex-shrink-0 w-24 flex flex-col items-center space-y-3 cursor-pointer relative group"
               >
-                <div className={cn("w-16 h-16 rounded-2xl flex items-center justify-center transition-all duration-300 group-hover:scale-110", badge.color, !badge.earned && "opacity-40")}>
+                <div className={cn(
+                  "w-16 h-16 rounded-2xl flex items-center justify-center transition-all duration-300 group-hover:scale-110", 
+                  badge.earned ? badge.color : "bg-surface-container-highest grayscale opacity-40"
+                )}>
                   <badge.icon className="w-8 h-8 fill-current" />
                 </div>
-                <span className="text-[10px] font-label font-bold text-center leading-tight">{badge.name}</span>
+                <span className={cn(
+                  "text-[10px] font-label font-bold text-center leading-tight",
+                  badge.earned ? "text-on-surface" : "text-on-surface-variant opacity-40"
+                )}>
+                  {badge.name}
+                </span>
                 
                 {/* Hover Tooltip */}
-                <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 w-48 p-4 bg-surface-container-highest rounded-2xl shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 border border-primary/10">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-primary mb-1">{badge.name}</p>
-                  <p className="text-[10px] font-bold text-on-surface-variant leading-relaxed">{badge.criteria}</p>
-                  <div className="mt-2 pt-2 border-t border-primary/5">
-                    <p className="text-[8px] font-black uppercase tracking-widest text-on-surface-variant">
-                      Status: <span className={badge.earned ? "text-success" : "text-error"}>{badge.earned ? "Earned ✅" : "Locked 🔒"}</span>
-                    </p>
+                <div className="absolute bottom-full mb-4 left-1/2 -translate-x-1/2 w-56 p-5 bg-surface-container-high rounded-[2rem] shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all z-50 border border-primary/10">
+                  <p className="text-xs font-headline font-black text-on-surface mb-1">{badge.name}</p>
+                  <p className="text-[10px] font-medium text-on-surface-variant leading-relaxed mb-4">{badge.criteria}</p>
+                  
+                  <div className="space-y-3 pt-3 border-t border-primary/5">
+                    <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-widest text-on-surface-variant">
+                      <span>Status</span>
+                      <span className={cn(badge.earned ? "text-success" : "text-primary")}>
+                        {badge.earned ? 'Earned ✅' : `${badge.progress}/${badge.goal}`}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-widest text-on-surface-variant">
+                      <span>Reward</span>
+                      <span className="text-tertiary font-bold">{badge.reward}</span>
+                    </div>
                   </div>
+                  
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-surface-container-high" />
                 </div>
               </div>
             ))}
+            {badgesToDisplay.length === 0 && (
+              <p className="text-xs font-medium text-on-surface-variant italic">Start washing to earn badges!</p>
+            )}
           </div>
         </section>
 
