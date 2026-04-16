@@ -10,115 +10,48 @@ import { motion } from 'motion/react';
 import { cn } from '@/lib/utils';
 
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
+import { db, Order, UserData } from '@/lib/DatabaseService';
 
 export default function LandmarkSelectionPage() {
-  const [recentOrders, setRecentOrders] = React.useState<any[]>([]);
-  const [user, setUser] = React.useState<any>(null);
+  const [recentOrders, setRecentOrders] = React.useState<Order[]>([]);
+  const [user, setUser] = React.useState<UserData | null>(null);
   const [alerts, setAlerts] = React.useState<any[]>([]);
   const [pendingCart, setPendingCart] = React.useState<any[]>([]);
-  const [unconfirmedOrder, setUnconfirmedOrder] = React.useState<any>(null);
+  const [unconfirmedOrder, setUnconfirmedOrder] = React.useState<Order | null>(null);
 
   React.useEffect(() => {
-    const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-    const currentUser = JSON.parse(localStorage.getItem('qw_user') || '{}');
-    setUser(currentUser);
+    const init = async () => {
+      const currentUser = JSON.parse(localStorage.getItem('qw_user') || '{}');
+      if (!currentUser.uid) return;
+      
+      const me = await db.getUser(currentUser.uid);
+      setUser(me);
 
-    if (currentUser?.phoneNumber) {
-      const savedCart = localStorage.getItem(`qw_pending_cart_${currentUser.phoneNumber}`);
-      if (savedCart) {
-        const parsed = JSON.parse(savedCart);
-        if (parsed.some((i: any) => i.count > 0)) {
-          setPendingCart(parsed);
-        }
-      }
-
-      // Check for paid but unconfirmed order
-      const unconfirmed = allOrders.find((o: any) => 
-        o.customerPhone === currentUser.phoneNumber && 
-        o.status === 'confirm'
-      );
-      setUnconfirmedOrder(unconfirmed);
-    }
-
-    const activeAlerts = JSON.parse(localStorage.getItem('qw_alerts') || '[]');
-    setAlerts(activeAlerts.filter((a: any) => a.type === 'Weather'));
-    
-    const checkExpiredOrders = () => {
-      const allOrdersNow = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-      const now = new Date().getTime();
-      const thirtyMinutes = 30 * 60 * 1000;
-      let changed = false;
-      let refundTotal = 0;
-
-      const updated = allOrdersNow.map((o: any) => {
-        if (o.status === 'confirm' && o.paidAt) {
-          const paidTime = new Date(o.paidAt).getTime();
-          if (now - paidTime > thirtyMinutes) {
-            changed = true;
-            const refund = o.totalPrice - 200; // ₦200 cancellation fee
-            refundTotal += refund;
-            return { ...o, status: 'Cancelled (Auto)', color: 'bg-error text-on-error', refundAmount: refund };
+      if (me?.uid) {
+        const savedCart = localStorage.getItem(`qw_pending_cart_${me.uid}`);
+        if (savedCart) {
+          const parsed = JSON.parse(savedCart);
+          if (parsed.some((i: any) => i.count > 0)) {
+            setPendingCart(parsed);
           }
         }
-        if (o.status === 'ready' && o.readyForDeliveryAt) {
-          const readyTime = new Date(o.readyForDeliveryAt).getTime();
-          if (now - readyTime > thirtyMinutes) {
-            changed = true;
-            const refund = o.totalPrice - 200;
-            refundTotal += refund;
-            return { ...o, status: 'Cancelled (Auto)', color: 'bg-error text-on-error', refundAmount: refund };
-          }
-        }
-        return o;
-      });
 
-      if (changed) {
-        localStorage.setItem('qw_orders', JSON.stringify(updated));
-        
-        // Update user wallet
-        if (refundTotal > 0) {
-          const allUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
-          const updatedUsers = allUsers.map((u: any) => {
-            if (u.phoneNumber === currentUser.phoneNumber) {
-              const newBalance = (u.walletBalance || 0) + refundTotal;
-              // Update local user state too
-              const updatedUser = { ...u, walletBalance: newBalance };
-              localStorage.setItem('qw_user', JSON.stringify(updatedUser));
-              setUser(updatedUser);
-              
-              // Record Wallet History
-              const newHistory = {
-                id: Math.random().toString(36).substr(2, 9),
-                type: 'deposit',
-                amount: refundTotal,
-                date: new Date().toISOString(),
-                desc: 'Auto-Cancellation Refund'
-              };
-              const currentHistory = JSON.parse(localStorage.getItem(`qw_wallet_history_${u.phoneNumber}`) || '[]');
-              localStorage.setItem(`qw_wallet_history_${u.phoneNumber}`, JSON.stringify([newHistory, ...currentHistory]));
-
-              return updatedUser;
-            }
-            return u;
-          });
-          localStorage.setItem('qw_all_users', JSON.stringify(updatedUsers));
-          alert(`Some orders were auto-cancelled due to inactivity. ₦${refundTotal} has been refunded to your wallet.`);
-        }
-
-        // Re-check unconfirmed order to clear alert
-        const stillUnconfirmed = updated.find((o: any) => 
-          o.customerPhone === currentUser.phoneNumber && 
+        // Check for paid but unconfirmed order - STRICT UID FILTERING
+        const allOrders = await db.getOrders();
+        const unconfirmed = allOrders.find((o: Order) => 
+          o.customerUid === me.uid && 
           o.status === 'confirm'
         );
-        setUnconfirmedOrder(stillUnconfirmed);
+        setUnconfirmedOrder(unconfirmed || null);
 
-        return updated.filter((o: any) => o.customerPhone === currentUser.phoneNumber);
+        const filtered = allOrders.filter((o: Order) => o.customerUid === me.uid);
+        setRecentOrders(filtered.sort((a: Order, b: Order) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
       }
-      return allOrdersNow.filter((o: any) => o.customerPhone === currentUser.phoneNumber);
-    };
 
-    const filtered = checkExpiredOrders();
-    setRecentOrders(filtered.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+      const activeAlerts = JSON.parse(localStorage.getItem('qw_alerts') || '[]');
+      setAlerts(activeAlerts.filter((a: any) => a.type === 'Weather'));
+    };
+    init();
   }, []);
 
   const allBadges = [
@@ -257,7 +190,7 @@ export default function LandmarkSelectionPage() {
               <div>
                 <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">Your Trust Status</p>
                 <h3 className="text-2xl font-headline font-black text-on-surface">
-                  {user?.trustPoints || 0} Points • <span className="text-tertiary">{user?.trustPoints >= 500 ? 'Elite' : 'Standard'}</span>
+                  {user?.trustPoints || 0} Points • <span className="text-tertiary">{(user?.trustPoints || 0) >= 500 ? 'Elite' : 'Standard'}</span>
                 </h3>
               </div>
             </div>

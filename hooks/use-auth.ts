@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 export type UserRole = 'customer' | 'vendor' | 'rider' | 'admin';
 
 interface UserData {
+  uid: string;
   fullName?: string;
   phoneNumber: string;
   email?: string;
@@ -49,6 +50,7 @@ export function useAuth() {
     const superAdminPhone = '09012345678'; // Secret Super Admin Phone
     if (!users.find((u: any) => u.phoneNumber === superAdminPhone)) {
       users.push({
+        uid: 'admin_001',
         fullName: 'Super Admin',
         phoneNumber: superAdminPhone,
         password: 'admin_password_123',
@@ -67,7 +69,7 @@ export function useAuth() {
     Promise.resolve().then(() => setLoading(false));
   }, []);
 
-  const signup = async (data: UserData) => {
+  const signup = async (data: Omit<UserData, 'uid'>) => {
     setIsProcessing(true);
     setError(null);
     
@@ -101,6 +103,7 @@ export function useAuth() {
     const needsApproval = data.role !== 'customer';
     const newUser: UserData = { 
       ...data, 
+      uid: `u_${Math.random().toString(36).substr(2, 9)}`,
       isApproved: !needsApproval,
       trustPoints: data.role === 'customer' ? 50 : 0,
       trustScore: 100,
@@ -153,8 +156,22 @@ export function useAuth() {
 
   const logout = useCallback(() => {
     localStorage.removeItem('qw_user');
+    localStorage.removeItem('qw_current_order_id');
     setUser(null);
     router.push('/');
+  }, [router]);
+
+  // Sync auth state across tabs
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'qw_user') {
+        const newUser = e.newValue ? JSON.parse(e.newValue) : null;
+        setUser(newUser);
+        if (!newUser) router.push('/');
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
   }, [router]);
 
   // Inactivity Logout (30 minutes)

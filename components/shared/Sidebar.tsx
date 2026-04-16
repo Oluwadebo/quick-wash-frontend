@@ -35,17 +35,19 @@ const customerItems: NavItem[] = [
   { label: 'Home', icon: Home, href: '/customer' },
   { label: 'Wash', icon: WashingMachine, href: '/vendors' },
   { label: 'Track', icon: Map, href: '/track' },
+  { label: 'Wallet', icon: Wallet, href: '/wallet' },
   { label: 'Profile', icon: User, href: '/profile' },
 ];
 
 const vendorItems: NavItem[] = [
   { label: 'Dashboard', icon: LayoutDashboard, href: '/vendor' },
-  { label: 'Price List', icon: Tag, href: '/vendor/price-list' },
+  { label: 'Wallet', icon: Wallet, href: '/wallet' },
   { label: 'Profile', icon: User, href: '/vendor/profile' },
 ];
 
 const riderItems: NavItem[] = [
   { label: 'Dashboard', icon: Home, href: '/rider' },
+  { label: 'Wallet', icon: Wallet, href: '/wallet' },
   { label: 'Profile', icon: User, href: '/rider/profile' },
 ];
 
@@ -65,6 +67,12 @@ export default function Sidebar() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { user, logout } = useAuth();
+
+  const handleInvite = () => {
+    const link = `https://quick-wash.campus/invite?ref=${user?.phoneNumber}`;
+    navigator.clipboard.writeText(link);
+    alert('Referral link copied! Invite friends to earn trust points.');
+  };
 
   if (pathname === '/' || pathname.startsWith('/auth') || !user) return null;
 
@@ -118,6 +126,16 @@ export default function Sidebar() {
             </Link>
           );
         })}
+
+        {user?.role === 'customer' && (
+          <button
+            onClick={handleInvite}
+            className="flex items-center gap-4 px-6 py-4 rounded-2xl font-headline font-bold text-sm text-primary hover:bg-primary/5 transition-all active:scale-95 mt-4 border-2 border-dashed border-primary/20"
+          >
+            <Users className="w-5 h-5" />
+            Invite Friends
+          </button>
+        )}
       </div>
 
       <div className="mt-auto pt-6 border-t border-primary/5 space-y-4">

@@ -7,19 +7,28 @@ import { motion } from 'motion/react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
+import { db, Order, UserData } from '@/lib/DatabaseService';
 
 export default function TrackListPage() {
-  const [orders, setOrders] = React.useState<any[]>([]);
-  const [user, setUser] = React.useState<any>(null);
+  const [orders, setOrders] = React.useState<Order[]>([]);
+  const [user, setUser] = React.useState<UserData | null>(null);
 
   React.useEffect(() => {
-    const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-    const currentUser = JSON.parse(localStorage.getItem('qw_user') || '{}');
-    setUser(currentUser);
-    
-    // Filter orders for current customer
-    const customerOrders = allOrders.filter((o: any) => o.customerPhone === currentUser.phoneNumber);
-    setOrders(customerOrders.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+    const init = async () => {
+      const currentUser = JSON.parse(localStorage.getItem('qw_user') || '{}');
+      if (!currentUser.uid) return;
+      
+      const me = await db.getUser(currentUser.uid);
+      setUser(me);
+
+      if (me?.uid) {
+        // Filter orders for current customer - STRICT UID FILTERING
+        const allOrders = await db.getOrders();
+        const customerOrders = allOrders.filter((o: Order) => o.customerUid === me.uid);
+        setOrders(customerOrders.sort((a: Order, b: Order) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+      }
+    };
+    init();
   }, []);
 
   const getStatusColor = (status: string) => {

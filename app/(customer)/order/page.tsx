@@ -86,6 +86,9 @@ export default function OrderPage() {
   );
 }
 
+import { db, Order, UserData } from '@/lib/DatabaseService';
+import { Toast } from '@/components/shared/Toast';
+
 function OrderPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -93,69 +96,78 @@ function OrderPageContent() {
   const [cart, setCart] = React.useState(defaultItems);
   const [isPaid, setIsPaid] = React.useState(false);
   const [isPaying, setIsPaying] = React.useState(false);
-  const [vendor, setVendor] = React.useState<any>(null);
-  const [currentUser, setCurrentUser] = React.useState<any>(null);
+  const [vendor, setVendor] = React.useState<UserData | null>(null);
+  const [currentUser, setCurrentUser] = React.useState<UserData | null>(null);
   const [existingOrderId, setExistingOrderId] = React.useState<string | null>(null);
+  const [notification, setNotification] = React.useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
 
   React.useEffect(() => {
-    const storedUser = localStorage.getItem('qw_user');
-    if (storedUser) {
-      const user = JSON.parse(storedUser);
-      setCurrentUser(user);
-      
-      // Check for existing paid but unconfirmed orders
-      const orders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-      const existing = orders.find((o: any) => 
-        o.customerPhone === user.phoneNumber && 
-        o.status === 'confirm' &&
-        (vendorId ? o.vendorId === vendorId : true)
-      );
-      if (existing) {
-        setExistingOrderId(existing.id);
-        setIsPaid(true);
+    const init = async () => {
+      const storedUser = localStorage.getItem('qw_user');
+      if (storedUser) {
+        const user = JSON.parse(storedUser);
+        setCurrentUser(user);
+        
+        // Check for existing paid but unconfirmed orders - STRICT UID FILTERING
+        const orders = await db.getOrders();
+        const existing = orders.find((o: Order) => 
+          o.customerUid === user.uid && 
+          o.status === 'confirm' &&
+          (vendorId ? o.vendorId === vendorId : true)
+        );
+        if (existing) {
+          setExistingOrderId(existing.id);
+          setIsPaid(true);
+        } else {
+          setExistingOrderId(null);
+          setIsPaid(false);
+        }
       }
-    }
+    };
+    init();
   }, [vendorId]);
 
   // Load vendor services
   React.useEffect(() => {
-    if (vendorId) {
-      const allUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
-      const foundVendor = allUsers.find((u: any) => u.phoneNumber === vendorId);
-      setVendor(foundVendor);
+    const loadVendor = async () => {
+      if (vendorId) {
+        const foundVendor = await db.getUser(vendorId);
+        setVendor(foundVendor);
 
-      const vendorServices = JSON.parse(localStorage.getItem('qw_vendor_services') || '[]');
-      const myServices = vendorServices.filter((s: any) => s.vendorId === vendorId);
-      
-      if (myServices.length > 0) {
-        const mapped = myServices.map((vs: any) => ({
-          id: vs.id.toString(),
-          name: vs.name,
-          desc: 'Professional Cleaning',
-          icon: Shirt,
-          unit: 'unit',
-          count: 0,
-          services: [
-            { name: 'Wash', price: vs.washPrice },
-            { name: 'Iron', price: vs.ironPrice },
-            { name: 'Wash + Iron', price: vs.washIronPrice }
-          ],
-          selectedService: 'Wash',
-          hasStainRemover: false,
-          stainRemoverPrice: 500,
-          basePrice: vs.washPrice
-        }));
-        setCart(mapped);
-      } else {
-        setCart(defaultItems);
+        const vendorServices = JSON.parse(localStorage.getItem('qw_vendor_services') || '[]');
+        const myServices = vendorServices.filter((s: any) => s.vendorId === vendorId);
+        
+        if (myServices.length > 0) {
+          const mapped = myServices.map((vs: any) => ({
+            id: vs.id.toString(),
+            name: vs.name,
+            desc: 'Professional Cleaning',
+            icon: Shirt,
+            unit: 'unit',
+            count: 0,
+            services: [
+              { name: 'Wash', price: vs.washPrice },
+              { name: 'Iron', price: vs.ironPrice },
+              { name: 'Wash + Iron', price: vs.washIronPrice }
+            ],
+            selectedService: 'Wash',
+            hasStainRemover: false,
+            stainRemoverPrice: 500,
+            basePrice: vs.washPrice
+          }));
+          setCart(mapped);
+        } else {
+          setCart(defaultItems);
+        }
       }
-    }
+    };
+    loadVendor();
   }, [vendorId]);
 
   // Persistence: Load from localStorage if exists
   React.useEffect(() => {
-    if (!currentUser?.phoneNumber) return;
-    const savedCart = localStorage.getItem(`qw_pending_cart_${currentUser.phoneNumber}`);
+    if (!currentUser?.uid || !vendorId) return;
+    const savedCart = localStorage.getItem(`qw_pending_cart_${currentUser.uid}_${vendorId}`);
     if (savedCart) {
       try {
         const parsed = JSON.parse(savedCart);
@@ -179,22 +191,24 @@ function OrderPageContent() {
         console.error('Failed to parse saved cart', e);
       }
     }
-  }, [currentUser]);
+  }, [currentUser, vendorId]);
 
   // Save to localStorage whenever cart changes
   React.useEffect(() => {
-    if (currentUser?.phoneNumber) {
-      localStorage.setItem(`qw_pending_cart_${currentUser.phoneNumber}`, JSON.stringify(cart));
+    if (currentUser?.uid && vendorId) {
+      localStorage.setItem(`qw_pending_cart_${currentUser.uid}_${vendorId}`, JSON.stringify(cart));
     }
-  }, [cart, currentUser]);
+  }, [cart, currentUser, vendorId]);
 
   const updateCount = (id: string, delta: number) => {
+    if (isPaid) return;
     setCart(prev => prev.map(item => 
       item.id === id ? { ...item, count: Math.max(0, item.count + delta) } : item
     ));
   };
 
   const updateSubItemCount = (itemId: string, subItemId: string, delta: number) => {
+    if (isPaid) return;
     setCart(prev => prev.map(item => {
       if (item.id === itemId && item.subItems) {
         const newSubItems = item.subItems.map(si => 
@@ -208,12 +222,14 @@ function OrderPageContent() {
   };
 
   const updateService = (id: string, serviceName: string) => {
+    if (isPaid) return;
     setCart(prev => prev.map(item => 
       item.id === id ? { ...item, selectedService: serviceName } : item
     ));
   };
 
   const toggleStainRemover = (id: string) => {
+    if (isPaid) return;
     setCart(prev => prev.map(item => 
       item.id === id ? { ...item, hasStainRemover: !item.hasStainRemover } : item
     ));
@@ -233,34 +249,46 @@ function OrderPageContent() {
   };
 
   const totalItems = cart.reduce((acc, item) => acc + item.count, 0);
-  const totalPrice = cart.reduce((acc, item) => acc + getItemPrice(item), 0);
+  const itemsPrice = cart.reduce((acc, item) => acc + getItemPrice(item), 0);
+  const riderFee = calculateRiderFee();
+  const totalPrice = totalItems > 0 ? itemsPrice + riderFee : 0;
 
   // Load existing order details if any
-  const [existingOrder, setExistingOrder] = React.useState<any>(null);
+  const [existingOrder, setExistingOrder] = React.useState<Order | null>(null);
   React.useEffect(() => {
-    if (existingOrderId) {
-      const orders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-      const found = orders.find((o: any) => o.id === existingOrderId);
-      setExistingOrder(found);
-    }
+    const loadOrder = async () => {
+      if (existingOrderId) {
+        const found = await db.getOrder(existingOrderId);
+        setExistingOrder(found);
+      }
+    };
+    loadOrder();
   }, [existingOrderId]);
 
   const handlePayment = React.useCallback(async () => {
-    const allUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
-    const currentUserData = allUsers.find((u: any) => u.phoneNumber === currentUser?.phoneNumber) || currentUser;
+    if (!currentUser?.uid) return;
+    
+    const currentUserData = await db.getUser(currentUser.uid);
+    if (!currentUserData) return;
     
     // Check wallet balance
     if ((currentUserData.walletBalance || 0) < totalPrice) {
-      if (confirm(`Insufficient balance. Your balance is ₦${(currentUserData.walletBalance || 0).toLocaleString()}. Would you like to fund your wallet now?`)) {
+      setIsPaying(true);
+      setNotification({ 
+        message: `Insufficient balance! Balance: ₦${(currentUserData.walletBalance || 0).toLocaleString()}. Total: ₦${totalPrice.toLocaleString()}. Redirecting to wallet...`, 
+        type: 'error' 
+      });
+      
+      // FEEDBACK LOOP: Mandatory 2000ms delay with Toast
+      setTimeout(() => {
+        setNotification(null);
         router.push('/wallet');
-      }
+      }, 2000);
       return;
     }
 
     setIsPaying(true);
     await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    const orders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
     
     const itemsDescription = cart.filter(i => i.count > 0).map(i => {
       if (i.subItems) {
@@ -271,96 +299,83 @@ function OrderPageContent() {
     }).join(', ');
 
     const newOrderId = generateId();
-    const handoverCode = generateId();
+    const commission = (itemsPrice * 0.1) + 300;
+    const code1 = Math.floor(1000 + Math.random() * 9000).toString();
     
-    // Platform Commission: 10% + ₦300
-    const commission = (totalPrice * 0.1) + 300;
-
-    // Rider Fee: Fixed ₦500 + Dynamic (₦100 per km, simulated 1-5km)
-    const riderFee = calculateRiderFee();
-    
-    const newOrder = {
+    const newOrder: Order = {
       id: newOrderId,
+      customerUid: currentUserData.uid,
       customerName: currentUserData.fullName || 'Guest',
       customerPhone: currentUserData.phoneNumber,
-      customerLandmark: currentUserData.landmark || 'Main Gate',
       items: itemsDescription,
-      totalPrice,
-      commission,
+      itemsPrice,
       riderFee,
+      totalPrice,
       status: 'confirm',
+      code1,
       time: new Date().toISOString(),
       color: 'bg-warning/20 text-warning',
       vendorId: vendorId || 'campus-cleans',
       vendorName: vendor?.shopName || 'Quick-Wash Partner',
-      vendorLandmark: vendor?.landmark || 'Campus Center',
-      vendorPhone: vendor?.phoneNumber || '08012345678',
-      handoverCode: handoverCode,
       createdAt: new Date().toISOString(),
       paidAt: new Date().toISOString(),
-      paymentMethod: 'Wallet'
     };
 
-    // Update users (Wallet deduction and Admin commission)
-    const updatedUsers = allUsers.map((u: any) => {
-      if (u.phoneNumber === currentUserData.phoneNumber) {
-        const updated = { ...u, walletBalance: u.walletBalance - totalPrice };
-        localStorage.setItem('qw_user', JSON.stringify(updated));
-        setCurrentUser(updated);
-        return updated;
-      }
-      if (u.role === 'admin' && u.phoneNumber === '09012345678') {
-        return { ...u, walletBalance: (u.walletBalance || 0) + commission };
-      }
-      return u;
+    // Update users (Wallet deduction)
+    await db.updateUser(currentUserData.uid, { 
+      walletBalance: (currentUserData.walletBalance || 0) - totalPrice 
     });
-    localStorage.setItem('qw_all_users', JSON.stringify(updatedUsers));
 
     // Record Wallet History
-    const newHistory = {
-      id: `pay_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+    await db.recordTransaction(currentUserData.uid, {
       type: 'payment',
       amount: totalPrice,
-      date: new Date().toISOString(),
       desc: `Payment for Order #${newOrderId}`
-    };
-    const currentHistory = JSON.parse(localStorage.getItem(`qw_wallet_history_${currentUserData.phoneNumber}`) || '[]');
-    localStorage.setItem(`qw_wallet_history_${currentUserData.phoneNumber}`, JSON.stringify([newHistory, ...currentHistory]));
+    });
 
-    orders.push(newOrder);
-    localStorage.setItem('qw_orders', JSON.stringify(orders));
+    await db.saveOrder(newOrder);
     localStorage.setItem('qw_current_order_id', newOrderId);
-    if (currentUser?.phoneNumber) {
-      localStorage.removeItem(`qw_pending_cart_${currentUser.phoneNumber}`);
+    setExistingOrderId(newOrderId);
+    
+    if (currentUser?.uid && vendorId) {
+      localStorage.removeItem(`qw_pending_cart_${currentUser.uid}_${vendorId}`);
     }
     
     setIsPaid(true);
     setIsPaying(false);
-    alert(`₦${totalPrice.toLocaleString()} deducted from wallet. Payment Successful! Please click "I'M READY FOR PICKUP" when you are ready.`);
-  }, [currentUser, totalPrice, vendorId, vendor, router, cart]);
+    setNotification({ message: `₦${totalPrice.toLocaleString()} deducted. Payment Successful!`, type: 'success' });
+    setTimeout(() => setNotification(null), 3000);
+  }, [currentUser, totalPrice, itemsPrice, riderFee, vendorId, vendor, router, cart]);
 
-  const handlePickupRequest = React.useCallback(() => {
+  const handlePickupRequest = React.useCallback(async () => {
     const orderId = existingOrderId || localStorage.getItem('qw_current_order_id');
     if (!orderId) return;
 
-    const orders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-    const updated = orders.map((o: any) => {
-      if (o.id === orderId) {
-        return { 
-          ...o, 
-          status: 'rider_assign_pickup', 
-          pickupCode: Math.floor(1000 + Math.random() * 9000).toString(),
-          color: 'bg-primary-container text-on-primary-container',
-          confirmedAt: new Date().toISOString()
-        };
-      }
-      return o;
-    });
+    const pickupAddress = prompt("Please enter your exact pickup location/address:");
+    if (!pickupAddress) {
+      setNotification({ message: "Pickup location is required to proceed.", type: 'error' });
+      setTimeout(() => setNotification(null), 2000);
+      return;
+    }
 
-    localStorage.setItem('qw_orders', JSON.stringify(updated));
-    localStorage.removeItem('qw_current_order_id');
-    alert('Order confirmed! A rider will be assigned shortly.');
-    router.push('/track');
+    const order = await db.getOrder(orderId);
+    if (order) {
+      await db.saveOrder({
+        ...order,
+        status: 'rider_assign_pickup',
+        customerAddress: pickupAddress,
+        color: 'bg-primary-container text-on-primary-container',
+      });
+      
+      localStorage.removeItem('qw_current_order_id');
+      setNotification({ message: 'Order confirmed! Redirecting to tracking...', type: 'success' });
+      
+      // FEEDBACK LOOP: Mandatory 2000ms delay
+      setTimeout(() => {
+        setNotification(null);
+        router.push('/track');
+      }, 2000);
+    }
   }, [router, existingOrderId]);
 
   return (
@@ -368,6 +383,15 @@ function OrderPageContent() {
       <TopAppBar showAudioToggle />
       
       <main className="pt-8 px-6 max-w-7xl mx-auto">
+        <AnimatePresence>
+          {notification && (
+            <Toast 
+              message={notification.message} 
+              type={notification.type} 
+              onClose={() => setNotification(null)} 
+            />
+          )}
+        </AnimatePresence>
         <header className="mb-12">
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}

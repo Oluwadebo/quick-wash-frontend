@@ -6,33 +6,49 @@ import SealedBagUploader from '@/components/shared/SealedBagUploader';
 import ReadyToReceiveButton from '@/components/shared/ReadyToReceiveButton';
 import Link from 'next/link';
 import { ArrowLeft, ShieldCheck, ShoppingBag, WashingMachine, CheckCircle, MessageCircle, Shield, Package, DoorOpen, Info, Phone, Copy } from 'lucide-react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
 
 import { formatRelativeTime } from '@/lib/time';
 
+import { Toast } from '@/components/shared/Toast';
+import { db, Order, UserData } from '@/lib/DatabaseService';
+
 export default function OrderTrackingPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = React.use(params);
-  const [order, setOrder] = React.useState<any>(null);
+  const [order, setOrder] = React.useState<Order | null>(null);
   const [loading, setLoading] = React.useState(true);
-  const [rider, setRider] = React.useState<any>(null);
+  const [rider, setRider] = React.useState<UserData | null>(null);
+
+  const [notification, setNotification] = React.useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
 
   React.useEffect(() => {
-    const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-    const found = allOrders.find((o: any) => o.id === resolvedParams.id);
-    setOrder(found);
-    
-    if (found?.riderPhone) {
-      const allUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
-      const riderInfo = allUsers.find((u: any) => u.phoneNumber === found.riderPhone);
-      setRider(riderInfo || { fullName: found.riderName, phoneNumber: found.riderPhone });
-    }
-    setLoading(false);
+    const init = async () => {
+      const allOrders = await db.getOrders();
+      const currentUser = JSON.parse(localStorage.getItem('qw_user') || '{}');
+      const found = allOrders.find((o: Order) => o.id === resolvedParams.id);
+      
+      // STRICT UID FILTERING
+      if (found && found.customerUid !== currentUser.uid) {
+        setOrder(null);
+        setLoading(false);
+        return;
+      }
+
+      setOrder(found || null);
+      
+      if (found?.riderUid) {
+        const riderInfo = await db.getUser(found.riderUid);
+        setRider(riderInfo);
+      }
+      setLoading(false);
+    };
+    init();
   }, [resolvedParams.id]);
 
-  if (loading) return <div className="pt-32 text-center font-headline font-black">Loading...</div>;
-  if (!order) return <div className="pt-32 text-center font-headline font-black">Order not found.</div>;
+  if (loading) return <div className="pt-32 text-center font-headline font-black text-on-surface">Loading...</div>;
+  if (!order) return <div className="pt-32 text-center font-headline font-black text-on-surface">Order not found.</div>;
 
   const handleWhatsApp = () => {
     const phone = rider?.phoneNumber || rider?.whatsappNumber || '08012345678';
@@ -40,27 +56,45 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
     window.open(`https://wa.me/${phone}?text=${msg}`, '_blank');
   };
 
-  const handleCancelOrder = () => {
+  const handleCancelOrder = async () => {
     if (order?.status === 'confirm' || order?.status === 'rider_assign_pickup') {
-      if (confirm('Are you sure you want to cancel this order?')) {
-        const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-        const updated = allOrders.map((o: any) => o.id === order.id ? { ...o, status: 'Cancelled', color: 'bg-error/10 text-error' } : o);
-        localStorage.setItem('qw_orders', JSON.stringify(updated));
-        setOrder({ ...order, status: 'Cancelled', color: 'bg-error/10 text-error' });
-        alert('Order cancelled successfully.');
+      if (confirm('Are you sure you want to cancel this order? Your payment will be refunded to your wallet.')) {
+        const updatedOrder = { ...order, status: 'Cancelled', color: 'bg-error/10 text-error', refunded: true };
+        await db.saveOrder(updatedOrder);
+        
+        // Refund customer
+        const customer = await db.getUser(order.customerUid);
+        if (customer) {
+          await db.updateUser(customer.uid, { 
+            walletBalance: (customer.walletBalance || 0) + (order.totalPrice || 0) 
+          });
+          
+          await db.recordTransaction(customer.uid, {
+            type: 'deposit',
+            amount: order.totalPrice,
+            desc: 'Order Cancellation Refund'
+          });
+        }
+
+        setOrder(updatedOrder);
+        setNotification({ message: 'Order cancelled and refunded successfully.', type: 'success' });
+        setTimeout(() => setNotification(null), 3000);
+        window.dispatchEvent(new Event('storage'));
       }
     } else {
-      alert('Orders can only be cancelled before pickup.');
+      setNotification({ message: 'Orders can only be cancelled before pickup.', type: 'error' });
+      setTimeout(() => setNotification(null), 3000);
     }
   };
 
   const steps = [
     { id: 'confirm', label: 'Confirmed' },
     { id: 'rider_assign_pickup', label: 'Pickup' },
-    { id: 'picked_up', label: 'Picked up' },
+    { id: 'picked_up', label: 'Washing' },
     { id: 'washing', label: 'Washing' },
     { id: 'ready', label: 'Ready' },
     { id: 'rider_assign_delivery', label: 'Delivery' },
+    { id: 'picked_up_delivery', label: 'Delivering' },
     { id: 'delivered', label: 'Delivered' },
     { id: 'completed', label: 'Completed' }
   ];
@@ -68,43 +102,88 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
   const currentStepIdx = steps.findIndex(s => s.id === order.status);
   const progress = ((currentStepIdx + 1) / steps.length) * 100;
 
-  const handleNoIssue = () => {
-    const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-    const updated = allOrders.map((o: any) => {
-      if (o.id === order.id) {
-        return { 
-          ...o, 
-          status: 'completed', 
-          color: 'bg-success text-on-success',
-          completedAt: new Date().toISOString()
-        };
+  const handleVerifyDelivery = async (inputCode: string) => {
+    if (inputCode === order?.code4) {
+      const updatedOrder = { 
+        ...order, 
+        status: 'delivered', 
+        color: 'bg-success text-on-success',
+        deliveredAt: new Date().toISOString()
+      };
+      await db.saveOrder(updatedOrder);
+      
+      // Rider gets second half of rider fee
+      const riderFee = order.riderFee || 1000;
+      const secondHalf = riderFee * 0.5;
+      
+      if (order.riderUid) {
+        const riderUser = await db.getUser(order.riderUid);
+        if (riderUser) {
+          await db.updateUser(riderUser.uid, { 
+            walletBalance: (riderUser.walletBalance || 0) + secondHalf 
+          });
+          await db.recordTransaction(riderUser.uid, {
+            type: 'deposit',
+            amount: secondHalf,
+            desc: `Delivery Fee (2nd Half) - Order #${order.id}`
+          });
+        }
       }
-      return o;
-    });
-    localStorage.setItem('qw_orders', JSON.stringify(updated));
-    setOrder(updated.find((o: any) => o.id === order.id));
-    alert('Thank you for confirming! Your order is now completed.');
+
+      setOrder(updatedOrder);
+      setNotification({ message: 'Delivery verified! Thank you.', type: 'success' });
+      setTimeout(() => setNotification(null), 3000);
+      window.dispatchEvent(new Event('storage'));
+    }
   };
 
-  const handleRaiseIssue = () => {
-    const issue = prompt('Please describe the issue with your order:');
-    if (issue) {
-      const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-      const updated = allOrders.map((o: any) => {
-        if (o.id === order.id) {
-          return { 
-            ...o, 
-            status: 'disputed', 
-            color: 'bg-error text-on-error',
-            issueDescription: issue,
-            disputedAt: new Date().toISOString()
-          };
-        }
-        return o;
+  const handleNoIssue = async () => {
+    if (!order) return;
+    const updatedOrder = { 
+      ...order, 
+      status: 'completed', 
+      color: 'bg-success text-on-success',
+      completedAt: new Date().toISOString()
+    };
+    await db.saveOrder(updatedOrder);
+
+    // Vendor gets remaining 20%
+    const itemsPrice = order.itemsPrice || 0;
+    const remaining20 = itemsPrice * 0.2;
+    
+    const vendorUser = await db.getUser(order.vendorId);
+    if (vendorUser) {
+      await db.updateUser(vendorUser.uid, { 
+        walletBalance: (vendorUser.walletBalance || 0) + remaining20,
+        pendingBalance: Math.max(0, (vendorUser.pendingBalance || 0) - remaining20)
       });
-      localStorage.setItem('qw_orders', JSON.stringify(updated));
-      setOrder(updated.find((o: any) => o.id === order.id));
-      alert('Your issue has been reported. Our support team will contact you shortly.');
+      await db.recordTransaction(vendorUser.uid, {
+        type: 'deposit',
+        amount: remaining20,
+        desc: `Final Payout (20%) - Order #${order.id}`
+      });
+    }
+
+    setOrder(updatedOrder);
+    setNotification({ message: 'Thank you for confirming! Your order is now completed.', type: 'success' });
+    setTimeout(() => setNotification(null), 3000);
+    window.dispatchEvent(new Event('storage'));
+  };
+
+  const handleRaiseIssue = async () => {
+    const issue = prompt('Please describe the issue with your order:');
+    if (issue && order) {
+      const updatedOrder = { 
+        ...order, 
+        status: 'disputed', 
+        color: 'bg-error text-on-error',
+        issueDescription: issue,
+        disputedAt: new Date().toISOString()
+      };
+      await db.saveOrder(updatedOrder);
+      setOrder(updatedOrder);
+      setNotification({ message: 'Your issue has been reported. Our support team will contact you shortly.', type: 'info' });
+      setTimeout(() => setNotification(null), 3000);
     }
   };
 
@@ -133,6 +212,15 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
       </header>
 
       <main className="pt-28 px-6 max-w-2xl mx-auto space-y-8">
+        <AnimatePresence>
+          {notification && (
+            <Toast 
+              message={notification.message} 
+              type={notification.type} 
+              onClose={() => setNotification(null)} 
+            />
+          )}
+        </AnimatePresence>
         {/* Status Progress */}
         <section className="bg-surface-container-low rounded-[3rem] p-10 shadow-sm border border-primary/5">
           <div className="flex justify-between items-start relative">
@@ -167,7 +255,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
         </section>
 
         {/* Handover Code Section */}
-        {['rider_assign_pickup', 'rider_assign_delivery', 'ready'].includes(order.status) && (
+        {(order.status === 'rider_assign_pickup' || order.status === 'picked_up_delivery') && (
           <section className="bg-surface-container-lowest rounded-[3rem] p-10 text-center space-y-8 shadow-2xl border-4 border-primary-container relative overflow-hidden">
             <div className="absolute top-0 right-0 p-4">
               <ShieldCheck className="text-primary/10 w-24 h-24" />
@@ -175,27 +263,44 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
             
             <div className="relative z-10">
               <p className="font-label text-xs uppercase tracking-[0.3em] font-black text-on-surface-variant mb-8">
-                {order.status === 'rider_assign_pickup' ? 'Give this to Rider at Pickup' : 'Your Handover Code'}
+                {order.status === 'rider_assign_pickup' ? 'Give this to Rider at Pickup' : 'Enter Code from Rider to Confirm Delivery'}
               </p>
-              <div className="flex justify-center gap-4">
-                {((order.status === 'rider_assign_pickup' ? order.pickupCode : order.handoverCode) || '----').split('').map((num: string, i: number) => (
-                  <motion.span 
-                    key={i}
-                    initial={{ scale: 0.8, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    transition={{ delay: i * 0.1 }}
-                    className="w-16 h-20 flex items-center justify-center bg-surface-container-low rounded-2xl text-4xl font-headline font-black text-primary shadow-xl border border-primary/5"
-                  >
-                    {num}
-                  </motion.span>
-                ))}
-              </div>
+              
+              {order.status === 'rider_assign_pickup' ? (
+                <div className="flex justify-center gap-4">
+                  {(order.code1 || '----').split('').map((num: string, i: number) => (
+                    <motion.span 
+                      key={i}
+                      initial={{ scale: 0.8, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={{ delay: i * 0.1 }}
+                      className="w-16 h-20 flex items-center justify-center bg-surface-container-low rounded-2xl text-4xl font-headline font-black text-primary shadow-xl border border-primary/5"
+                    >
+                      {num}
+                    </motion.span>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-6">
+                  <input 
+                    type="text" 
+                    placeholder="Enter Code 4"
+                    maxLength={4}
+                    onChange={(e) => {
+                      if (e.target.value.length === 4) handleVerifyDelivery(e.target.value);
+                    }}
+                    className="w-48 h-20 bg-surface-container-low rounded-2xl text-center text-4xl font-headline font-black text-primary shadow-xl border-2 border-primary/20 outline-none focus:border-primary transition-all"
+                  />
+                  <p className="text-[10px] font-black text-primary uppercase tracking-widest">ASK RIDER FOR CODE 4</p>
+                </div>
+              )}
+
               <div className="mt-10 flex items-center justify-center gap-3 bg-primary/5 p-4 rounded-2xl border border-primary/10">
                 <Info className="text-primary w-5 h-5" />
-                <p className="text-xs font-bold text-on-surface-variant leading-relaxed">
+                <p className="text-xs font-bold text-on-surface-variant leading-relaxed text-center">
                   {order.status === 'rider_assign_pickup' 
                     ? 'The rider needs this code to confirm they have picked up your laundry.'
-                    : 'Show this code to the rider only after receiving your laundry.'}
+                    : 'The rider has a code for you. Enter it here only after you have received and inspected your laundry.'}
                 </p>
               </div>
             </div>
@@ -295,22 +400,18 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
         <div className="fixed bottom-0 left-0 w-full p-8 bg-gradient-to-t from-surface via-surface to-transparent z-40">
           <div className="max-w-2xl mx-auto">
             <ReadyToReceiveButton 
-              onClick={() => {
-                const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-                const updated = allOrders.map((o: any) => {
-                  if (o.id === resolvedParams.id) {
-                    return { 
-                      ...o, 
-                      status: 'rider_assign_delivery', 
-                      color: 'bg-primary text-on-primary',
-                      customerConfirmedDeliveryAt: new Date().toISOString()
-                    };
-                  }
-                  return o;
-                });
-                localStorage.setItem('qw_orders', JSON.stringify(updated));
-                setOrder(updated.find((o: any) => o.id === resolvedParams.id));
-                alert('Riders have been notified that you are ready to receive your laundry!');
+              onClick={async () => {
+                if (!order) return;
+                const updatedOrder = { 
+                  ...order, 
+                  status: 'rider_assign_delivery', 
+                  color: 'bg-primary text-on-primary',
+                  customerConfirmedDeliveryAt: new Date().toISOString()
+                };
+                await db.saveOrder(updatedOrder);
+                setOrder(updatedOrder);
+                setNotification({ message: 'Riders have been notified that you are ready to receive your laundry!', type: 'success' });
+                setTimeout(() => setNotification(null), 3000);
               }}
             />
           </div>

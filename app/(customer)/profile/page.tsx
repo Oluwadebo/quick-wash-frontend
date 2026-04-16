@@ -35,6 +35,14 @@ export default function ProfilePage() {
     setTotalWashes(filtered.filter((o: any) => o.status === 'completed').length);
   }, [user]);
 
+  const getDaysSinceLastOrder = () => {
+    if (recentOrders.length === 0) return 0;
+    const lastOrderDate = new Date(recentOrders[recentOrders.length - 1].createdAt);
+    if (isNaN(lastOrderDate.getTime())) return 0;
+    const diff = new Date().getTime() - lastOrderDate.getTime();
+    return Math.floor(diff / (24 * 60 * 60 * 1000));
+  };
+
   const allBadges = [
     { 
       id: 'clean', 
@@ -42,7 +50,7 @@ export default function ProfilePage() {
       icon: Droplets, 
       color: 'bg-primary/10 text-primary', 
       earned: recentOrders.filter(o => o.status === 'completed').length >= 5,
-      progress: recentOrders.filter(o => o.status === 'completed').length,
+      progress: Math.min(5, recentOrders.filter(o => o.status === 'completed').length),
       goal: 5,
       reward: '+10% Trust Points',
       criteria: 'Complete 5 orders with "No Issue" reported.' 
@@ -63,8 +71,8 @@ export default function ProfilePage() {
       name: 'Loyal Customer', 
       icon: Shield, 
       color: 'bg-tertiary/10 text-tertiary', 
-      earned: recentOrders.length > 0 && (new Date().getTime() - new Date(recentOrders[recentOrders.length - 1].createdAt).getTime() > 30 * 24 * 60 * 60 * 1000),
-      progress: recentOrders.length > 0 ? Math.floor((new Date().getTime() - new Date(recentOrders[recentOrders.length - 1].createdAt).getTime()) / (24 * 60 * 60 * 1000)) : 0,
+      earned: getDaysSinceLastOrder() >= 30,
+      progress: Math.min(30, getDaysSinceLastOrder()),
       goal: 30,
       reward: '+15% Trust Points',
       criteria: 'Stay active with us for over 30 days.' 
@@ -154,9 +162,9 @@ export default function ProfilePage() {
                 <p className="font-label text-[10px] uppercase font-bold tracking-widest opacity-80">Wallet Balance</p>
                 <h3 className="text-3xl font-headline font-bold leading-tight mt-1">₦{(user?.walletBalance || 0).toLocaleString()}</h3>
               </div>
-              <Link href="/wallet" className="z-10 mt-2 bg-on-primary text-primary font-label font-bold text-xs py-2 px-4 rounded-xl w-max active:scale-95 transition-transform">
-                Withdraw
-              </Link>
+              <div className="z-10 mt-2 bg-on-primary/20 text-on-primary font-label font-bold text-[10px] py-2 px-4 rounded-xl w-max uppercase tracking-widest">
+                Secure Wallet
+              </div>
               <Shield className="absolute -bottom-4 -right-4 w-24 h-24 opacity-10 rotate-12" />
             </div>
             <div className="bg-secondary p-6 rounded-[2rem] text-on-secondary flex flex-col justify-between overflow-hidden relative group">
@@ -216,14 +224,14 @@ export default function ProfilePage() {
                         "text-[9px] font-black uppercase tracking-widest",
                         badge.earned ? "text-success" : "text-primary"
                       )}>
-                        {badge.earned ? 'Earned ✅' : `${badge.progress}/${badge.goal}`}
+                        {badge.earned ? 'Earned ✅' : `${Math.floor(badge.progress || 0)}/${badge.goal}`}
                       </span>
                     </div>
                     {!badge.earned && (
                       <div className="w-full h-1.5 bg-surface-container rounded-full overflow-hidden">
                         <div 
                           className="h-full bg-primary transition-all duration-500" 
-                          style={{ width: `${Math.min(100, (badge.progress / badge.goal) * 100)}%` }}
+                          style={{ width: `${Math.min(100, ((badge.progress || 0) / badge.goal) * 100)}%` }}
                         />
                       </div>
                     )}

@@ -8,19 +8,24 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
 import { formatRelativeTime } from '@/lib/time';
-import { X, History, Wallet, ShoppingBag, Volume2, TrendingUp, Star, ShieldCheck, Clock, Package, ArrowRight, Play, AlertTriangle, Edit3, Trash2 } from 'lucide-react';
+import { X, History, Wallet, ShoppingBag, Volume2, TrendingUp, Star, ShieldCheck, Clock, Package, ArrowRight, Play, AlertTriangle, Edit3, Trash2, Plus, Shirt } from 'lucide-react';
+import { db, Order, UserData } from '@/lib/DatabaseService';
+import { Toast } from '@/components/shared/Toast';
+
+const generateCode = () => Math.floor(1000 + Math.random() * 9000).toString();
 
 export default function VendorDashboard() {
   const { user: currentUser } = useAuth();
   const [activeTab, setActiveTab] = React.useState<'orders' | 'history' | 'payout' | 'prices'>('orders');
-  const [orders, setOrders] = React.useState<any[]>([]);
-  const [selectedOrder, setSelectedOrder] = React.useState<any>(null);
+  const [orders, setOrders] = React.useState<Order[]>([]);
+  const [selectedOrder, setSelectedOrder] = React.useState<Order | null>(null);
   const [handoverInput, setHandoverInput] = React.useState('');
   const [isPriceModalOpen, setIsPriceModalOpen] = React.useState(false);
   const [isServicePickerOpen, setIsServicePickerOpen] = React.useState(false);
   const [globalServices, setGlobalServices] = React.useState<string[]>([]);
   const [editingService, setEditingService] = React.useState<any>(null);
   const [services, setServices] = React.useState<any[]>([]);
+  const [notification, setNotification] = React.useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
   const [stats, setStats] = React.useState({
     totalEarnings: 0,
@@ -30,167 +35,164 @@ export default function VendorDashboard() {
   });
 
   React.useEffect(() => {
-    if (currentUser) {
-      const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-      const vendorOrders = allOrders.filter((o: any) => o.vendorId === currentUser.phoneNumber);
-      
-      // Check for 4-day delay penalty
-      const now = new Date().getTime();
-      const fourDays = 4 * 24 * 60 * 60 * 1000;
-      let penaltyApplied = false;
+    const init = async () => {
+      if (currentUser?.uid) {
+        const allOrders = await db.getOrders();
+        const vendorOrders = allOrders.filter((o: Order) => o.vendorId === currentUser.uid);
+        
+        // Check for 4-day delay penalty
+        const now = new Date().getTime();
+        const fourDays = 4 * 24 * 60 * 60 * 1000;
+        let penaltyApplied = false;
 
-      const checkedOrders = vendorOrders.map((o: any) => {
-        if (o.status === 'Wash' && o.time) {
-          const startTime = new Date(o.time).getTime();
-          if (now - startTime > fourDays && !o.penaltyApplied) {
-            o.penaltyApplied = true;
-            penaltyApplied = true;
-            
-            // Deduct trust points
-            const allUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
-            const updatedUsers = allUsers.map((u: any) => {
-              if (u.phoneNumber === currentUser.phoneNumber) {
-                return { ...u, trustScore: Math.max(0, (u.trustScore || 100) - 10) };
+        const checkedOrders = await Promise.all(vendorOrders.map(async (o: Order) => {
+          if (o.status === 'washing' && o.time) {
+            const startTime = new Date(o.time).getTime();
+            if (now - startTime > fourDays && !o.penaltyApplied) {
+              o.penaltyApplied = true;
+              penaltyApplied = true;
+              
+              // Deduct trust points
+              const me = await db.getUser(currentUser.uid);
+              if (me) {
+                await db.updateUser(me.uid, { trustScore: Math.max(0, (me.trustScore || 100) - 10) });
               }
-              return u;
-            });
-            localStorage.setItem('qw_all_users', JSON.stringify(updatedUsers));
+              await db.saveOrder(o);
+            }
           }
-        }
-        return o;
-      });
+          return o;
+        }));
 
-      if (penaltyApplied) {
-        const updatedAllOrders = allOrders.map((o: any) => {
-          const match = checkedOrders.find((co: any) => co.id === o.id);
-          return match || o;
-        });
-        localStorage.setItem('qw_orders', JSON.stringify(updatedAllOrders));
         setOrders(checkedOrders);
-      } else {
-        setOrders(vendorOrders);
-      }
 
-      // Load services
-      const allServices = JSON.parse(localStorage.getItem('qw_vendor_services') || '[]');
-      setServices(allServices.filter((s: any) => s.vendorId === currentUser.phoneNumber));
+        // Load services
+        const allServices = JSON.parse(localStorage.getItem('qw_vendor_services') || '[]');
+        setServices(allServices.filter((s: any) => s.vendorId === currentUser.uid));
 
-      // Load global services
-      const gServices = JSON.parse(localStorage.getItem('qw_global_services') || '["Shirt", "Trousers", "Jeans", "Bedding", "Towel", "Suit", "Native Wear", "Gown"]');
-      setGlobalServices(gServices);
+        // Load global services
+        const gServices = JSON.parse(localStorage.getItem('qw_global_services') || '["Shirt", "Trousers", "Jeans", "Bedding", "Towel", "Suit", "Native Wear", "Gown"]');
+        setGlobalServices(gServices);
 
-      // Process 24h Payout Release
-      const twentyFourHours = 24 * 60 * 60 * 1000;
-      let payoutHappened = false;
-      
-      const updatedOrders = allOrders.map((o: any) => {
-        if (o.vendorId === currentUser.phoneNumber && 
-            o.status === 'delivered' && 
-            o.deliveredAt && 
-            !o.payoutReleased && 
-            !o.disputed) {
-          const deliveredTime = new Date(o.deliveredAt).getTime();
-          if (now - deliveredTime >= twentyFourHours) {
-            o.status = 'completed'; // Mark as completed after 24h
-            o.payoutReleased = true;
-            payoutHappened = true;
-            
-            // Move 20% from pending to wallet
-            const allUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
-            const updatedUsers = allUsers.map((u: any) => {
-              if (u.phoneNumber === currentUser.phoneNumber) {
+        // Process 24h Payout Release
+        const twentyFourHours = 24 * 60 * 60 * 1000;
+        let payoutHappened = false;
+        
+        const updatedOrders = await Promise.all(allOrders.map(async (o: Order) => {
+          if (o.vendorId === currentUser.uid && 
+              o.status === 'delivered' && 
+              o.deliveredAt && 
+              !o.payoutReleased && 
+              !o.disputed) {
+            const deliveredTime = new Date(o.deliveredAt).getTime();
+            if (now - deliveredTime >= twentyFourHours) {
+              o.status = 'completed'; // Mark as completed after 24h
+              o.payoutReleased = true;
+              payoutHappened = true;
+              
+              // Move 20% from pending to wallet
+              const me = await db.getUser(currentUser.uid);
+              if (me) {
                 const releaseAmount = o.totalPrice * 0.2;
-                return { 
-                  ...u, 
-                  walletBalance: (u.walletBalance || 0) + releaseAmount,
-                  pendingBalance: Math.max(0, (u.pendingBalance || 0) - releaseAmount)
-                };
+                await db.updateUser(me.uid, { 
+                  walletBalance: (me.walletBalance || 0) + releaseAmount,
+                  pendingBalance: Math.max(0, (me.pendingBalance || 0) - releaseAmount)
+                });
+                await db.recordTransaction(me.uid, {
+                  type: 'deposit',
+                  amount: releaseAmount,
+                  desc: `Auto-Release Payout (24h) - Order #${o.id}`
+                });
               }
-              return u;
-            });
-            localStorage.setItem('qw_all_users', JSON.stringify(updatedUsers));
+              await db.saveOrder(o);
+            }
           }
+          return o;
+        }));
+
+        if (payoutHappened) {
+          setOrders(updatedOrders.filter((o: Order) => o.vendorId === currentUser.uid));
         }
-        return o;
-      });
 
-      if (payoutHappened) {
-        localStorage.setItem('qw_orders', JSON.stringify(updatedOrders));
-        setOrders(updatedOrders.filter((o: any) => o.vendorId === currentUser.phoneNumber));
+        const me = await db.getUser(currentUser.uid);
+        if (me) {
+          setStats({
+            totalEarnings: me.walletBalance || 0,
+            pendingBalance: me.pendingBalance || 0,
+            activeOrders: vendorOrders.filter((o: Order) => !['delivered', 'completed', 'Cancelled'].includes(o.status)).length,
+            trustScore: me.trustScore || 100
+          });
+        }
       }
-
-      const allUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
-      const me = allUsers.find((u: any) => u.phoneNumber === currentUser.phoneNumber);
-      
-      setStats({
-        totalEarnings: me?.walletBalance || 0,
-        pendingBalance: me?.pendingBalance || 0,
-        activeOrders: vendorOrders.filter((o: any) => !['delivered', 'completed', 'Cancelled'].includes(o.status)).length,
-        trustScore: me?.trustScore || 100
-      });
-    }
+    };
+    init();
   }, [currentUser]);
 
-  const handleStatusUpdate = (orderId: string, newStatus: string, color: string) => {
-    const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-    const updated = allOrders.map((o: any) => {
-      if (o.id === orderId) {
-        return { ...o, status: newStatus, color };
-      }
-      return o;
-    });
-    localStorage.setItem('qw_orders', JSON.stringify(updated));
-    setOrders(updated.filter((o: any) => o.vendorId === currentUser?.phoneNumber));
-    setSelectedOrder(null);
-  };
-
-  const handleVerifyHandover = (order: any) => {
-    if (handoverInput === order.handoverCode) {
-      // 80% to vendor wallet, 20% to pending, 50% rider fee to rider
-      const allUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
-      const riderFee = 1000; // Fixed + Dynamic (simulated)
+  const handleStatusUpdate = async (orderId: string, newStatus: string, color: string) => {
+    const order = await db.getOrder(orderId);
+    if (order) {
+      const updatedOrder = { ...order, status: newStatus, color };
+      await db.saveOrder(updatedOrder);
       
-      const updatedUsers = allUsers.map((u: any) => {
-        if (u.phoneNumber === currentUser?.phoneNumber) {
-          const vendorShare = order.totalPrice * 0.8;
-          const vendorPending = order.totalPrice * 0.2;
-          return { 
-            ...u, 
-            walletBalance: (u.walletBalance || 0) + vendorShare,
-            pendingBalance: (u.pendingBalance || 0) + vendorPending
-          };
-        }
-        if (u.phoneNumber === order.riderPhone) {
-          return { ...u, walletBalance: (u.walletBalance || 0) + (riderFee * 0.5) };
-        }
-        return u;
-      });
-      localStorage.setItem('qw_all_users', JSON.stringify(updatedUsers));
-
-      handleStatusUpdate(order.id, 'washing', 'bg-primary text-on-primary');
-      alert('Handover verified! Order is now in WASHING stage. 80% payment credited, 20% pending.');
-      setHandoverInput('');
-    } else {
-      alert('Invalid handover code!');
+      const allOrders = await db.getOrders();
+      setOrders(allOrders.filter((o: Order) => o.vendorId === currentUser?.uid));
+      setSelectedOrder(null);
+      
+      setNotification({ message: `Order status updated to ${newStatus}`, type: 'success' });
+      setTimeout(() => setNotification(null), 2000);
     }
   };
 
-  const toggleReadyForDelivery = (orderId: string, isReady: boolean) => {
-    const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-    const updated = allOrders.map((o: any) => {
-      if (o.id === orderId) {
-        return { 
-          ...o, 
-          status: isReady ? 'ready' : 'washing', 
-          color: isReady ? 'bg-success text-on-success' : 'bg-primary text-on-primary',
-          readyForDeliveryAt: isReady ? new Date().toISOString() : null
-        };
+  const handleVerifyHandover = async (order: Order) => {
+    if (handoverInput === order.code2) {
+      const itemsPrice = order.itemsPrice || 0;
+      const vendorShare = itemsPrice * 0.8;
+      const vendorPending = itemsPrice * 0.2;
+      
+      if (currentUser?.uid) {
+        const me = await db.getUser(currentUser.uid);
+        if (me) {
+          await db.updateUser(me.uid, { 
+            walletBalance: (me.walletBalance || 0) + vendorShare,
+            pendingBalance: (me.pendingBalance || 0) + vendorPending
+          });
+          await db.recordTransaction(me.uid, {
+            type: 'deposit',
+            amount: vendorShare,
+            desc: `Order Payout (80%) - Order #${order.id}`
+          });
+        }
       }
-      return o;
-    });
-    localStorage.setItem('qw_orders', JSON.stringify(updated));
-    setOrders(updated.filter((o: any) => o.vendorId === currentUser?.phoneNumber));
-    setSelectedOrder(null);
+
+      await handleStatusUpdate(order.id, 'washing', 'bg-primary text-on-primary');
+      setHandoverInput('');
+      window.dispatchEvent(new Event('storage'));
+    } else {
+      setNotification({ message: "Invalid handover code. Please check with the rider.", type: 'error' });
+      setTimeout(() => setNotification(null), 2000);
+    }
+  };
+
+  const toggleReadyForDelivery = async (orderId: string, isReady: boolean) => {
+    const order = await db.getOrder(orderId);
+    if (order) {
+      const code3 = isReady ? generateCode() : null;
+      const updatedOrder = { 
+        ...order, 
+        status: isReady ? 'ready' : 'washing', 
+        code3,
+        color: isReady ? 'bg-success text-on-success' : 'bg-primary text-on-primary',
+        readyForDeliveryAt: isReady ? new Date().toISOString() : null
+      };
+      await db.saveOrder(updatedOrder);
+      
+      const allOrders = await db.getOrders();
+      setOrders(allOrders.filter((o: Order) => o.vendorId === currentUser?.uid));
+      setSelectedOrder(null);
+      
+      setNotification({ message: isReady ? "Order is ready for delivery!" : "Order moved back to washing.", type: 'success' });
+      setTimeout(() => setNotification(null), 2000);
+      window.dispatchEvent(new Event('storage'));
+    }
   };
 
   const handleSaveService = (e: React.FormEvent) => {
@@ -200,10 +202,10 @@ export default function VendorDashboard() {
     if (editingService.id) {
       updated = allServices.map((s: any) => s.id === editingService.id ? editingService : s);
     } else {
-      updated = [...allServices, { ...editingService, id: Date.now(), vendorId: currentUser?.phoneNumber }];
+      updated = [...allServices, { ...editingService, id: Date.now(), vendorId: currentUser?.uid }];
     }
     localStorage.setItem('qw_vendor_services', JSON.stringify(updated));
-    setServices(updated.filter((s: any) => s.vendorId === currentUser?.phoneNumber));
+    setServices(updated.filter((s: any) => s.vendorId === currentUser?.uid));
 
     // Update global services
     const gServices = JSON.parse(localStorage.getItem('qw_global_services') || '[]');
@@ -215,7 +217,8 @@ export default function VendorDashboard() {
 
     setIsPriceModalOpen(false);
     setEditingService(null);
-    alert('Service saved successfully!');
+    setNotification({ message: "Service saved successfully!", type: 'success' });
+    setTimeout(() => setNotification(null), 2000);
   };
 
   const handleDeleteService = (id: number) => {
@@ -223,7 +226,9 @@ export default function VendorDashboard() {
       const allServices = JSON.parse(localStorage.getItem('qw_vendor_services') || '[]');
       const updated = allServices.filter((s: any) => s.id !== id);
       localStorage.setItem('qw_vendor_services', JSON.stringify(updated));
-      setServices(updated.filter((s: any) => s.vendorId === currentUser?.phoneNumber));
+      setServices(updated.filter((s: any) => s.vendorId === currentUser?.uid));
+      setNotification({ message: "Service deleted.", type: 'info' });
+      setTimeout(() => setNotification(null), 2000);
     }
   };
 
@@ -234,26 +239,23 @@ export default function VendorDashboard() {
       type: 'WEATHER ALERT',
       msg: `Heavy rain reported at ${currentUser?.shopName || 'a vendor shop'}. Deliveries may be delayed.`,
       color: 'bg-warning text-on-warning',
-      vendorId: currentUser?.phoneNumber,
+      vendorId: currentUser?.uid,
       time: new Date().toISOString()
     };
     alerts.push(newAlert);
     localStorage.setItem('qw_alerts', JSON.stringify(alerts));
-    alert('Rain reported! Customers and riders have been notified.');
+    setNotification({ message: "Rain reported! Customers and riders notified.", type: 'warning' as any });
+    setTimeout(() => setNotification(null), 2000);
   };
 
-  const handleWithdrawal = () => {
+  const handleWithdrawal = async () => {
     if (stats.totalEarnings < 8000) return;
     
-    const allUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
-    const updated = allUsers.map((u: any) => {
-      if (u.phoneNumber === currentUser?.phoneNumber) {
-        return { ...u, withdrawalRequested: true };
-      }
-      return u;
-    });
-    localStorage.setItem('qw_all_users', JSON.stringify(updated));
-    alert('Withdrawal request submitted! You will be paid within 2 hours.');
+    if (currentUser?.uid) {
+      await db.updateUser(currentUser.uid, { withdrawalRequested: true });
+      setNotification({ message: "Withdrawal request submitted!", type: 'success' });
+      setTimeout(() => setNotification(null), 2000);
+    }
   };
 
   return (
@@ -261,6 +263,15 @@ export default function VendorDashboard() {
       <TopAppBar roleLabel="Vendor Station" showAudioToggle />
       
       <main className="pt-8 px-6 max-w-7xl mx-auto">
+          <AnimatePresence>
+            {notification && (
+              <Toast 
+                message={notification.message} 
+                type={notification.type} 
+                onClose={() => setNotification(null)} 
+              />
+            )}
+          </AnimatePresence>
           <header className="mb-10">
             <div className="flex items-center gap-4 mb-2">
               <div className="w-12 h-12 rounded-2xl bg-primary-container flex items-center justify-center">
@@ -322,61 +333,76 @@ export default function VendorDashboard() {
             {activeTab === 'prices' && (
               <motion.section 
                 key="prices"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
                 className="space-y-8"
               >
                 <div className="flex justify-between items-center">
-                  <h2 className="text-2xl font-headline font-black text-on-surface">My Price List</h2>
+                  <div>
+                    <h2 className="text-3xl font-headline font-black text-on-surface tracking-tight">Service Price List</h2>
+                    <p className="text-on-surface-variant font-medium">Manage your service offerings and pricing.</p>
+                  </div>
                   <button 
-                    onClick={() => {
-                      setIsServicePickerOpen(true);
-                    }}
-                    className="signature-gradient text-white px-6 py-3 rounded-xl font-headline font-bold text-xs shadow-lg active:scale-95 transition-transform"
+                    onClick={() => setIsServicePickerOpen(true)}
+                    className="signature-gradient text-white px-8 py-4 rounded-2xl font-headline font-bold text-sm shadow-xl active:scale-95 transition-transform flex items-center gap-2"
                   >
-                    Add Service
+                    <Plus className="w-5 h-5" /> ADD NEW SERVICE
                   </button>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {services.map((s) => (
-                    <div key={s.id} className="bg-surface-container-low p-6 rounded-[2rem] border border-primary/5 shadow-sm">
-                      <div className="flex justify-between items-start mb-4">
-                        <h4 className="font-headline font-black text-xl text-on-surface">{s.name}</h4>
+                  {services.map((service) => (
+                    <div key={service.id} className="bg-surface-container-low p-8 rounded-[2.5rem] border border-primary/5 shadow-sm hover:border-primary/20 transition-all group">
+                      <div className="flex justify-between items-start mb-6">
+                        <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-xl text-primary group-hover:scale-110 transition-transform">
+                          <Shirt className="w-8 h-8" />
+                        </div>
                         <div className="flex gap-2">
-                          <button onClick={() => { setEditingService(s); setIsPriceModalOpen(true); }} className="p-2 bg-surface-container-highest rounded-lg text-on-surface-variant hover:text-primary">
+                          <button 
+                            onClick={() => {
+                              setEditingService(service);
+                              setIsPriceModalOpen(true);
+                            }}
+                            className="w-10 h-10 rounded-xl bg-surface-container-highest text-on-surface-variant flex items-center justify-center hover:text-primary transition-colors"
+                          >
                             <Edit3 className="w-4 h-4" />
                           </button>
-                          <button onClick={() => handleDeleteService(s.id)} className="p-2 bg-surface-container-highest rounded-lg text-on-surface-variant hover:text-error">
+                          <button 
+                            onClick={() => handleDeleteService(service.id)}
+                            className="w-10 h-10 rounded-xl bg-surface-container-highest text-on-surface-variant flex items-center justify-center hover:text-error transition-colors"
+                          >
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       </div>
-                      <div className="space-y-2 text-sm font-medium">
-                        <div className="flex justify-between">
-                          <span className="text-on-surface-variant">Wash Only</span>
-                          <span className="text-primary font-bold">₦{s.washPrice}</span>
+                      <h3 className="text-2xl font-headline font-black text-on-surface mb-6">{service.name}</h3>
+                      
+                      <div className="space-y-4">
+                        <div className="flex justify-between items-center p-4 bg-surface-container-lowest rounded-2xl border border-primary/5">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Wash Only</span>
+                          <span className="font-headline font-black text-primary">₦{service.washPrice}</span>
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-on-surface-variant">Iron Only</span>
-                          <span className="text-primary font-bold">₦{s.ironPrice}</span>
+                        <div className="flex justify-between items-center p-4 bg-surface-container-lowest rounded-2xl border border-primary/5">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Iron Only</span>
+                          <span className="font-headline font-black text-primary">₦{service.ironPrice}</span>
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-on-surface-variant">Wash + Iron</span>
-                          <span className="text-primary font-bold">₦{s.washIronPrice}</span>
+                        <div className="flex justify-between items-center p-4 bg-primary/5 rounded-2xl border border-primary/10">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-primary">Wash + Iron</span>
+                          <span className="font-headline font-black text-primary">₦{service.washIronPrice}</span>
                         </div>
-                        {s.whitePremium > 0 && (
-                          <div className="flex justify-between text-tertiary">
-                            <span>White Premium</span>
-                            <span className="font-bold">+₦{s.whitePremium}</span>
-                          </div>
-                        )}
                       </div>
                     </div>
                   ))}
                   {services.length === 0 && (
-                    <div className="col-span-full py-20 text-center border-2 border-dashed border-primary/10 rounded-[3rem]">
-                      <p className="text-on-surface-variant font-medium">No services added yet. Add your first service!</p>
+                    <div className="col-span-full py-20 text-center border-4 border-dashed border-primary/10 rounded-[3rem]">
+                      <Package className="w-16 h-16 text-primary/20 mx-auto mb-4" />
+                      <p className="text-on-surface-variant font-headline font-bold text-xl">No services added yet.</p>
+                      <button 
+                        onClick={() => setIsServicePickerOpen(true)}
+                        className="mt-6 text-primary font-black uppercase tracking-widest text-xs hover:underline"
+                      >
+                        Add your first service
+                      </button>
                     </div>
                   )}
                 </div>
@@ -421,17 +447,15 @@ export default function VendorDashboard() {
                         <div className="flex-1 flex gap-3">
                           <input 
                             type="text" 
-                            placeholder="Enter Handover Code"
+                            placeholder="Enter Code 2 from Rider"
                             value={handoverInput}
-                            onChange={(e) => setHandoverInput(e.target.value)}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setHandoverInput(val);
+                              if (val === order.code2) handleVerifyHandover(order);
+                            }}
                             className="flex-1 h-14 bg-surface-container-highest rounded-xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
                           />
-                          <button 
-                            onClick={() => handleVerifyHandover(order)}
-                            className="h-14 px-8 bg-primary text-on-primary rounded-xl font-headline font-black text-sm shadow-lg shadow-primary/20 active:scale-95 transition-transform"
-                          >
-                            START WASHING
-                          </button>
                         </div>
                       )}
                       {order.status === 'washing' && (
@@ -443,12 +467,18 @@ export default function VendorDashboard() {
                         </button>
                       )}
                       {order.status === 'ready' && (
-                        <button 
-                          onClick={() => toggleReadyForDelivery(order.id, false)}
-                          className="flex-1 h-14 bg-surface-container-highest text-on-surface rounded-xl font-headline font-black text-sm active:scale-95 transition-transform"
-                        >
-                          NOT READY (BACK TO WASH)
-                        </button>
+                        <div className="flex-1 flex flex-col gap-2">
+                          <div className="p-4 bg-success/10 rounded-xl border border-success/20 flex flex-col items-center justify-center">
+                            <p className="text-[10px] font-black text-success uppercase tracking-widest mb-1">CODE FOR RIDER</p>
+                            <p className="text-2xl font-headline font-black text-success tracking-[0.3em]">{order.code3}</p>
+                          </div>
+                          <button 
+                            onClick={() => toggleReadyForDelivery(order.id, false)}
+                            className="w-full h-10 bg-surface-container-highest text-on-surface rounded-xl font-headline font-black text-[10px] active:scale-95 transition-transform"
+                          >
+                            NOT READY (BACK TO WASH)
+                          </button>
+                        </div>
                       )}
                       <button 
                         onClick={() => setSelectedOrder(order)}

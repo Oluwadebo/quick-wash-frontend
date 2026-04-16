@@ -205,7 +205,7 @@ export default function AdminDashboard() {
     setOrders(allOrders);
 
     const totalRevenue = allOrders.reduce((acc: number, o: any) => acc + (Number(o.totalPrice) || 0), 0);
-    const activeOrders = allOrders.filter((o: any) => o.status !== 'Delivered' && !o.status.includes('Cancelled')).length;
+    const activeOrders = allOrders.filter((o: any) => o.status !== 'delivered' && o.status !== 'completed' && !o.status.includes('Cancelled')).length;
     
     setStats([
       { label: 'Total Revenue', value: `₦${(totalRevenue || 0).toLocaleString()}`, trend: '+18.2%', icon: TrendingUp, color: 'text-primary' },
@@ -214,18 +214,48 @@ export default function AdminDashboard() {
       { label: 'System Health', value: '99.9%', trend: 'Stable', icon: Activity, color: 'text-primary' }
     ]);
 
-    const storedCampaigns = JSON.parse(localStorage.getItem('qw_campaigns') || '[]');
-    if (storedCampaigns.length === 0) {
-      const defaultCampaigns = [
-        { id: 1, name: 'Freshman Welcome', status: 'Active', reach: '1.2k', conversion: '15%', color: 'bg-primary' },
-        { id: 2, name: 'Weekend Flash Sale', status: 'Scheduled', reach: '4.5k', conversion: '-', color: 'bg-tertiary' },
-        { id: 3, name: 'Loyalty Rewards', status: 'Active', reach: '850', conversion: '22%', color: 'bg-success' }
-      ];
-      localStorage.setItem('qw_campaigns', JSON.stringify(defaultCampaigns));
-      setCampaigns(defaultCampaigns);
-    } else {
-      setCampaigns(storedCampaigns);
-    }
+    // Auto-cancel logic
+    const interval = setInterval(() => {
+      const currentOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
+      const now = new Date().getTime();
+      const twentyMinutes = 20 * 60 * 1000;
+      let changed = false;
+
+      const updatedOrders = currentOrders.map((o: any) => {
+        if ((o.status === 'rider_assign_pickup' || o.status === 'rider_assign_delivery') && !o.riderPhone) {
+          const startTime = new Date(o.updatedAt || o.createdAt).getTime();
+          if (now - startTime > twentyMinutes) {
+            changed = true;
+            // Refund customer
+            const allUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
+            const updatedUsers = allUsers.map((u: any) => {
+              if (u.phoneNumber === o.customerPhone) {
+                return { ...u, walletBalance: (u.walletBalance || 0) + (o.totalPrice || 0) };
+              }
+              return u;
+            });
+            localStorage.setItem('qw_all_users', JSON.stringify(updatedUsers));
+
+            return { 
+              ...o, 
+              status: 'Cancelled (Auto)', 
+              color: 'bg-error/10 text-error',
+              cancelledAt: new Date().toISOString(),
+              refunded: true
+            };
+          }
+        }
+        return o;
+      });
+
+      if (changed) {
+        localStorage.setItem('qw_orders', JSON.stringify(updatedOrders));
+        setOrders(updatedOrders);
+        window.dispatchEvent(new Event('storage'));
+      }
+    }, 30000); // Check every 30 seconds
+
+    return () => clearInterval(interval);
   }, []);
 
   const assignRider = (orderId: string, riderPhone: string) => {

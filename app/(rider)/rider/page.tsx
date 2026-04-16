@@ -8,13 +8,14 @@ import { cn } from '@/lib/utils';
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
 import { useAuth } from '@/hooks/use-auth';
 import { formatRelativeTime } from '@/lib/time';
+import { db, Order, UserData } from '@/lib/DatabaseService';
 import { X, History, Wallet, ShoppingBag, MapPin, Navigation, Package, CheckCircle, Clock, Phone, ArrowRight, Bike, Zap, AlertTriangle, MessageCircle } from 'lucide-react';
 
 export default function RiderDashboard() {
   const { user: currentUser } = useAuth();
   const [activeTab, setActiveTab] = React.useState<'tasks' | 'history' | 'wallet'>('tasks');
-  const [tasks, setTasks] = React.useState<any[]>([]);
-  const [availableOrders, setAvailableOrders] = React.useState<any[]>([]);
+  const [tasks, setTasks] = React.useState<Order[]>([]);
+  const [availableOrders, setAvailableOrders] = React.useState<Order[]>([]);
   const [stats, setStats] = React.useState({
     walletBalance: 0,
     trustScore: 100,
@@ -23,213 +24,176 @@ export default function RiderDashboard() {
   const [handoverInput, setHandoverInput] = React.useState<{ [key: string]: string }>({});
   const [orderToReject, setOrderToReject] = React.useState<string | null>(null);
   const [notification, setNotification] = React.useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
+  const [isProcessing, setIsProcessing] = React.useState(false);
 
   React.useEffect(() => {
-    if (currentUser) {
-      const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-      
-      // Tasks assigned to this rider
-      const myTasks = allOrders.filter((o: any) => o.riderPhone === currentUser.phoneNumber && !['Delivered', 'Cancelled'].includes(o.status));
-      setTasks(myTasks);
+    const refreshData = async () => {
+      if (currentUser?.uid) {
+        const allOrders = await db.getOrders();
+        
+        // Tasks assigned to this rider - STRICT UID FILTERING
+        const myTasks = allOrders.filter((o: Order) => o.riderUid === currentUser.uid && !['Delivered', 'Cancelled'].includes(o.status));
+        setTasks(myTasks);
 
-      // Orders available for pickup (not yet assigned)
-      // Include both Awaiting Pickup Confirmation and Pending Pickup if no rider is assigned
-      const available = allOrders.filter((o: any) => {
-        const isAvailable = (o.status === 'Awaiting Pickup Confirmation' || o.status === 'Pending Pickup') && !o.riderPhone;
+        // Orders available for pickup (not yet assigned)
+        const available = allOrders.filter((o: Order) => {
+          const isAvailable = (o.status === 'rider_assign_pickup' || o.status === 'rider_assign_delivery') && !o.riderUid;
+          return isAvailable;
+        });
+        setAvailableOrders(available);
+
+        const me = await db.getUser(currentUser.uid);
+        
+        setStats({
+          walletBalance: me?.walletBalance || 0,
+          trustScore: me?.trustScore || 100,
+          completedTasks: allOrders.filter((o: Order) => o.riderUid === currentUser.uid && o.status === 'completed').length
+        });
+      }
+    };
+
+    refreshData();
+    window.addEventListener('storage', refreshData);
+    return () => window.removeEventListener('storage', refreshData);
+  }, [currentUser]);
+
+  const handleAcceptOrder = async (orderId: string) => {
+    if (!currentUser || isProcessing) return;
+    setIsProcessing(true);
+    
+    setNotification({ message: 'Claiming order... Please wait.', type: 'info' });
+
+    // ATOMIC TRANSACTION: Claim Order
+    const success = await db.claimOrder(
+      orderId, 
+      currentUser.uid, 
+      currentUser.fullName || 'Rider', 
+      currentUser.phoneNumber
+    );
+
+    if (success) {
+      setNotification({ message: 'Order claimed successfully! Redirecting...', type: 'success' });
+      // FEEDBACK LOOP: Mandatory 2000ms delay
+      setTimeout(() => {
+        setNotification(null);
+        setIsProcessing(false);
+        // State will refresh via storage event or manual refresh
+      }, 2000);
+    } else {
+      setNotification({ message: 'Failed to claim. Order might have been taken by another rider.', type: 'error' });
+      setTimeout(() => {
+        setNotification(null);
+        setIsProcessing(false);
+      }, 3000);
+    }
+  };
+
+  const handleRejectOrder = async (orderId: string) => {
+    const order = await db.getOrder(orderId);
+    if (order) {
+      const updatedOrder = { 
+        ...order, 
+        status: order.status === 'ready' ? 'ready' : 'rider_assign_pickup', // Keep it ready for other riders
+        riderUid: undefined,
+        riderName: undefined,
+        riderPhone: undefined,
+        color: 'bg-warning/20 text-warning'
+      };
+      await db.saveOrder(updatedOrder);
+      
+      const allOrders = await db.getOrders();
+      setTasks(allOrders.filter((o: Order) => o.riderUid === currentUser?.uid && !['delivered', 'completed', 'Cancelled'].includes(o.status)));
+      setAvailableOrders(allOrders.filter((o: Order) => {
+        const isAvailable = (o.status === 'rider_assign_pickup' || o.status === 'ready') && !o.riderUid;
         if (!isAvailable) return false;
         const now = new Date().getTime();
         const createdAt = new Date(o.createdAt).getTime();
         const ageInMinutes = (now - createdAt) / (1000 * 60);
         return ageInMinutes <= 20;
-      });
-      setAvailableOrders(available);
-
-      const allUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
-      const me = allUsers.find((u: any) => u.phoneNumber === currentUser.phoneNumber);
-      
-      setStats({
-        walletBalance: me?.walletBalance || 0,
-        trustScore: me?.trustScore || 100,
-        completedTasks: allOrders.filter((o: any) => o.riderPhone === currentUser.phoneNumber && o.status === 'completed').length
-      });
-    }
-  }, [currentUser]);
-
-  const handleAcceptOrder = (orderId: string) => {
-    const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-    const order = allOrders.find((o: any) => o.id === orderId);
-    
-    if (order) {
-      const now = new Date().getTime();
-      const createdAt = new Date(order.createdAt).getTime();
-      const ageInMinutes = (now - createdAt) / (1000 * 60);
-      
-      if (ageInMinutes > 20) {
-        setNotification({ message: 'Order is too old to accept (expiring soon).', type: 'error' });
-        setTimeout(() => setNotification(null), 3000);
-        return;
-      }
-    }
-
-    const updated = allOrders.map((o: any) => {
-      if (o.id === orderId) {
-        return { 
-          ...o, 
-          status: o.status === 'ready' ? 'rider_assign_delivery' : 'rider_assign_pickup', 
-          riderPhone: currentUser?.phoneNumber,
-          riderName: currentUser?.fullName,
-          color: 'bg-primary text-on-primary'
-        };
-      }
-      return o;
-    });
-    localStorage.setItem('qw_orders', JSON.stringify(updated));
-    setTasks(updated.filter((o: any) => o.riderPhone === currentUser?.phoneNumber && !['delivered', 'completed', 'Cancelled'].includes(o.status)));
-    setAvailableOrders(updated.filter((o: any) => {
-      const isAvailable = (o.status === 'rider_assign_pickup' || o.status === 'ready') && !o.riderPhone;
-      if (!isAvailable) return false;
-      const now = new Date().getTime();
-      const createdAt = new Date(o.createdAt).getTime();
-      const ageInMinutes = (now - createdAt) / (1000 * 60);
-      return ageInMinutes <= 20;
-    }));
-    setNotification({ message: 'Order accepted! Head to the location.', type: 'success' });
-    setTimeout(() => setNotification(null), 3000);
-  };
-
-  const handleRejectOrder = (orderId: string) => {
-    const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-    const updated = allOrders.map((o: any) => {
-      if (o.id === orderId) {
-        return { 
-          ...o, 
-          status: o.status === 'ready' ? 'ready' : 'rider_assign_pickup', // Keep it ready for other riders
-          riderPhone: null,
-          riderName: null,
-          color: 'bg-warning/20 text-warning'
-        };
-      }
-      return o;
-    });
-    localStorage.setItem('qw_orders', JSON.stringify(updated));
-    setTasks(updated.filter((o: any) => o.riderPhone === currentUser?.phoneNumber && !['delivered', 'completed', 'Cancelled'].includes(o.status)));
-    setAvailableOrders(updated.filter((o: any) => {
-      const isAvailable = (o.status === 'rider_assign_pickup' || o.status === 'ready') && !o.riderPhone;
-      if (!isAvailable) return false;
-      const now = new Date().getTime();
-      const createdAt = new Date(o.createdAt).getTime();
-      const ageInMinutes = (now - createdAt) / (1000 * 60);
-      return ageInMinutes <= 20;
-    }));
-    setNotification({ message: 'Order rejected.', type: 'info' });
-    setTimeout(() => setNotification(null), 3000);
-    setOrderToReject(null);
-  };
-
-  const handleStatusUpdate = (orderId: string, newStatus: string, color: string) => {
-    const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-    const updated = allOrders.map((o: any) => {
-      if (o.id === orderId) {
-        return { ...o, status: newStatus, color };
-      }
-      return o;
-    });
-    localStorage.setItem('qw_orders', JSON.stringify(updated));
-    setTasks(updated.filter((o: any) => o.riderPhone === currentUser?.phoneNumber && !['Delivered', 'Cancelled'].includes(o.status)));
-  };
-
-  const handleVerifyHandover = (order: any) => {
-    const input = handoverInput[order.id];
-    if (input === order.handoverCode) {
-      // Final 50% rider fee to rider
-      const allUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
-      const riderFee = order.riderFee || 1000;
-      
-      const updatedUsers = allUsers.map((u: any) => {
-        if (u.phoneNumber === currentUser?.phoneNumber) {
-          return { ...u, walletBalance: (u.walletBalance || 0) + (riderFee * 0.5) };
-        }
-        return u;
-      });
-      localStorage.setItem('qw_all_users', JSON.stringify(updatedUsers));
-
-      // Update order status and set deliveredAt
-      const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-      const updatedOrders = allOrders.map((o: any) => {
-        if (o.id === order.id) {
-          return { 
-            ...o, 
-            status: 'delivered', 
-            color: 'bg-success text-on-success',
-            deliveredAt: new Date().toISOString()
-          };
-        }
-        return o;
-      });
-      localStorage.setItem('qw_orders', JSON.stringify(updatedOrders));
-      setTasks(updatedOrders.filter((o: any) => o.riderPhone === currentUser?.phoneNumber && !['delivered', 'completed', 'Cancelled'].includes(o.status)));
-
-      setNotification({ message: 'Handover verified! Delivery complete.', type: 'success' });
+      }));
+      setNotification({ message: 'Order rejected.', type: 'info' });
       setTimeout(() => setNotification(null), 3000);
-      setHandoverInput(prev => ({ ...prev, [order.id]: '' }));
-    } else {
-      setNotification({ message: 'Invalid handover code!', type: 'error' });
-      setTimeout(() => setNotification(null), 3000);
+      setOrderToReject(null);
+      window.dispatchEvent(new Event('storage'));
     }
   };
 
-  const handleVerifyPickup = (order: any) => {
+  const handleStatusUpdate = async (orderId: string, newStatus: string, color: string) => {
+    await db.updateOrderStatus(orderId, newStatus, color);
+    const allOrders = await db.getOrders();
+    setTasks(allOrders.filter((o: Order) => o.riderUid === currentUser?.uid && !['Delivered', 'Cancelled'].includes(o.status)));
+  };
+
+  const handleVerifyPickup = async (order: Order) => {
     const input = handoverInput[order.id];
-    if (input === order.pickupCode) {
+    if (input === order.code1) {
       // First 50% rider fee to rider on pickup
-      const allUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
       const riderFee = order.riderFee || 1000;
+      const firstHalf = riderFee * 0.5;
       
-      const updatedUsers = allUsers.map((u: any) => {
-        if (u.phoneNumber === currentUser?.phoneNumber) {
-          return { ...u, walletBalance: (u.walletBalance || 0) + (riderFee * 0.5) };
+      if (currentUser?.uid) {
+        const me = await db.getUser(currentUser.uid);
+        if (me) {
+          await db.updateUser(me.uid, { walletBalance: (me.walletBalance || 0) + firstHalf });
+          await db.recordTransaction(me.uid, {
+            type: 'deposit',
+            amount: firstHalf,
+            desc: `Rider Fee (50%) - Order #${order.id}`
+          });
         }
-        return u;
-      });
-      localStorage.setItem('qw_all_users', JSON.stringify(updatedUsers));
+      }
+
+      // Generate Code 2 (Rider sees, Vendor enters)
+      const code2 = Math.floor(1000 + Math.random() * 9000).toString();
 
       // Update order status
-      const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-      const updatedOrders = allOrders.map((o: any) => {
-        if (o.id === order.id) {
-          return { 
-            ...o, 
-            status: 'picked_up', 
-            color: 'bg-secondary text-on-secondary',
-            pickedUpAt: new Date().toISOString()
-          };
-        }
-        return o;
-      });
-      localStorage.setItem('qw_orders', JSON.stringify(updatedOrders));
-      setTasks(updatedOrders.filter((o: any) => o.riderPhone === currentUser?.phoneNumber && !['delivered', 'completed', 'Cancelled'].includes(o.status)));
-
+      const updatedOrder = { 
+        ...order, 
+        status: 'picked_up', 
+        code2,
+        color: 'bg-secondary text-on-secondary',
+        pickedUpAt: new Date().toISOString()
+      };
+      await db.saveOrder(updatedOrder);
+      
       setNotification({ message: 'Pickup confirmed! Head to the vendor.', type: 'success' });
       setTimeout(() => setNotification(null), 3000);
       setHandoverInput(prev => ({ ...prev, [order.id]: '' }));
-    } else {
-      setNotification({ message: 'Invalid pickup code!', type: 'error' });
-      setTimeout(() => setNotification(null), 3000);
+      window.dispatchEvent(new Event('storage'));
     }
   };
 
-  const handleWithdrawal = () => {
+  const handleVerifyPickupDelivery = async (order: Order) => {
+    const input = handoverInput[order.id];
+    if (input === order.code3) {
+      // Generate Code 4 (Rider sees, Customer enters)
+      const code4 = Math.floor(1000 + Math.random() * 9000).toString();
+
+      // Update order status
+      const updatedOrder = { 
+        ...order, 
+        status: 'picked_up_delivery', 
+        code4,
+        color: 'bg-tertiary text-on-tertiary',
+        pickedUpDeliveryAt: new Date().toISOString()
+      };
+      await db.saveOrder(updatedOrder);
+      
+      setNotification({ message: 'Delivery pickup confirmed! Head to the customer.', type: 'success' });
+      setTimeout(() => setNotification(null), 3000);
+      setHandoverInput(prev => ({ ...prev, [order.id]: '' }));
+      window.dispatchEvent(new Event('storage'));
+    }
+  };
+
+  const handleWithdrawal = async () => {
     if (stats.walletBalance < 2000) return;
     
-    const allUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
-    const updated = allUsers.map((u: any) => {
-      if (u.phoneNumber === currentUser?.phoneNumber) {
-        return { ...u, withdrawalRequested: true };
-      }
-      return u;
-    });
-    localStorage.setItem('qw_all_users', JSON.stringify(updated));
-    alert('Withdrawal request submitted! You will be paid within 2 hours.');
+    if (currentUser?.uid) {
+      await db.updateUser(currentUser.uid, { withdrawalRequested: true });
+      setNotification({ message: "Withdrawal request submitted!", type: 'success' });
+      setTimeout(() => setNotification(null), 3000);
+    }
   };
 
   const handleStartNavigation = (landmark: string) => {
@@ -238,21 +202,47 @@ export default function RiderDashboard() {
     window.open(url, '_blank');
   };
 
+  const handleReportRain = async () => {
+    const alerts = JSON.parse(localStorage.getItem('qw_alerts') || '[]');
+    const newAlert = {
+      id: Date.now(),
+      type: 'WEATHER ALERT',
+      msg: `Heavy rain reported by rider ${currentUser?.fullName}. Deliveries may be delayed.`,
+      color: 'bg-warning text-on-warning',
+      riderUid: currentUser?.uid,
+      time: new Date().toISOString()
+    };
+    alerts.push(newAlert);
+    localStorage.setItem('qw_alerts', JSON.stringify(alerts));
+    setNotification({ message: 'Rain reported! Customers and vendors have been notified.', type: 'info' });
+    setTimeout(() => setNotification(null), 3000);
+  };
+
   return (
     <div className="pb-32">
       <TopAppBar roleLabel="Rider Station" showAudioToggle />
       
       <main className="pt-8 px-6 max-w-7xl mx-auto">
           <header className="mb-10">
-            <div className="flex items-center gap-4 mb-2">
-              <div className="w-12 h-12 rounded-2xl bg-primary-container flex items-center justify-center">
-                <Bike className="text-primary w-6 h-6" />
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4 mb-2">
+                <div className="w-12 h-12 rounded-2xl bg-primary-container flex items-center justify-center">
+                  <Bike className="text-primary w-6 h-6" />
+                </div>
+                <div>
+                  <p className="font-label text-xs font-black uppercase tracking-[0.2em] text-primary">Live Dashboard</p>
+                  <h1 className="text-4xl font-headline font-black text-on-surface tracking-tighter">
+                    Welcome, {currentUser?.fullName || 'Rider'}!
+                  </h1>
+                </div>
               </div>
-              <p className="font-label text-xs font-black uppercase tracking-[0.2em] text-primary">Live Dashboard</p>
+              <button 
+                onClick={handleReportRain}
+                className="flex items-center gap-3 px-6 py-3 bg-warning/10 text-warning rounded-2xl font-headline font-black text-xs hover:bg-warning/20 transition-all active:scale-95"
+              >
+                <AlertTriangle className="w-5 h-5" /> REPORT RAIN
+              </button>
             </div>
-            <h1 className="text-[3.5rem] leading-[0.95] font-headline font-black text-on-surface mb-6 tracking-tighter">
-              Welcome, {currentUser?.fullName || 'Rider'}!
-            </h1>
           </header>
 
           {/* Stats Grid */}
@@ -345,11 +335,13 @@ export default function RiderDashboard() {
                   <h3 className="font-headline font-black text-xl mb-6">My Active Tasks</h3>
                   <div className="space-y-6">
                     {tasks.map((order) => {
-                      const isPickup = order.status === 'Pending Pickup';
-                      const isDelivery = order.status === 'Out for Delivery' || order.status === 'Ready for Delivery';
-                      const destinationLandmark = isPickup ? order.customerLandmark : order.vendorLandmark;
-                      const destinationName = isPickup ? order.customerName : order.vendorName;
-                      const destinationPhone = isPickup ? order.customerPhone : order.vendorPhone;
+                      const isPickup = order.status === 'rider_assign_pickup';
+                      const isDelivery = order.status === 'rider_assign_delivery' || order.status === 'picked_up_delivery';
+                      const isPickedUp = order.status === 'picked_up';
+                      
+                      const destinationLandmark = (isPickup || order.status === 'picked_up') ? order.customerLandmark : order.vendorLandmark;
+                      const destinationName = (isPickup || order.status === 'picked_up') ? order.customerName : order.vendorName;
+                      const destinationPhone = (isPickup || order.status === 'picked_up') ? order.customerPhone : order.vendorPhone;
                       
                       return (
                         <div key={order.id} className="bg-surface-container-low p-8 rounded-[2.5rem] border border-primary/5 shadow-sm">
@@ -363,9 +355,10 @@ export default function RiderDashboard() {
                               </div>
                               <div>
                                 <h4 className="font-headline font-black text-xl text-on-surface">
-                                  {isPickup ? 'Pickup from' : 'Deliver to'} {destinationName}
+                                  {isPickup ? 'Pickup from' : isDelivery ? 'Deliver to' : 'Heading to'} {destinationName}
                                 </h4>
                                 <p className="text-xs font-bold text-on-surface-variant">{destinationLandmark} • {destinationPhone}</p>
+                                {order.customerAddress && <p className="text-[10px] font-medium text-primary mt-1">Address: {order.customerAddress}</p>}
                               </div>
                             </div>
                             <div className="flex flex-col items-end gap-2">
@@ -373,69 +366,68 @@ export default function RiderDashboard() {
                                 "px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest",
                                 order.color
                               )}>
-                                {order.status}
+                                {order.status.replace(/_/g, ' ')}
                               </span>
-                              {isPickup && (
-                                <button 
-                                  onClick={() => setOrderToReject(order.id)}
-                                  className="text-[10px] font-black uppercase tracking-widest text-error hover:underline"
-                                >
-                                  Reject Task
-                                </button>
-                              )}
                             </div>
                           </div>
 
                           <div className="flex gap-4">
                             <button 
-                              onClick={() => handleStartNavigation(destinationLandmark)}
+                              onClick={() => handleStartNavigation(destinationLandmark || '')}
                               className="flex-1 h-14 bg-surface-container-highest text-on-surface rounded-xl font-headline font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-transform"
                             >
                               <Navigation className="w-5 h-5" /> NAVIGATE
                             </button>
                             
-                            {order.status === 'Pending Pickup' && (
+                            {order.status === 'rider_assign_pickup' && (
                               <div className="flex-1 flex gap-3">
                                 <input 
                                   type="text" 
-                                  placeholder="Code"
+                                  placeholder="Code 1"
                                   value={handoverInput[order.id] || ''}
-                                  onChange={(e) => setHandoverInput(prev => ({ ...prev, [order.id]: e.target.value }))}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setHandoverInput(prev => ({ ...prev, [order.id]: val }));
+                                    if (val === order.code1) handleVerifyPickup(order);
+                                  }}
                                   className="w-24 h-14 bg-surface-container-highest rounded-xl px-4 text-center font-headline font-black text-xl outline-none focus:ring-2 ring-primary"
                                 />
-                                <button 
-                                  onClick={() => handleVerifyPickup(order)}
-                                  className="flex-1 h-14 bg-primary text-on-primary rounded-xl font-headline font-black text-sm active:scale-95 transition-transform"
-                                >
-                                  PICKUP
-                                </button>
+                                <div className="flex-1 h-14 bg-primary/10 text-primary rounded-xl font-headline font-black text-[10px] flex items-center justify-center text-center px-2">
+                                  ENTER CODE FROM CUSTOMER
+                                </div>
+                              </div>
+                            )}
+
+                            {order.status === 'picked_up' && (
+                              <div className="flex-1 p-4 bg-secondary/10 rounded-xl border border-secondary/20 flex flex-col items-center justify-center">
+                                <p className="text-[10px] font-black text-secondary uppercase tracking-widest mb-1">CODE FOR VENDOR</p>
+                                <p className="text-2xl font-headline font-black text-secondary tracking-[0.3em]">{order.code2}</p>
                               </div>
                             )}
                             
-                            {order.status === 'Ready for Delivery' && (
-                              <button 
-                                onClick={() => handleStatusUpdate(order.id, 'Out for Delivery', 'bg-tertiary text-on-tertiary')}
-                                className="flex-1 h-14 bg-tertiary text-on-tertiary rounded-xl font-headline font-black text-sm active:scale-95 transition-transform"
-                              >
-                                START DELIVERY
-                              </button>
-                            )}
-
-                            {order.status === 'Out for Delivery' && (
+                            {order.status === 'rider_assign_delivery' && (
                               <div className="flex-1 flex gap-3">
                                 <input 
                                   type="text" 
-                                  placeholder="Code"
+                                  placeholder="Code 3"
                                   value={handoverInput[order.id] || ''}
-                                  onChange={(e) => setHandoverInput(prev => ({ ...prev, [order.id]: e.target.value }))}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setHandoverInput(prev => ({ ...prev, [order.id]: val }));
+                                    if (val === order.code3) handleVerifyPickupDelivery(order);
+                                  }}
                                   className="w-24 h-14 bg-surface-container-highest rounded-xl px-4 text-center font-headline font-black text-xl outline-none focus:ring-2 ring-primary"
                                 />
-                                <button 
-                                  onClick={() => handleVerifyHandover(order)}
-                                  className="flex-1 h-14 bg-success text-on-success rounded-xl font-headline font-black text-sm active:scale-95 transition-transform"
-                                >
-                                  DELIVERED
-                                </button>
+                                <div className="flex-1 h-14 bg-tertiary/10 text-tertiary rounded-xl font-headline font-black text-[10px] flex items-center justify-center text-center px-2">
+                                  ENTER CODE FROM VENDOR
+                                </div>
+                              </div>
+                            )}
+
+                            {order.status === 'picked_up_delivery' && (
+                              <div className="flex-1 p-4 bg-tertiary/10 rounded-xl border border-tertiary/20 flex flex-col items-center justify-center">
+                                <p className="text-[10px] font-black text-tertiary uppercase tracking-widest mb-1">CODE FOR CUSTOMER</p>
+                                <p className="text-2xl font-headline font-black text-tertiary tracking-[0.3em]">{order.code4}</p>
                               </div>
                             )}
                           </div>
