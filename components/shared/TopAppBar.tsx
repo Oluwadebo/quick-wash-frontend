@@ -24,7 +24,7 @@ export default function TopAppBar({
 }: TopAppBarProps) {
   const { user, logout } = useAuth();
   const homeLink = user?.role === 'customer' ? '/customer' : (user?.role ? `/${user.role}` : '/');
-  const profileLink = user?.role === 'customer' ? '/profile' : (user?.role ? `/${user.role}/profile` : '/profile');
+  const profileLink = user?.role === 'customer' ? '/profile' : (user?.role === 'vendor' ? '/vendor?tab=settings' : (user?.role === 'rider' ? '/rider?tab=wallet' : '/profile'));
 
   return (
     <header className="sticky top-0 w-full z-50 bg-surface/80 backdrop-blur-2xl border-b-2 border-primary/10">

@@ -17,6 +17,8 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
     if (!loading) {
       if (!user) {
         router.push('/auth?login=true');
+      } else if (user.status === 'suspended') {
+        router.push('/suspended');
       } else if (allowedRoles && !allowedRoles.includes(user.role)) {
         // Redirect to their own dashboard if they try to access a wrong role page
         router.push(`/${user.role === 'customer' ? 'customer' : user.role}`);

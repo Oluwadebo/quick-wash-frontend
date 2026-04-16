@@ -4,7 +4,7 @@ import React from 'react';
 import { useRouter } from 'next/navigation';
 import TopAppBar from '@/components/shared/TopAppBar';
 import ReadyForPickupButton from '@/components/shared/ReadyForPickupButton';
-import { Minus, Plus, Sparkles, Shirt, ShoppingBag, Bed, CreditCard, Bolt, Info, ChevronRight, ShieldCheck, Check } from 'lucide-react';
+import { Minus, Plus, Sparkles, Shirt, ShoppingBag, Bed, CreditCard, Bolt, Info, ChevronRight, ShieldCheck, Check, MapPin, ShieldAlert, Wallet, History } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 
@@ -100,6 +100,11 @@ function OrderPageContent() {
   const [currentUser, setCurrentUser] = React.useState<UserData | null>(null);
   const [existingOrderId, setExistingOrderId] = React.useState<string | null>(null);
   const [notification, setNotification] = React.useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
+  const [pickupAddress, setPickupAddress] = React.useState('');
+  const [pickupLandmark, setPickupLandmark] = React.useState('');
+  const [showLocationModal, setShowLocationModal] = React.useState(false);
+  const [paymentMethod, setPaymentMethod] = React.useState<'wallet' | 'transfer' | 'card'>('wallet');
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = React.useState(false);
 
   React.useEffect(() => {
     const init = async () => {
@@ -153,7 +158,8 @@ function OrderPageContent() {
             selectedService: 'Wash',
             hasStainRemover: false,
             stainRemoverPrice: 500,
-            basePrice: vs.washPrice
+            basePrice: vs.washPrice,
+            subItems: vs.subItems || []
           }));
           setCart(mapped);
         } else {
@@ -248,10 +254,10 @@ function OrderPageContent() {
     return (count * (Number(servicePrice) || 0)) + (count > 0 ? stainPrice : 0);
   };
 
-  const totalItems = cart.reduce((acc, item) => acc + item.count, 0);
-  const itemsPrice = cart.reduce((acc, item) => acc + getItemPrice(item), 0);
-  const riderFee = calculateRiderFee();
-  const totalPrice = totalItems > 0 ? itemsPrice + riderFee : 0;
+  const totalItems = cart.reduce((acc, item) => acc + (Number(item.count) || 0), 0);
+  const itemsPrice = cart.reduce((acc, item) => acc + (Number(getItemPrice(item)) || 0), 0);
+  const [riderFee] = React.useState(() => calculateRiderFee());
+  const totalPrice = totalItems > 0 ? (Number(itemsPrice) || 0) + (Number(riderFee) || 0) : 0;
 
   // Load existing order details if any
   const [existingOrder, setExistingOrder] = React.useState<Order | null>(null);
@@ -266,20 +272,25 @@ function OrderPageContent() {
   }, [existingOrderId]);
 
   const handlePayment = React.useCallback(async () => {
-    if (!currentUser?.uid) return;
+    if (!currentUser?.uid) {
+      setNotification({ message: "Please login to proceed.", type: 'error' });
+      return;
+    }
     
     const currentUserData = await db.getUser(currentUser.uid);
-    if (!currentUserData) return;
+    if (!currentUserData) {
+      setNotification({ message: "User session error. Please login again.", type: 'error' });
+      return;
+    }
     
-    // Check wallet balance
-    if ((currentUserData.walletBalance || 0) < totalPrice) {
+    // Check wallet balance ONLY if wallet is selected
+    if (paymentMethod === 'wallet' && (Number(currentUserData.walletBalance) || 0) < totalPrice) {
       setIsPaying(true);
       setNotification({ 
-        message: `Insufficient balance! Balance: ₦${(currentUserData.walletBalance || 0).toLocaleString()}. Total: ₦${totalPrice.toLocaleString()}. Redirecting to wallet...`, 
+        message: `Insufficient balance! Balance: ₦${(Number(currentUserData.walletBalance) || 0).toLocaleString()}. Total: ₦${totalPrice.toLocaleString()}. Redirecting to wallet...`, 
         type: 'error' 
       });
       
-      // FEEDBACK LOOP: Mandatory 2000ms delay with Toast
       setTimeout(() => {
         setNotification(null);
         router.push('/wallet');
@@ -288,7 +299,10 @@ function OrderPageContent() {
     }
 
     setIsPaying(true);
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Longer delay for external payments
+    const delay = paymentMethod === 'wallet' ? 2000 : 4000;
+    await new Promise(resolve => setTimeout(resolve, delay));
     
     const itemsDescription = cart.filter(i => i.count > 0).map(i => {
       if (i.subItems) {
@@ -299,7 +313,6 @@ function OrderPageContent() {
     }).join(', ');
 
     const newOrderId = generateId();
-    const commission = (itemsPrice * 0.1) + 300;
     const code1 = Math.floor(1000 + Math.random() * 9000).toString();
     
     const newOrder: Order = {
@@ -317,44 +330,66 @@ function OrderPageContent() {
       color: 'bg-warning/20 text-warning',
       vendorId: vendorId || 'campus-cleans',
       vendorName: vendor?.shopName || 'Quick-Wash Partner',
+      vendorLandmark: vendor?.landmark,
+      customerAddress: pickupAddress,
+      customerLandmark: pickupLandmark,
       createdAt: new Date().toISOString(),
       paidAt: new Date().toISOString(),
-    };
+      paymentMethod // Use the selected method
+    } as any;
 
-    // Update users (Wallet deduction)
-    await db.updateUser(currentUserData.uid, { 
-      walletBalance: (currentUserData.walletBalance || 0) - totalPrice 
-    });
+    try {
+      if (paymentMethod === 'wallet') {
+        const newBalance = (Number(currentUserData.walletBalance) || 0) - totalPrice;
+        await db.updateUser(currentUserData.uid, { 
+          walletBalance: newBalance 
+        });
 
-    // Record Wallet History
-    await db.recordTransaction(currentUserData.uid, {
-      type: 'payment',
-      amount: totalPrice,
-      desc: `Payment for Order #${newOrderId}`
-    });
+        await db.recordTransaction(currentUserData.uid, {
+          type: 'payment',
+          amount: totalPrice,
+          desc: `Payment for Order #${newOrderId}`
+        });
+        setNotification({ message: `₦${totalPrice.toLocaleString()} deducted. Payment Successful!`, type: 'success' });
+      } else {
+        setNotification({ message: `Payment via ${paymentMethod} confirmed!`, type: 'success' });
+      }
 
-    await db.saveOrder(newOrder);
-    localStorage.setItem('qw_current_order_id', newOrderId);
-    setExistingOrderId(newOrderId);
-    
-    if (currentUser?.uid && vendorId) {
-      localStorage.removeItem(`qw_pending_cart_${currentUser.uid}_${vendorId}`);
+      await db.saveOrder(newOrder);
+      localStorage.setItem('qw_current_order_id', newOrderId);
+      setExistingOrderId(newOrderId);
+      
+      if (currentUser?.uid && vendorId) {
+        localStorage.removeItem(`qw_pending_cart_${currentUser.uid}_${vendorId}`);
+      }
+      
+      setIsPaid(true);
+      setIsPaying(false);
+      setTimeout(() => setNotification(null), 3000);
+    } catch (error) {
+      console.error('Payment failed:', error);
+      setIsPaying(false);
+      setNotification({ message: "Payment failed. Please try again.", type: 'error' });
     }
-    
-    setIsPaid(true);
-    setIsPaying(false);
-    setNotification({ message: `₦${totalPrice.toLocaleString()} deducted. Payment Successful!`, type: 'success' });
-    setTimeout(() => setNotification(null), 3000);
-  }, [currentUser, totalPrice, itemsPrice, riderFee, vendorId, vendor, router, cart]);
+  }, [currentUser, totalPrice, itemsPrice, riderFee, vendorId, vendor, router, cart, pickupAddress, pickupLandmark, paymentMethod]);
+
+  const handlePaymentClick = () => {
+    if (!pickupLandmark) {
+      setShowLocationModal(true);
+      return;
+    }
+    setIsPaymentModalOpen(true);
+  };
 
   const handlePickupRequest = React.useCallback(async () => {
     const orderId = existingOrderId || localStorage.getItem('qw_current_order_id');
     if (!orderId) return;
 
-    const pickupAddress = prompt("Please enter your exact pickup location/address:");
-    if (!pickupAddress) {
+    // Use state values if they exist, otherwise error
+    if (!pickupLandmark || !pickupAddress) {
       setNotification({ message: "Pickup location is required to proceed.", type: 'error' });
-      setTimeout(() => setNotification(null), 2000);
+      setShowLocationModal(true);
+      setTimeout(() => setNotification(null), 3000);
       return;
     }
 
@@ -364,6 +399,7 @@ function OrderPageContent() {
         ...order,
         status: 'rider_assign_pickup',
         customerAddress: pickupAddress,
+        customerLandmark: pickupLandmark,
         color: 'bg-primary-container text-on-primary-container',
       });
       
@@ -376,7 +412,7 @@ function OrderPageContent() {
         router.push('/track');
       }, 2000);
     }
-  }, [router, existingOrderId]);
+  }, [router, existingOrderId, pickupAddress, pickupLandmark]);
 
   return (
     <div className="pb-64">
@@ -424,7 +460,7 @@ function OrderPageContent() {
           </div>
         </section>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {cart.map((item, idx) => (
             <motion.div 
               key={item.id}
@@ -432,7 +468,7 @@ function OrderPageContent() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.1 }}
               className={cn(
-                "rounded-[3rem] p-8 border border-primary/5 transition-all hover:shadow-2xl hover:shadow-primary/5 bg-surface-container-low flex flex-col min-h-[600px]",
+                "rounded-[3rem] p-8 border border-primary/5 transition-all hover:shadow-2xl hover:shadow-primary/5 bg-surface-container-low flex flex-col h-full",
                 item.count > 0 && "ring-4 ring-primary-container"
               )}
             >
@@ -446,23 +482,6 @@ function OrderPageContent() {
                     <p className="font-label text-xs font-bold uppercase tracking-widest text-on-surface-variant mt-1">{item.desc}</p>
                   </div>
                 </div>
-                {!item.subItems && (
-                  <div className="flex items-center gap-4 bg-white p-3 rounded-[2rem] shadow-xl">
-                    <button 
-                      onClick={() => updateCount(item.id, -1)}
-                      className="w-12 h-12 flex items-center justify-center rounded-2xl bg-surface-container hover:bg-primary-container/30 transition-colors active:scale-90"
-                    >
-                      <Minus className="w-5 h-5" />
-                    </button>
-                    <span className="font-headline font-black text-2xl px-2 min-w-[2ch] text-center">{item.count}</span>
-                    <button 
-                      onClick={() => updateCount(item.id, 1)}
-                      className="w-12 h-12 flex items-center justify-center rounded-2xl bg-primary text-white hover:opacity-90 active:scale-90 transition-all shadow-lg shadow-primary/20"
-                    >
-                      <Plus className="w-5 h-5" />
-                    </button>
-                  </div>
-                )}
               </div>
 
               <div className="flex flex-col flex-1">
@@ -543,6 +562,25 @@ function OrderPageContent() {
                       </button>
                     ))}
                   </div>
+
+                  {/* Quantity Selector - Moved inside card below services */}
+                  {!item.subItems && (
+                    <div className="flex items-center justify-between bg-white p-3 rounded-[2rem] shadow-xl border border-primary/5">
+                      <button 
+                        onClick={() => updateCount(item.id, -1)}
+                        className="w-12 h-12 flex items-center justify-center rounded-2xl bg-surface-container hover:bg-primary-container/30 transition-colors active:scale-90"
+                      >
+                        <Minus className="w-5 h-5" />
+                      </button>
+                      <span className="font-headline font-black text-2xl px-2 min-w-[2ch] text-center">{item.count}</span>
+                      <button 
+                        onClick={() => updateCount(item.id, 1)}
+                        className="w-12 h-12 flex items-center justify-center rounded-2xl bg-primary text-white hover:opacity-90 active:scale-90 transition-all shadow-lg shadow-primary/20"
+                      >
+                        <Plus className="w-5 h-5" />
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -565,7 +603,7 @@ function OrderPageContent() {
       <footer className="mt-12">
         <div className="bg-white/95 backdrop-blur-3xl rounded-[3rem] px-8 pt-10 pb-12 shadow-[0_-20px_60px_rgba(0,106,40,0.05)] border border-primary/5">
           <div className="max-w-3xl mx-auto">
-            <div className="flex justify-between items-end mb-10">
+            <div className="flex justify-between items-end mb-6">
               <div>
                 <p className="font-label text-xs uppercase tracking-[0.3em] text-on-surface-variant font-black mb-2">
                   {isPaid ? 'Order Paid' : 'Cart Summary'}
@@ -583,25 +621,80 @@ function OrderPageContent() {
                 </h3>
               </div>
             </div>
+
+            {/* Detailed Breakdown */}
+            {!isPaid && totalItems > 0 && (
+              <div className="mb-8 p-6 bg-surface-container rounded-[2rem] border border-primary/5 space-y-3">
+                <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Detailed Breakdown</p>
+                {cart.filter(item => item.count > 0).map(item => (
+                  <div key={item.id} className="flex justify-between text-sm">
+                    <div className="flex flex-col">
+                      <span className="font-headline font-black text-on-surface">
+                        {item.count}x {item.name}
+                      </span>
+                      <span className="text-[10px] font-bold text-on-surface-variant">
+                        {item.selectedService} {item.hasStainRemover && '+ Stain Remover'}
+                      </span>
+                    </div>
+                    <span className="font-headline font-black text-on-surface">₦{getItemPrice(item).toLocaleString()}</span>
+                  </div>
+                ))}
+                <div className="pt-3 border-t border-primary/10 flex justify-between text-sm">
+                  <span className="font-headline font-black text-on-surface-variant">Rider Fee (Express)</span>
+                  <span className="font-headline font-black text-on-surface">₦{riderFee.toLocaleString()}</span>
+                </div>
+              </div>
+            )}
             
             {!isPaid ? (
-              <button 
-                onClick={handlePayment}
-                disabled={totalItems === 0 || isPaying}
-                className="w-full h-20 bg-primary text-white rounded-[2rem] font-headline font-black text-xl shadow-2xl shadow-primary/30 flex items-center justify-center gap-3 active:scale-[0.98] transition-all disabled:opacity-50 disabled:active:scale-100"
-              >
-                {isPaying ? (
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    <span>Processing Payment...</span>
+              <div className="space-y-6">
+                {/* Location Preview */}
+                <div 
+                  onClick={() => setShowLocationModal(true)}
+                  className="p-6 bg-surface-container rounded-[2rem] border border-primary/10 flex items-center justify-between cursor-pointer hover:bg-primary/5 transition-colors"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
+                      <MapPin className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Pickup Location</p>
+                      <p className="font-headline font-black text-on-surface">
+                        {pickupLandmark ? `${pickupLandmark}${pickupAddress ? `, ${pickupAddress}` : ''}` : 'Select Pickup Location'}
+                      </p>
+                    </div>
                   </div>
-                ) : (
-                  <>
-                    <CreditCard className="w-6 h-6" />
-                    Pay ₦{(totalPrice || 0).toLocaleString()}
-                  </>
+                  <ChevronRight className="w-5 h-5 text-on-surface-variant" />
+                </div>
+
+                <button 
+                  onClick={handlePaymentClick}
+                  disabled={totalItems === 0 || isPaying || currentUser?.status === 'restricted'}
+                  className="w-full h-20 bg-primary text-white rounded-[2rem] font-headline font-black text-xl shadow-2xl shadow-primary/30 flex items-center justify-center gap-3 active:scale-[0.98] transition-all disabled:opacity-50 disabled:active:scale-100"
+                >
+                  {isPaying ? (
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Processing Payment...</span>
+                    </div>
+                  ) : currentUser?.status === 'restricted' ? (
+                    <div className="flex items-center gap-2">
+                      <ShieldAlert className="w-6 h-6" />
+                      <span>ACCOUNT RESTRICTED</span>
+                    </div>
+                  ) : (
+                    <>
+                      <CreditCard className="w-6 h-6" />
+                      Pay ₦{(totalPrice || 0).toLocaleString()}
+                    </>
+                  )}
+                </button>
+                {currentUser?.status === 'restricted' && (
+                  <p className="text-center text-[10px] font-bold text-error uppercase tracking-widest">
+                    Low Trust Points ({currentUser.trustPoints}). Restriction expires {currentUser.restrictionExpires ? new Date(currentUser.restrictionExpires).toLocaleDateString() : 'soon'}.
+                  </p>
                 )}
-              </button>
+              </div>
             ) : (
               <ReadyForPickupButton onClick={handlePickupRequest} />
             )}
@@ -615,6 +708,171 @@ function OrderPageContent() {
           </div>
         </div>
       </footer>
+
+      {/* Payment Selection Modal */}
+      <AnimatePresence>
+        {isPaymentModalOpen && (
+          <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setIsPaymentModalOpen(false)}
+              className="absolute inset-0 bg-surface/80 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+              className="relative w-full max-w-lg bg-white rounded-t-[3rem] sm:rounded-[3rem] p-8 shadow-2xl"
+            >
+              <div className="w-12 h-1.5 bg-outline/20 rounded-full mx-auto mb-8 sm:hidden" />
+              <h3 className="text-3xl font-headline font-black text-on-surface mb-2">Payment Method</h3>
+              <p className="text-on-surface-variant font-medium mb-8">Choose how you want to pay.</p>
+
+              <div className="space-y-4">
+                <button 
+                  onClick={() => setPaymentMethod('wallet')}
+                  className={cn(
+                    "w-full p-6 rounded-2xl border-2 flex items-center justify-between transition-all",
+                    paymentMethod === 'wallet' ? "bg-primary/5 border-primary" : "bg-surface-container border-primary/5"
+                  )}
+                >
+                  <div className="flex items-center gap-4">
+                    <Wallet className={cn("w-6 h-6", paymentMethod === 'wallet' ? "text-primary" : "text-on-surface-variant")} />
+                    <div className="text-left">
+                      <p className="font-headline font-black text-sm">Wallet Balance</p>
+                      <p className="text-[10px] font-bold text-on-surface-variant">Balance: ₦{(currentUser?.walletBalance || 0).toLocaleString()}</p>
+                    </div>
+                  </div>
+                  {paymentMethod === 'wallet' && <Check className="w-5 h-5 text-primary" />}
+                </button>
+
+                <button 
+                  onClick={() => setPaymentMethod('transfer')}
+                  className={cn(
+                    "w-full p-6 rounded-2xl border-2 flex items-center justify-between transition-all",
+                    paymentMethod === 'transfer' ? "bg-primary/5 border-primary" : "bg-surface-container border-primary/5"
+                  )}
+                >
+                  <div className="flex items-center gap-4">
+                    <History className={cn("w-6 h-6", paymentMethod === 'transfer' ? "text-primary" : "text-on-surface-variant")} />
+                    <div className="text-left">
+                      <p className="font-headline font-black text-sm">Bank Transfer</p>
+                      <p className="text-[10px] font-bold text-on-surface-variant">Instant Confirmation</p>
+                    </div>
+                  </div>
+                  {paymentMethod === 'transfer' && <Check className="w-5 h-5 text-primary" />}
+                </button>
+
+                <button 
+                  onClick={() => setPaymentMethod('card')}
+                  className={cn(
+                    "w-full p-6 rounded-2xl border-2 flex items-center justify-between transition-all",
+                    paymentMethod === 'card' ? "bg-primary/5 border-primary" : "bg-surface-container border-primary/5"
+                  )}
+                >
+                  <div className="flex items-center gap-4">
+                    <CreditCard className={cn("w-6 h-6", paymentMethod === 'card' ? "text-primary" : "text-on-surface-variant")} />
+                    <div className="text-left">
+                      <p className="font-headline font-black text-sm">Debit Card</p>
+                      <p className="text-[10px] font-bold text-on-surface-variant">Secure Payment</p>
+                    </div>
+                  </div>
+                  {paymentMethod === 'card' && <Check className="w-5 h-5 text-primary" />}
+                </button>
+
+                {paymentMethod === 'transfer' && (
+                  <motion.div 
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    className="p-6 bg-warning/10 rounded-2xl border border-warning/20"
+                  >
+                    <p className="text-[10px] font-black text-warning-dark uppercase tracking-widest mb-2">Transfer Details</p>
+                    <p className="text-sm font-bold text-on-surface">Bank: Kuda Bank</p>
+                    <p className="text-lg font-headline font-black text-on-surface">Account: 2031194566</p>
+                    <p className="text-xs font-medium text-on-surface-variant">Name: Quick-Wash Laundry</p>
+                  </motion.div>
+                )}
+
+                <button 
+                  onClick={() => {
+                    setIsPaymentModalOpen(false);
+                    handlePayment();
+                  }}
+                  disabled={isPaying || (paymentMethod === 'wallet' && (currentUser?.walletBalance || 0) < totalPrice)}
+                  className="w-full h-16 bg-primary text-white rounded-2xl font-headline font-black text-lg shadow-xl active:scale-[0.98] transition-all disabled:opacity-50"
+                >
+                  {isPaying ? 'PROCESSING...' : 
+                   (paymentMethod === 'wallet' && (currentUser?.walletBalance || 0) < totalPrice) ? 'INSUFFICIENT BALANCE' : `PAY ₦${totalPrice.toLocaleString()}`}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Location Selection Modal */}
+      <AnimatePresence>
+        {showLocationModal && (
+          <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowLocationModal(false)}
+              className="absolute inset-0 bg-surface/80 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              className="relative w-full max-w-lg bg-white rounded-t-[3rem] sm:rounded-[3rem] p-8 shadow-2xl"
+            >
+              <div className="w-12 h-1.5 bg-outline/20 rounded-full mx-auto mb-8 sm:hidden" />
+              <h3 className="text-3xl font-headline font-black text-on-surface mb-2">Pickup Location</h3>
+              <p className="text-on-surface-variant font-medium mb-8">Where should the rider meet you?</p>
+
+              <div className="space-y-6">
+                <div>
+                  <label className="block font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-3">Select Landmark</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    {['Under-G', 'Adenike', 'Isale-General', 'Stadium', 'Bovina', 'LAUTECH Gate'].map((l) => (
+                      <button
+                        key={l}
+                        onClick={() => setPickupLandmark(l)}
+                        className={cn(
+                          "px-4 py-3 rounded-xl font-headline font-black text-xs transition-all border",
+                          pickupLandmark === l ? "bg-primary text-white border-primary shadow-lg" : "bg-surface-container border-primary/5 text-on-surface-variant"
+                        )}
+                      >
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-3">Detailed Address (Optional)</label>
+                  <input 
+                    type="text"
+                    placeholder="e.g. Block 4, Room 12, Green Hostel"
+                    value={pickupAddress}
+                    onChange={(e) => setPickupAddress(e.target.value)}
+                    className="w-full h-14 bg-surface-container rounded-2xl px-6 font-headline font-black text-sm outline-none focus:ring-2 ring-primary transition-all"
+                  />
+                </div>
+
+                <button 
+                  onClick={() => {
+                    if (pickupLandmark) setShowLocationModal(false);
+                  }}
+                  disabled={!pickupLandmark}
+                  className="w-full h-16 bg-primary text-white rounded-2xl font-headline font-black text-lg shadow-xl active:scale-[0.98] transition-all disabled:opacity-50"
+                >
+                  CONFIRM LOCATION
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

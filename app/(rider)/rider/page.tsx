@@ -9,11 +9,21 @@ import ProtectedRoute from '@/components/shared/ProtectedRoute';
 import { useAuth } from '@/hooks/use-auth';
 import { formatRelativeTime } from '@/lib/time';
 import { db, Order, UserData } from '@/lib/DatabaseService';
-import { X, History, Wallet, ShoppingBag, MapPin, Navigation, Package, CheckCircle, Clock, Phone, ArrowRight, Bike, Zap, AlertTriangle, MessageCircle } from 'lucide-react';
+import { X, History, Wallet, ShoppingBag, MapPin, Navigation, Package, CheckCircle, Clock, Phone, ArrowRight, Bike, Zap, AlertTriangle, MessageCircle, ShieldAlert } from 'lucide-react';
+
+import { useSearchParams } from 'next/navigation';
 
 export default function RiderDashboard() {
   const { user: currentUser } = useAuth();
-  const [activeTab, setActiveTab] = React.useState<'tasks' | 'history' | 'wallet'>('tasks');
+  const searchParams = useSearchParams();
+  const [activeTab, setActiveTab] = React.useState<'tasks' | 'history' | 'wallet' | 'settings'>('tasks');
+
+  React.useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab && ['tasks', 'history', 'wallet', 'settings'].includes(tab)) {
+      setActiveTab(tab as any);
+    }
+  }, [searchParams]);
   const [tasks, setTasks] = React.useState<Order[]>([]);
   const [availableOrders, setAvailableOrders] = React.useState<Order[]>([]);
   const [stats, setStats] = React.useState({
@@ -25,6 +35,9 @@ export default function RiderDashboard() {
   const [orderToReject, setOrderToReject] = React.useState<string | null>(null);
   const [notification, setNotification] = React.useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
   const [isProcessing, setIsProcessing] = React.useState(false);
+  const [isReturnModalOpen, setIsReturnModalOpen] = React.useState(false);
+  const [returnReason, setReturnReason] = React.useState('');
+  const [selectedOrderId, setSelectedOrderId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     const refreshData = async () => {
@@ -89,33 +102,50 @@ export default function RiderDashboard() {
   };
 
   const handleRejectOrder = async (orderId: string) => {
+    if (!currentUser) return;
     const order = await db.getOrder(orderId);
-    if (order) {
-      const updatedOrder = { 
-        ...order, 
-        status: order.status === 'ready' ? 'ready' : 'rider_assign_pickup', // Keep it ready for other riders
+    if (order && order.riderUid === currentUser.uid) {
+      await db.saveOrder({
+        ...order,
         riderUid: undefined,
         riderName: undefined,
         riderPhone: undefined,
+        status: order.status === 'rider_assign_pickup' ? 'rider_assign_pickup' : 'rider_assign_delivery',
         color: 'bg-warning/20 text-warning'
-      };
-      await db.saveOrder(updatedOrder);
-      
-      const allOrders = await db.getOrders();
-      setTasks(allOrders.filter((o: Order) => o.riderUid === currentUser?.uid && !['delivered', 'completed', 'Cancelled'].includes(o.status)));
-      setAvailableOrders(allOrders.filter((o: Order) => {
-        const isAvailable = (o.status === 'rider_assign_pickup' || o.status === 'ready') && !o.riderUid;
-        if (!isAvailable) return false;
-        const now = new Date().getTime();
-        const createdAt = new Date(o.createdAt).getTime();
-        const ageInMinutes = (now - createdAt) / (1000 * 60);
-        return ageInMinutes <= 20;
-      }));
-      setNotification({ message: 'Order rejected.', type: 'info' });
-      setTimeout(() => setNotification(null), 3000);
+      });
       setOrderToReject(null);
+      setNotification({ message: 'Order rejected and returned to pool.', type: 'info' });
+      const allOrders = await db.getOrders();
+      setTasks(allOrders.filter((o: Order) => o.riderUid === currentUser.uid && !['Delivered', 'Cancelled'].includes(o.status)));
       window.dispatchEvent(new Event('storage'));
     }
+  };
+
+  const handleReturnOrder = async () => {
+    if (!selectedOrderId || !returnReason || !currentUser) return;
+    setIsProcessing(true);
+    const success = await db.returnOrder(selectedOrderId, currentUser.uid, returnReason);
+    if (success) {
+      setNotification({ message: 'Order returned. ₦200 deducted from wallet.', type: 'info' });
+      setIsReturnModalOpen(false);
+      setReturnReason('');
+      setSelectedOrderId(null);
+      
+      // Refresh data
+      const allOrders = await db.getOrders();
+      setTasks(allOrders.filter((o: Order) => o.riderUid === currentUser.uid && !['Delivered', 'Cancelled'].includes(o.status)));
+      const me = await db.getUser(currentUser.uid);
+      if (me) {
+        setStats(prev => ({
+          ...prev,
+          walletBalance: me.walletBalance || 0,
+          trustScore: me.trustPoints || 100
+        }));
+      }
+    } else {
+      setNotification({ message: 'Failed to return order.', type: 'error' });
+    }
+    setIsProcessing(false);
   };
 
   const handleStatusUpdate = async (orderId: string, newStatus: string, color: string) => {
@@ -255,8 +285,8 @@ export default function RiderDashboard() {
               <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Trust Score</p>
               <h3 className={cn(
                 "text-2xl font-headline font-black",
-                stats.trustScore >= 80 ? "text-success" : stats.trustScore >= 60 ? "text-warning" : "text-error"
-              )}>{stats.trustScore}%</h3>
+                (currentUser?.trustPoints || 0) >= 80 ? "text-success" : (currentUser?.trustPoints || 0) >= 60 ? "text-warning" : "text-error"
+              )}>{currentUser?.trustPoints || 0}%</h3>
             </div>
             <div className="bg-surface-container-low p-6 rounded-[2rem] border border-primary/5">
               <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Completed</p>
@@ -270,7 +300,7 @@ export default function RiderDashboard() {
 
           {/* Tabs */}
           <div className="flex gap-4 mb-8 overflow-x-auto pb-2 hide-scrollbar">
-            {['tasks', 'history', 'wallet'].map((tab) => (
+            {['tasks', 'history', 'wallet', 'settings'].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab as any)}
@@ -320,9 +350,10 @@ export default function RiderDashboard() {
                           </div>
                           <button 
                             onClick={() => handleAcceptOrder(order.id)}
-                            className="w-full h-14 signature-gradient text-white rounded-xl font-headline font-black text-sm shadow-lg active:scale-95 transition-transform"
+                            disabled={currentUser?.status === 'restricted'}
+                            className="w-full h-14 signature-gradient text-white rounded-xl font-headline font-black text-sm shadow-lg active:scale-95 transition-transform disabled:opacity-50 disabled:active:scale-100"
                           >
-                            ACCEPT ORDER
+                            {currentUser?.status === 'restricted' ? 'ACCOUNT RESTRICTED' : 'ACCEPT ORDER'}
                           </button>
                         </div>
                       ))}
@@ -430,6 +461,17 @@ export default function RiderDashboard() {
                                 <p className="text-2xl font-headline font-black text-tertiary tracking-[0.3em]">{order.code4}</p>
                               </div>
                             )}
+                            {order.status.includes('picked_up') && (
+                              <button 
+                                onClick={() => {
+                                  setSelectedOrderId(order.id);
+                                  setIsReturnModalOpen(true);
+                                }}
+                                className="w-full h-12 bg-error/10 text-error rounded-xl font-headline font-black text-xs active:scale-95 transition-transform"
+                              >
+                                RETURN ORDER (₦200 PENALTY)
+                              </button>
+                            )}
                           </div>
                         </div>
                       );
@@ -454,6 +496,63 @@ export default function RiderDashboard() {
                 {/* History items would go here */}
                 <div className="py-20 text-center border-2 border-dashed border-primary/10 rounded-[3rem]">
                   <p className="text-on-surface-variant font-medium">No delivery history yet.</p>
+                </div>
+              </motion.section>
+            )}
+
+            {activeTab === 'settings' && (
+              <motion.section 
+                key="settings"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="space-y-8"
+              >
+                <div className="bg-surface-container-low p-8 rounded-[2.5rem] border border-primary/5">
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-2xl font-headline font-black">Account Settings</h3>
+                    <button 
+                      onClick={async () => {
+                        const fullName = prompt("Enter Full Name:", currentUser?.fullName);
+                        const bankName = prompt("Enter Bank Name:", currentUser?.bankName);
+                        const bankAccountNumber = prompt("Enter Bank Account Number (10 digits):", currentUser?.bankAccountNumber);
+                        if (bankAccountNumber && (bankAccountNumber.length !== 10 || isNaN(Number(bankAccountNumber)))) {
+                          alert("Account number must be exactly 10 digits.");
+                          return;
+                        }
+
+                        const address = prompt("Enter Home Address:", currentUser?.address);
+
+                        if (currentUser?.uid) {
+                          await db.updateUser(currentUser.uid, {
+                            fullName: fullName || currentUser.fullName,
+                            bankName: bankName || currentUser.bankName,
+                            bankAccountNumber: bankAccountNumber || currentUser.bankAccountNumber,
+                            address: address || currentUser.address
+                          });
+                          setNotification({ message: "Profile updated!", type: 'success' });
+                          setTimeout(() => setNotification(null), 2000);
+                        }
+                      }}
+                      className="text-primary font-black uppercase tracking-widest text-[10px] flex items-center gap-1"
+                    >
+                      <Zap className="w-3 h-3" /> EDIT PROFILE
+                    </button>
+                  </div>
+                  <div className="space-y-6">
+                    <div className="p-6 bg-white rounded-2xl border border-primary/5">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Personal Info</p>
+                      <p className="font-headline font-bold text-on-surface">{currentUser?.fullName}</p>
+                      <p className="text-xs font-medium text-on-surface-variant">{currentUser?.phoneNumber}</p>
+                    </div>
+                    <div className="p-6 bg-white rounded-2xl border border-primary/5">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Home Address</p>
+                      <p className="font-headline font-bold text-on-surface">{currentUser?.address || 'Not set'}</p>
+                    </div>
+                    <div className="p-6 bg-white rounded-2xl border border-primary/5">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Bank Details</p>
+                      <p className="font-headline font-bold text-on-surface">{currentUser?.bankName} - {currentUser?.bankAccountNumber}</p>
+                    </div>
+                  </div>
                 </div>
               </motion.section>
             )}
@@ -554,6 +653,52 @@ export default function RiderDashboard() {
             </motion.div>
           </div>
         )}
-      </div>
+        {/* Return Reason Modal */}
+      <AnimatePresence>
+        {isReturnModalOpen && (
+          <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setIsReturnModalOpen(false)}
+              className="absolute inset-0 bg-surface/80 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+              className="relative w-full max-w-lg bg-white rounded-t-[3rem] sm:rounded-[3rem] p-8 shadow-2xl"
+            >
+              <div className="w-12 h-1.5 bg-outline/20 rounded-full mx-auto mb-8 sm:hidden" />
+              <h3 className="text-3xl font-headline font-black text-on-surface mb-2">Return Order</h3>
+              <p className="text-on-surface-variant font-medium mb-8">Please provide a reason for returning this order.</p>
+
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 gap-3">
+                  {['Bike Breakdown', 'Heavy Rain', 'Emergency', 'Wrong Location', 'Customer Unreachable'].map((r) => (
+                    <button
+                      key={r}
+                      onClick={() => setReturnReason(r)}
+                      className={cn(
+                        "px-6 py-4 rounded-2xl font-headline font-black text-sm transition-all border text-left flex justify-between items-center",
+                        returnReason === r ? "bg-primary/5 border-primary text-primary" : "bg-surface-container border-primary/5 text-on-surface-variant"
+                      )}
+                    >
+                      {r}
+                      {returnReason === r && <CheckCircle className="w-5 h-5" />}
+                    </button>
+                  ))}
+                </div>
+
+                <button 
+                  onClick={handleReturnOrder}
+                  disabled={isProcessing || !returnReason}
+                  className="w-full h-16 bg-error text-white rounded-2xl font-headline font-black text-lg shadow-xl active:scale-[0.98] transition-all disabled:opacity-50"
+                >
+                  {isProcessing ? 'PROCESSING...' : 'CONFIRM RETURN'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }

@@ -3,6 +3,19 @@
  * Abstracts localStorage to simulate a real asynchronous database with atomic transactions.
  */
 
+export type TrustAction = 
+  | 'completed_order' 
+  | 'five_star_review' 
+  | 'admin_good_performance' 
+  | 'cancel_after_ready' 
+  | 'customer_not_available' 
+  | 'late_delivery' 
+  | 'rider_abandon' 
+  | 'vendor_delay' 
+  | 'fake_dispute' 
+  | 'repeated_cancellation'
+  | 'rider_return_order';
+
 export interface UserData {
   uid: string;
   fullName: string;
@@ -16,6 +29,9 @@ export interface UserData {
   trustPoints: number;
   trustScore: number;
   status: 'active' | 'restricted' | 'suspended';
+  restrictionExpires?: string;
+  lastPenaltyAt?: string;
+  lastRecoveryAt?: string;
   shopName?: string;
   vehicleType?: string;
   nin?: string;
@@ -68,6 +84,8 @@ export interface Order {
   isLocked?: boolean;
   lockedBy?: string;
   lockExpires?: number;
+  returnReason?: string;
+  consecutiveReturns?: number;
 }
 
 const DELAY = 300; // Simulate network latency
@@ -94,7 +112,42 @@ class DatabaseService {
     const index = users.findIndex(u => u.uid === uid);
     if (index === -1) throw new Error('User not found');
     
+    // Cap trustPoints at 100
+    if (data.trustPoints !== undefined) {
+      data.trustPoints = Math.min(100, Math.max(0, data.trustPoints));
+    }
+    // Cap trustScore at 100
+    if (data.trustScore !== undefined) {
+      data.trustScore = Math.min(100, Math.max(0, data.trustScore));
+    }
+    
     users[index] = { ...users[index], ...data };
+    
+    // Check for status changes based on trust points
+    const user = users[index];
+    if (user.trustPoints < 10) {
+      // High risk - Admin decision, but we'll flag it or keep as suspended
+      user.status = 'suspended';
+    } else if (user.trustPoints < 30) {
+      user.status = 'suspended';
+    } else if (user.trustPoints < 60) {
+      user.status = 'restricted';
+      // If not already restricted with an expiry, set a default 2-day restriction
+      if (!user.restrictionExpires) {
+        user.restrictionExpires = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
+      }
+    } else {
+      // Check if restriction expired
+      if (user.status === 'restricted' && user.restrictionExpires) {
+        if (new Date().getTime() > new Date(user.restrictionExpires).getTime()) {
+          user.status = 'active';
+          user.restrictionExpires = undefined;
+        }
+      } else if (user.status === 'restricted' && !user.restrictionExpires) {
+        user.status = 'active';
+      }
+    }
+
     localStorage.setItem('qw_all_users', JSON.stringify(users));
     
     // If updating current user, sync qw_user
@@ -103,6 +156,7 @@ class DatabaseService {
       localStorage.setItem('qw_user', JSON.stringify(users[index]));
     }
     
+    window.dispatchEvent(new Event('storage'));
     return users[index];
   }
 
@@ -127,6 +181,7 @@ class DatabaseService {
       orders[index] = order;
     }
     localStorage.setItem('qw_orders', JSON.stringify(orders));
+    window.dispatchEvent(new Event('storage'));
     return order;
   }
 
@@ -182,6 +237,127 @@ class DatabaseService {
     order.status = status;
     order.color = color;
     return await this.saveOrder(order);
+  }
+
+  async adjustTrustPoints(uid: string, action: TrustAction): Promise<UserData> {
+    const user = await this.getUser(uid);
+    if (!user) throw new Error('User not found');
+
+    let change = 0;
+    let isPenalty = false;
+
+    switch (action) {
+      case 'completed_order': change = 5; break;
+      case 'five_star_review': change = 8; break;
+      case 'admin_good_performance': change = 10; break;
+      case 'cancel_after_ready': change = -10; isPenalty = true; break;
+      case 'customer_not_available': change = -8; isPenalty = true; break;
+      case 'late_delivery': change = -10; isPenalty = true; break;
+      case 'rider_abandon': change = -15; isPenalty = true; break;
+      case 'vendor_delay': change = -12; isPenalty = true; break;
+      case 'fake_dispute': change = -20; isPenalty = true; break;
+      case 'rider_return_order': change = -5; isPenalty = true; break;
+      case 'repeated_cancellation': 
+        change = -25; 
+        isPenalty = true;
+        // Also add a 2-day ban
+        const banExpiry = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
+        return await this.updateUser(uid, { 
+          trustPoints: user.trustPoints + change,
+          status: 'restricted',
+          restrictionExpires: banExpiry,
+          lastPenaltyAt: new Date().toISOString()
+        });
+    }
+
+    const update: Partial<UserData> = {
+      trustPoints: user.trustPoints + change
+    };
+
+    if (isPenalty) {
+      update.lastPenaltyAt = new Date().toISOString();
+    }
+
+    return await this.updateUser(uid, update);
+  }
+
+  async returnOrder(orderId: string, riderUid: string, reason: string): Promise<boolean> {
+    const order = await this.getOrder(orderId);
+    const rider = await this.getUser(riderUid);
+    if (!order || !rider || order.riderUid !== riderUid) return false;
+
+    // 1. Deduct ₦200 from wallet
+    const penaltyFee = 200;
+    const newBalance = Math.max(0, (rider.walletBalance || 0) - penaltyFee);
+    
+    // 2. Track consecutive returns
+    const consecutiveReturns = (rider.consecutiveReturns || 0) + 1;
+    
+    let status = rider.status;
+    let restrictionExpires = rider.restrictionExpires;
+
+    // 3. Check for 3 consecutive returns -> 2 day suspension
+    if (consecutiveReturns >= 3) {
+      status = 'suspended';
+      restrictionExpires = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
+    }
+
+    await this.updateUser(riderUid, {
+      walletBalance: newBalance,
+      consecutiveReturns: consecutiveReturns >= 3 ? 0 : consecutiveReturns, // Reset if suspended
+      status,
+      restrictionExpires
+    });
+
+    // 4. Deduct 5 trust points
+    await this.adjustTrustPoints(riderUid, 'rider_return_order');
+
+    // 5. Record transaction
+    await this.recordTransaction(riderUid, {
+      type: 'withdrawal',
+      amount: penaltyFee,
+      desc: `Order Return Penalty - Order #${orderId}`
+    });
+
+    // 6. Reset order status and codes
+    const updatedOrder: Order = {
+      ...order,
+      status: order.status === 'picked_up' ? 'rider_assign_pickup' : 
+              order.status === 'picked_up_delivery' ? 'rider_assign_delivery' : 
+              order.status,
+      riderUid: undefined,
+      riderName: undefined,
+      riderPhone: undefined,
+      returnReason: reason,
+      code2: null,
+      code4: null,
+      color: 'bg-warning/20 text-warning'
+    };
+    await this.saveOrder(updatedOrder);
+
+    return true;
+  }
+
+  /**
+   * Auto-recovery: +10 points every 27 days of good behavior (no penalties)
+   */
+  async processAutoRecovery(uid: string): Promise<void> {
+    const user = await this.getUser(uid);
+    if (!user || user.trustPoints >= 100) return;
+
+    const now = new Date().getTime();
+    const lastPenalty = user.lastPenaltyAt ? new Date(user.lastPenaltyAt).getTime() : 0;
+    const lastRecovery = user.lastRecoveryAt ? new Date(user.lastRecoveryAt).getTime() : 0;
+    
+    const daysSincePenalty = (now - lastPenalty) / (24 * 60 * 60 * 1000);
+    const daysSinceRecovery = (now - lastRecovery) / (24 * 60 * 60 * 1000);
+
+    if (daysSincePenalty >= 27 && daysSinceRecovery >= 27) {
+      await this.updateUser(uid, {
+        trustPoints: user.trustPoints + 10,
+        lastRecoveryAt: new Date().toISOString()
+      });
+    }
   }
 
   // --- WALLET ---

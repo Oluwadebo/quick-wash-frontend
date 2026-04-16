@@ -8,6 +8,7 @@ import { motion } from 'motion/react';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
+import { db, UserData } from '@/lib/DatabaseService';
 
 const badges = [
   { id: 'early-bird', name: 'Early Bird', icon: Sun, color: 'bg-surface-container-high text-primary', rotate: 'rotate-3' },
@@ -22,18 +23,31 @@ const history = [
 ];
 
 export default function ProfilePage() {
-  const { user, logout } = useAuth();
+  const { user: authUser, logout } = useAuth();
+  const [user, setUser] = React.useState<UserData | null>(null);
   const [recentOrders, setRecentOrders] = React.useState<any[]>([]);
   const [totalWashes, setTotalWashes] = React.useState(0);
   const [showAllBadges, setShowAllBadges] = React.useState(false);
 
+  const [activeBadgeId, setActiveBadgeId] = React.useState<string | null>(null);
+
+  const refreshData = React.useCallback(async () => {
+    if (authUser?.uid) {
+      const me = await db.getUser(authUser.uid);
+      setUser(me);
+
+      const allOrders = await db.getOrders();
+      const filtered = allOrders.filter((o: any) => o.customerUid === authUser.uid);
+      setRecentOrders(filtered.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+      setTotalWashes(filtered.filter((o: any) => o.status === 'completed').length);
+    }
+  }, [authUser]);
+
   React.useEffect(() => {
-    const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-    const filtered = allOrders.filter((o: any) => o.customerPhone === user?.phoneNumber);
-    setRecentOrders(filtered.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
-    // Strictly filter for 'completed' status
-    setTotalWashes(filtered.filter((o: any) => o.status === 'completed').length);
-  }, [user]);
+    refreshData();
+    window.addEventListener('storage', refreshData);
+    return () => window.removeEventListener('storage', refreshData);
+  }, [refreshData]);
 
   const getDaysSinceLastOrder = () => {
     if (recentOrders.length === 0) return 0;
@@ -117,7 +131,7 @@ export default function ProfilePage() {
             <p className="font-label text-sm text-on-surface-variant">{user?.phoneNumber}</p>
             <div className="mt-2 flex gap-2">
               <span className="bg-surface-container-highest text-on-surface-variant px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">
-                {user?.trustPoints && user.trustPoints >= 500 ? 'Elite User' : 'Standard User'}
+                {user?.trustPoints && user.trustPoints >= 90 ? 'Elite User' : 'Standard User'}
               </span>
             </div>
           </div>
@@ -135,7 +149,7 @@ export default function ProfilePage() {
             <div className="relative w-40 h-40 flex items-center justify-center">
               <svg className="absolute inset-0 w-full h-full -rotate-90">
                 <circle className="text-surface-container-low" cx="80" cy="80" fill="none" r="70" stroke="currentColor" strokeWidth="12" />
-                <circle className="text-primary" cx="80" cy="80" fill="none" r="70" stroke="currentColor" strokeWidth="12" strokeDasharray="440" strokeDashoffset={440 - (440 * (user?.trustPoints || 0) / 1000)} strokeLinecap="round" />
+                <circle className="text-primary" cx="80" cy="80" fill="none" r="70" stroke="currentColor" strokeWidth="12" strokeDasharray="440" strokeDashoffset={440 - (440 * (user?.trustPoints || 0) / 100)} strokeLinecap="round" />
               </svg>
               <div className="text-center z-10">
                 <span className="block text-5xl font-headline font-extrabold text-primary">{user?.trustPoints || 0}</span>
@@ -143,7 +157,7 @@ export default function ProfilePage() {
               </div>
             </div>
             <p className="text-center text-sm font-medium text-on-surface-variant px-4">
-              {user?.trustPoints && user.trustPoints >= 500 ? "You're Elite status! Your orders get priority pickup." : "Keep using Quick-Wash to reach Elite status!"}
+              {user?.trustPoints && user.trustPoints >= 90 ? "You're Elite status! Your orders get priority pickup." : "Keep using Quick-Wash to reach Elite status!"}
             </p>
           </section>
 
@@ -172,7 +186,19 @@ export default function ProfilePage() {
                 <p className="font-label text-[10px] uppercase font-bold tracking-widest opacity-80">Invite Friends</p>
                 <h3 className="text-xl font-headline font-bold leading-tight mt-1">Get ₦1,000 Credit</h3>
               </div>
-              <button className="z-10 mt-2 bg-on-secondary text-secondary font-label font-bold text-xs py-2 px-4 rounded-xl w-max active:scale-95 transition-transform">
+              <button 
+                onClick={() => {
+                  const code = `QW-${user?.fullName?.split(' ')[0]?.toUpperCase() || 'WASH'}`;
+                  const text = `Join me on Quick-Wash! Use my code ${code} to get ₦1,000 off your first wash. Download now: ${window.location.origin}`;
+                  if (navigator.share) {
+                    navigator.share({ title: 'Quick-Wash Referral', text, url: window.location.origin });
+                  } else {
+                    navigator.clipboard.writeText(text);
+                    alert('Referral code copied to clipboard!');
+                  }
+                }}
+                className="z-10 mt-2 bg-on-secondary text-secondary font-label font-bold text-xs py-2 px-4 rounded-xl w-max active:scale-95 transition-transform"
+              >
                 Share Code
               </button>
               <Group className="absolute -bottom-4 -right-4 w-24 h-24 opacity-10 rotate-12" />
@@ -195,6 +221,7 @@ export default function ProfilePage() {
               <div 
                 key={badge.id} 
                 className="flex-shrink-0 w-24 flex flex-col items-center space-y-3 cursor-pointer relative group"
+                onClick={() => setActiveBadgeId(activeBadgeId === badge.id ? null : badge.id)}
               >
                 <div className={cn(
                   "w-16 h-16 rounded-2xl flex items-center justify-center transition-all duration-300 group-hover:scale-110", 
@@ -213,7 +240,10 @@ export default function ProfilePage() {
                 )}>{badge.name}</span>
 
                 {/* Hover Tooltip */}
-                <div className="absolute bottom-full mb-4 left-1/2 -translate-x-1/2 w-56 p-5 bg-surface-container-high rounded-[2rem] shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all z-50 border border-primary/10">
+                <div className={cn(
+                  "absolute bottom-full mb-4 left-1/2 -translate-x-1/2 w-56 p-5 bg-surface-container-high rounded-[2rem] shadow-2xl transition-all z-50 border border-primary/10 pointer-events-none",
+                  activeBadgeId === badge.id || "group-hover:opacity-100 opacity-0"
+                )}>
                   <p className="text-xs font-headline font-black text-on-surface mb-1">{badge.name}</p>
                   <p className="text-[10px] font-medium text-on-surface-variant leading-relaxed mb-4">{badge.criteria}</p>
                   

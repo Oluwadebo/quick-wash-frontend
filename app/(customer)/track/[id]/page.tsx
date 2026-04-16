@@ -65,6 +65,11 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
         // Refund customer
         const customer = await db.getUser(order.customerUid);
         if (customer) {
+          // Penalty if cancelling after rider is assigned for pickup
+          if (order.status === 'rider_assign_pickup') {
+            await db.adjustTrustPoints(customer.uid, 'cancel_after_ready');
+          }
+
           await db.updateUser(customer.uid, { 
             walletBalance: (customer.walletBalance || 0) + (order.totalPrice || 0) 
           });
@@ -119,6 +124,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
       if (order.riderUid) {
         const riderUser = await db.getUser(order.riderUid);
         if (riderUser) {
+          await db.adjustTrustPoints(riderUser.uid, 'completed_order');
           await db.updateUser(riderUser.uid, { 
             walletBalance: (riderUser.walletBalance || 0) + secondHalf 
           });
@@ -132,6 +138,10 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
 
       setOrder(updatedOrder);
       setNotification({ message: 'Delivery verified! Thank you.', type: 'success' });
+      
+      // Customer reward for successful completion
+      if (order.customerUid) await db.adjustTrustPoints(order.customerUid, 'completed_order');
+
       setTimeout(() => setNotification(null), 3000);
       window.dispatchEvent(new Event('storage'));
     }
@@ -153,6 +163,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
     
     const vendorUser = await db.getUser(order.vendorId);
     if (vendorUser) {
+      await db.adjustTrustPoints(vendorUser.uid, 'completed_order');
       await db.updateUser(vendorUser.uid, { 
         walletBalance: (vendorUser.walletBalance || 0) + remaining20,
         pendingBalance: Math.max(0, (vendorUser.pendingBalance || 0) - remaining20)

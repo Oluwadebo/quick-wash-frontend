@@ -41,14 +41,15 @@ const customerItems: NavItem[] = [
 
 const vendorItems: NavItem[] = [
   { label: 'Dashboard', icon: LayoutDashboard, href: '/vendor' },
-  { label: 'Wallet', icon: Wallet, href: '/wallet' },
-  { label: 'Profile', icon: User, href: '/vendor/profile' },
+  { label: 'Price List', icon: Tag, href: '/vendor?tab=prices' },
+  { label: 'Wallet', icon: Wallet, href: '/vendor?tab=payout' },
+  { label: 'Settings', icon: User, href: '/vendor?tab=settings' },
 ];
 
 const riderItems: NavItem[] = [
   { label: 'Dashboard', icon: Home, href: '/rider' },
-  { label: 'Wallet', icon: Wallet, href: '/wallet' },
-  { label: 'Profile', icon: User, href: '/rider/profile' },
+  { label: 'Wallet', icon: Wallet, href: '/rider?tab=wallet' },
+  { label: 'History', icon: History, href: '/rider?tab=history' },
 ];
 
 const adminItems: NavItem[] = [

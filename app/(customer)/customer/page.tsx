@@ -3,7 +3,7 @@
 import React from 'react';
 import TopAppBar from '@/components/shared/TopAppBar';
 import LandmarkSelector from '@/components/shared/LandmarkSelector';
-import { Search, MapPin, ChevronRight, Plus, HelpCircle, Zap, ShoppingBag, Sun, Leaf, Handshake, Shield, Droplets } from 'lucide-react';
+import { Search, MapPin, ChevronRight, Plus, HelpCircle, Zap, ShoppingBag, Sun, Leaf, Handshake, Shield, Droplets, Check } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion } from 'motion/react';
@@ -17,7 +17,10 @@ export default function LandmarkSelectionPage() {
   const [user, setUser] = React.useState<UserData | null>(null);
   const [alerts, setAlerts] = React.useState<any[]>([]);
   const [pendingCart, setPendingCart] = React.useState<any[]>([]);
-  const [unconfirmedOrder, setUnconfirmedOrder] = React.useState<Order | null>(null);
+  const [pendingVendorId, setPendingVendorId] = React.useState<string | null>(null);
+  const [unconfirmedOrders, setUnconfirmedOrders] = React.useState<Order[]>([]);
+  const [readyToReceiveOrders, setReadyToReceiveOrders] = React.useState<Order[]>([]);
+  const [activeBadgeId, setActiveBadgeId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     const init = async () => {
@@ -28,21 +31,37 @@ export default function LandmarkSelectionPage() {
       setUser(me);
 
       if (me?.uid) {
-        const savedCart = localStorage.getItem(`qw_pending_cart_${me.uid}`);
-        if (savedCart) {
-          const parsed = JSON.parse(savedCart);
-          if (parsed.some((i: any) => i.count > 0)) {
-            setPendingCart(parsed);
+        await db.processAutoRecovery(me.uid);
+        
+        const allKeys = Object.keys(localStorage);
+        const userCartKeys = allKeys.filter(k => k.startsWith(`qw_pending_cart_${me.uid}_`));
+        
+        let hasItems = false;
+        for (const key of userCartKeys) {
+          const cartData = JSON.parse(localStorage.getItem(key) || '[]');
+          if (cartData.some((i: any) => i.count > 0)) {
+            hasItems = true;
+            setPendingCart(cartData);
+            setPendingVendorId(key.split('_').pop() || null);
+            break;
           }
         }
 
-        // Check for paid but unconfirmed order - STRICT UID FILTERING
         const allOrders = await db.getOrders();
-        const unconfirmed = allOrders.find((o: Order) => 
+        
+        // Multiple unconfirmed
+        const unconfirmed = allOrders.filter((o: Order) => 
           o.customerUid === me.uid && 
           o.status === 'confirm'
         );
-        setUnconfirmedOrder(unconfirmed || null);
+        setUnconfirmedOrders(unconfirmed);
+
+        // Multiple ready
+        const readyToReceive = allOrders.filter((o: Order) => 
+          o.customerUid === me.uid && 
+          ['ready', 'rider_assign_delivery', 'picked_up_delivery'].includes(o.status)
+        );
+        setReadyToReceiveOrders(readyToReceive);
 
         const filtered = allOrders.filter((o: Order) => o.customerUid === me.uid);
         setRecentOrders(filtered.sort((a: Order, b: Order) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
@@ -52,6 +71,9 @@ export default function LandmarkSelectionPage() {
       setAlerts(activeAlerts.filter((a: any) => a.type === 'Weather'));
     };
     init();
+    
+    window.addEventListener('storage', init);
+    return () => window.removeEventListener('storage', init);
   }, []);
 
   const allBadges = [
@@ -61,7 +83,7 @@ export default function LandmarkSelectionPage() {
       icon: Droplets, 
       color: 'bg-primary/10 text-primary', 
       earned: recentOrders.filter(o => o.status === 'completed').length >= 5,
-      progress: recentOrders.filter(o => o.status === 'completed').length,
+      progress: Math.min(5, recentOrders.filter(o => o.status === 'completed').length),
       goal: 5,
       reward: '+10% Trust Points',
       criteria: 'Complete 5 orders with "No Issue" reported.' 
@@ -82,8 +104,8 @@ export default function LandmarkSelectionPage() {
       name: 'Loyal Customer', 
       icon: Shield, 
       color: 'bg-tertiary/10 text-tertiary', 
-      earned: recentOrders.length > 0 && (new Date().getTime() - new Date(recentOrders[recentOrders.length - 1].createdAt).getTime() > 30 * 24 * 60 * 60 * 1000),
-      progress: recentOrders.length > 0 ? Math.floor((new Date().getTime() - new Date(recentOrders[recentOrders.length - 1].createdAt).getTime()) / (24 * 60 * 60 * 1000)) : 0,
+      earned: recentOrders.length > 0 && (new Date().getTime() - new Date(recentOrders[recentOrders.length - 1].createdAt).getTime() >= 30 * 24 * 60 * 60 * 1000),
+      progress: recentOrders.length > 0 ? Math.min(30, Math.floor((new Date().getTime() - new Date(recentOrders[recentOrders.length - 1].createdAt).getTime()) / (24 * 60 * 60 * 1000))) : 0,
       goal: 30,
       reward: '+15% Trust Points',
       criteria: 'Stay active with us for over 30 days.' 
@@ -110,7 +132,7 @@ export default function LandmarkSelectionPage() {
       
       <main className="pt-8 px-6 max-w-2xl mx-auto">
           {/* Resume Order Alert */}
-          {pendingCart.length > 0 && !unconfirmedOrder && (
+          {pendingCart.length > 0 && (
             <motion.section 
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -122,11 +144,13 @@ export default function LandmarkSelectionPage() {
                 </div>
                 <div>
                   <h4 className="font-headline font-black text-primary text-lg leading-tight">Unfinished Order</h4>
-                  <p className="text-xs font-bold text-on-surface-variant">You have items in your cart. Continue now?</p>
+                  <p className="text-xs font-bold text-on-surface-variant line-clamp-1">
+                    {pendingCart.filter(i => i.count > 0).map(i => `${i.count}x ${i.name}`).join(', ')}
+                  </p>
                 </div>
               </div>
               <Link 
-                href="/order"
+                href={pendingVendorId ? `/order?vendor=${pendingVendorId}` : '/order'}
                 className="px-6 py-3 bg-primary text-on-primary rounded-xl font-headline font-black text-xs shadow-lg active:scale-95 transition-transform"
               >
                 RESUME
@@ -134,9 +158,10 @@ export default function LandmarkSelectionPage() {
             </motion.section>
           )}
 
-          {/* Paid but Unconfirmed Alert */}
-          {unconfirmedOrder && (
+          {/* Paid but Unconfirmed Alerts */}
+          {unconfirmedOrders.map((order) => (
             <motion.section 
+              key={order.id}
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
               className="mb-8 bg-warning/10 border-2 border-warning/20 p-6 rounded-[2.5rem] flex items-center justify-between gap-4 shadow-xl shadow-warning/5"
@@ -147,17 +172,47 @@ export default function LandmarkSelectionPage() {
                 </div>
                 <div>
                   <h4 className="font-headline font-black text-warning-dark text-lg leading-tight">Action Required</h4>
-                  <p className="text-xs font-bold text-on-surface-variant">Order #{unconfirmedOrder.id} is paid. Click ready!</p>
+                  <p className="text-xs font-bold text-on-surface-variant line-clamp-1">{order.items}</p>
                 </div>
               </div>
               <Link 
-                href={`/order?vendor=${unconfirmedOrder.vendorId}`}
+                href={`/order?vendor=${order.vendorId}`}
                 className="px-6 py-3 bg-warning text-on-warning-container rounded-xl font-headline font-black text-xs shadow-lg active:scale-95 transition-transform"
               >
                 COMPLETE
               </Link>
             </motion.section>
-          )}
+          ))}
+
+          {/* Ready to Receive Alerts */}
+          {readyToReceiveOrders.map((order) => (
+            <motion.section 
+              key={order.id}
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-8 bg-success/10 border-2 border-success/20 p-6 rounded-[2.5rem] flex items-center justify-between gap-4 shadow-xl shadow-success/5"
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-2xl bg-success text-white flex items-center justify-center shrink-0 shadow-lg">
+                  <Check className="w-7 h-7" />
+                </div>
+                <div>
+                  <h4 className="font-headline font-black text-success text-lg leading-tight">
+                    {order.status === 'ready' ? 'Wash Complete' : 'Rider is Coming'}
+                  </h4>
+                  <p className="text-xs font-bold text-on-surface-variant">
+                    {order.status === 'ready' ? 'Your clothes are ready! Waiting for rider.' : 'Your clothes are on the way!'}
+                  </p>
+                </div>
+              </div>
+              <Link 
+                href={`/track/${order.id}`}
+                className="px-6 py-3 bg-success text-white rounded-xl font-headline font-black text-xs shadow-lg active:scale-95 transition-transform"
+              >
+                TRACK
+              </Link>
+            </motion.section>
+          ))}
 
           {/* Weather Alerts */}
           {alerts.length > 0 && (
@@ -176,7 +231,40 @@ export default function LandmarkSelectionPage() {
             </motion.section>
           )}
 
-          {/* Trust Points Header */}
+            {/* Invite Friends Section */}
+          <section className="mb-10">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-secondary/10 border-2 border-secondary/20 p-8 rounded-[2.5rem] flex items-center justify-between gap-6 shadow-xl shadow-secondary/5"
+            >
+              <div className="flex items-center gap-6">
+                <div className="w-16 h-16 rounded-2xl bg-secondary text-white flex items-center justify-center shrink-0 shadow-lg">
+                  <Handshake className="w-8 h-8" />
+                </div>
+                <div>
+                  <h4 className="font-headline font-black text-secondary-dark text-xl leading-tight">Refer & Earn</h4>
+                  <p className="text-xs font-bold text-on-surface-variant max-w-[20ch]">Invite friends and get ₦500 bonus points each!</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => {
+                  const inviteText = `Join me on Quick-Wash! Use my referral code: ${user?.uid?.slice(0, 6).toUpperCase()} for professional laundry services. https://quick-wash.app`;
+                  if (navigator.share) {
+                    navigator.share({ title: 'Join Quick-Wash', text: inviteText, url: 'https://quick-wash.app' });
+                  } else {
+                    navigator.clipboard.writeText(inviteText);
+                    alert("Invite message copied to clipboard!");
+                  }
+                }}
+                className="px-6 py-4 bg-secondary text-white rounded-2xl font-headline font-black text-xs shadow-lg active:scale-95 transition-transform"
+              >
+                INVITE
+              </button>
+            </motion.div>
+          </section>
+
+        {/* Trust Points Header */}
         <section className="mb-10">
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
@@ -190,7 +278,7 @@ export default function LandmarkSelectionPage() {
               <div>
                 <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">Your Trust Status</p>
                 <h3 className="text-2xl font-headline font-black text-on-surface">
-                  {user?.trustPoints || 0} Points • <span className="text-tertiary">{(user?.trustPoints || 0) >= 500 ? 'Elite' : 'Standard'}</span>
+                  {user?.trustPoints || 0} Points • <span className="text-tertiary">{(user?.trustPoints || 0) >= 90 ? 'Elite' : 'Standard'}</span>
                 </h3>
               </div>
             </div>
@@ -243,12 +331,18 @@ export default function LandmarkSelectionPage() {
               <div 
                 key={badge.id} 
                 className="flex-shrink-0 w-24 flex flex-col items-center space-y-3 cursor-pointer relative group"
+                onClick={() => setActiveBadgeId(activeBadgeId === badge.id ? null : badge.id)}
               >
                 <div className={cn(
                   "w-16 h-16 rounded-2xl flex items-center justify-center transition-all duration-300 group-hover:scale-110", 
                   badge.earned ? badge.color : "bg-surface-container-highest grayscale opacity-40"
                 )}>
                   <badge.icon className="w-8 h-8 fill-current" />
+                  {badge.earned && (
+                    <div className="absolute -top-1 -right-1 w-5 h-5 bg-success text-white rounded-full flex items-center justify-center border-2 border-white">
+                      <Shield className="w-3 h-3 fill-current" />
+                    </div>
+                  )}
                 </div>
                 <span className={cn(
                   "text-[10px] font-label font-bold text-center leading-tight",
@@ -258,20 +352,34 @@ export default function LandmarkSelectionPage() {
                 </span>
                 
                 {/* Hover Tooltip */}
-                <div className="absolute bottom-full mb-4 left-1/2 -translate-x-1/2 w-56 p-5 bg-surface-container-high rounded-[2rem] shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all z-50 border border-primary/10">
+                <div className={cn(
+                  "absolute bottom-full mb-4 left-1/2 -translate-x-1/2 w-56 p-5 bg-surface-container-high rounded-[2rem] shadow-2xl transition-all z-50 border border-primary/10 pointer-events-none",
+                  activeBadgeId === badge.id || "group-hover:opacity-100 opacity-0"
+                )}>
                   <p className="text-xs font-headline font-black text-on-surface mb-1">{badge.name}</p>
                   <p className="text-[10px] font-medium text-on-surface-variant leading-relaxed mb-4">{badge.criteria}</p>
                   
                   <div className="space-y-3 pt-3 border-t border-primary/5">
-                    <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-widest text-on-surface-variant">
-                      <span>Status</span>
-                      <span className={cn(badge.earned ? "text-success" : "text-primary")}>
-                        {badge.earned ? 'Earned ✅' : `${badge.progress}/${badge.goal}`}
+                    <div className="flex justify-between items-center">
+                      <span className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant">Status</span>
+                      <span className={cn(
+                        "text-[9px] font-black uppercase tracking-widest",
+                        badge.earned ? "text-success" : "text-primary"
+                      )}>
+                        {badge.earned ? 'Earned ✅' : `${Math.floor(badge.progress || 0)}/${badge.goal}`}
                       </span>
                     </div>
-                    <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-widest text-on-surface-variant">
-                      <span>Reward</span>
-                      <span className="text-tertiary font-bold">{badge.reward}</span>
+                    {!badge.earned && (
+                      <div className="w-full h-1.5 bg-surface-container rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-primary transition-all duration-500" 
+                          style={{ width: `${Math.min(100, ((badge.progress || 0) / badge.goal) * 100)}%` }}
+                        />
+                      </div>
+                    )}
+                    <div className="flex justify-between items-center">
+                      <span className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant">Reward</span>
+                      <span className="text-[9px] font-black uppercase tracking-widest text-tertiary font-bold">{badge.reward}</span>
                     </div>
                   </div>
                   

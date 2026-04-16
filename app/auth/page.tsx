@@ -25,8 +25,10 @@ function AuthContent() {
     password: '',
     landmark: 'Under-G',
     shopName: '',
+    shopAddress: '',
     vehicleType: 'Bicycle',
     nin: '',
+    address: '',
     whatsappNumber: '',
     bankAccountName: '',
     bankAccountNumber: '',
@@ -47,12 +49,14 @@ function AuthContent() {
         landmark: (role === 'customer' || role === 'rider') ? formData.landmark : undefined,
         role: role,
         shopName: role === 'vendor' ? formData.shopName : undefined,
+        shopAddress: role === 'vendor' ? formData.shopAddress : undefined,
         vehicleType: role === 'rider' ? formData.vehicleType : undefined,
         nin: role === 'rider' ? formData.nin : undefined,
+        address: role === 'rider' ? formData.address : undefined,
         whatsappNumber: role === 'vendor' ? formData.whatsappNumber : undefined,
-        bankAccountName: role === 'vendor' ? formData.bankAccountName : undefined,
-        bankAccountNumber: role === 'vendor' ? formData.bankAccountNumber : undefined,
-        bankName: role === 'vendor' ? formData.bankName : undefined,
+        bankAccountName: (role === 'vendor' || role === 'rider') ? formData.bankAccountName : undefined,
+        bankAccountNumber: (role === 'vendor' || role === 'rider') ? formData.bankAccountNumber : undefined,
+        bankName: (role === 'vendor' || role === 'rider') ? formData.bankName : undefined,
         turnaroundTime: role === 'vendor' ? formData.turnaroundTime : undefined,
         capacity: role === 'vendor' ? Number(formData.capacity) : undefined
       });
@@ -159,11 +163,52 @@ function AuthContent() {
                         <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5" />
                         <input 
                           type="text" 
-                          placeholder="NIN (National ID Number)"
+                          placeholder="NIN (11 Digits)"
                           required={role === 'rider' && !isLogin}
+                          maxLength={11}
                           value={formData.nin}
                           onChange={(e) => setFormData({...formData, nin: e.target.value})}
                           className="w-full h-16 bg-surface-container-low rounded-2xl pl-14 pr-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"
+                        />
+                      </div>
+                      <div className="relative">
+                        <MapPin className="absolute left-5 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5" />
+                        <input 
+                          type="text" 
+                          placeholder="Home Address"
+                          required={role === 'rider' && !isLogin}
+                          value={formData.address}
+                          onChange={(e) => setFormData({...formData, address: e.target.value})}
+                          className="w-full h-16 bg-surface-container-low rounded-2xl pl-14 pr-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 gap-4">
+                        <input 
+                          type="text" 
+                          placeholder="Bank Account Name"
+                          required={role === 'rider' && !isLogin}
+                          value={formData.bankAccountName}
+                          onChange={(e) => setFormData({...formData, bankAccountName: e.target.value})}
+                          className="w-full h-16 bg-surface-container-low rounded-2xl px-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"
+                        />
+                        <input 
+                          type="text" 
+                          placeholder="Bank Account Number"
+                          required={role === 'rider' && !isLogin}
+                          minLength={10}
+                          maxLength={10}
+                          pattern="[0-9]*"
+                          value={formData.bankAccountNumber}
+                          onChange={(e) => setFormData({...formData, bankAccountNumber: e.target.value.replace(/\D/g, '')})}
+                          className="w-full h-16 bg-surface-container-low rounded-2xl px-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"
+                        />
+                        <input 
+                          type="text" 
+                          placeholder="Bank Name"
+                          required={role === 'rider' && !isLogin}
+                          value={formData.bankName}
+                          onChange={(e) => setFormData({...formData, bankName: e.target.value})}
+                          className="w-full h-16 bg-surface-container-low rounded-2xl px-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"
                         />
                       </div>
                       <div className="relative">
@@ -195,6 +240,17 @@ function AuthContent() {
                           className="w-full h-16 bg-surface-container-low rounded-2xl pl-14 pr-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"
                         />
                       </div>
+                      <div className="relative">
+                        <MapPin className="absolute left-5 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5" />
+                        <input 
+                          type="text" 
+                          placeholder="Shop Address"
+                          required={role === 'vendor' && !isLogin}
+                          value={formData.shopAddress}
+                          onChange={(e) => setFormData({...formData, shopAddress: e.target.value})}
+                          className="w-full h-16 bg-surface-container-low rounded-2xl pl-14 pr-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"
+                        />
+                      </div>
                     <div className="relative">
                       <Phone className="absolute left-5 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5" />
                       <input 
@@ -219,8 +275,11 @@ function AuthContent() {
                           type="text" 
                           placeholder="Bank Account Number"
                           required={role === 'vendor' && !isLogin}
+                          minLength={10}
+                          maxLength={10}
+                          pattern="[0-9]*"
                           value={formData.bankAccountNumber}
-                          onChange={(e) => setFormData({...formData, bankAccountNumber: e.target.value})}
+                          onChange={(e) => setFormData({...formData, bankAccountNumber: e.target.value.replace(/\D/g, '')})}
                           className="w-full h-16 bg-surface-container-low rounded-2xl px-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"
                         />
                         <input 
@@ -261,8 +320,9 @@ function AuthContent() {
               <Phone className="absolute left-5 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5" />
               <input 
                 type="tel" 
-                placeholder={isLogin ? "Phone Number" : "Login Phone Number"}
+                placeholder={isLogin ? "Phone Number" : "Login Phone Number (11 Digits)"}
                 required
+                maxLength={11}
                 value={formData.phoneNumber}
                 onChange={(e) => setFormData({...formData, phoneNumber: e.target.value})}
                 className="w-full h-16 bg-surface-container-low rounded-2xl pl-14 pr-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"

@@ -14,9 +14,19 @@ import { Toast } from '@/components/shared/Toast';
 
 const generateCode = () => Math.floor(1000 + Math.random() * 9000).toString();
 
+import { useSearchParams } from 'next/navigation';
+
 export default function VendorDashboard() {
   const { user: currentUser } = useAuth();
-  const [activeTab, setActiveTab] = React.useState<'orders' | 'history' | 'payout' | 'prices'>('orders');
+  const searchParams = useSearchParams();
+  const [activeTab, setActiveTab] = React.useState<'orders' | 'history' | 'payout' | 'prices' | 'settings'>('orders');
+
+  React.useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab && ['orders', 'history', 'payout', 'prices', 'settings'].includes(tab)) {
+      setActiveTab(tab as any);
+    }
+  }, [searchParams]);
   const [orders, setOrders] = React.useState<Order[]>([]);
   const [selectedOrder, setSelectedOrder] = React.useState<Order | null>(null);
   const [handoverInput, setHandoverInput] = React.useState('');
@@ -40,22 +50,21 @@ export default function VendorDashboard() {
         const allOrders = await db.getOrders();
         const vendorOrders = allOrders.filter((o: Order) => o.vendorId === currentUser.uid);
         
-        // Check for 4-day delay penalty
+        // Check for 3-day delay penalty
         const now = new Date().getTime();
-        const fourDays = 4 * 24 * 60 * 60 * 1000;
+        const threeDays = 3 * 24 * 60 * 60 * 1000;
         let penaltyApplied = false;
 
         const checkedOrders = await Promise.all(vendorOrders.map(async (o: Order) => {
           if (o.status === 'washing' && o.time) {
             const startTime = new Date(o.time).getTime();
-            if (now - startTime > fourDays && !o.penaltyApplied) {
+            if (now - startTime > threeDays && !o.penaltyApplied) {
               o.penaltyApplied = true;
               penaltyApplied = true;
               
               // Deduct trust points
-              const me = await db.getUser(currentUser.uid);
-              if (me) {
-                await db.updateUser(me.uid, { trustScore: Math.max(0, (me.trustScore || 100) - 10) });
+              if (currentUser?.uid) {
+                await db.adjustTrustPoints(currentUser.uid, 'vendor_delay');
               }
               await db.saveOrder(o);
             }
@@ -119,7 +128,7 @@ export default function VendorDashboard() {
             totalEarnings: me.walletBalance || 0,
             pendingBalance: me.pendingBalance || 0,
             activeOrders: vendorOrders.filter((o: Order) => !['delivered', 'completed', 'Cancelled'].includes(o.status)).length,
-            trustScore: me.trustScore || 100
+            trustScore: me.trustPoints || 0
           });
         }
       }
@@ -199,10 +208,17 @@ export default function VendorDashboard() {
     e.preventDefault();
     const allServices = JSON.parse(localStorage.getItem('qw_vendor_services') || '[]');
     let updated;
+    const serviceToSave = {
+      ...editingService,
+      id: editingService.id || Date.now(),
+      vendorId: currentUser?.uid,
+      subItems: editingService.subItems || []
+    };
+    
     if (editingService.id) {
-      updated = allServices.map((s: any) => s.id === editingService.id ? editingService : s);
+      updated = allServices.map((s: any) => s.id === editingService.id ? serviceToSave : s);
     } else {
-      updated = [...allServices, { ...editingService, id: Date.now(), vendorId: currentUser?.uid }];
+      updated = [...allServices, serviceToSave];
     }
     localStorage.setItem('qw_vendor_services', JSON.stringify(updated));
     setServices(updated.filter((s: any) => s.vendorId === currentUser?.uid));
@@ -305,17 +321,17 @@ export default function VendorDashboard() {
               <h3 className="text-2xl font-headline font-black text-on-surface">{stats.activeOrders}</h3>
             </div>
             <div className="bg-surface-container-low p-6 rounded-[2rem] border border-primary/5">
-              <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Trust Score</p>
+              <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Trust Points</p>
               <h3 className={cn(
                 "text-2xl font-headline font-black",
-                stats.trustScore >= 80 ? "text-success" : stats.trustScore >= 60 ? "text-warning" : "text-error"
-              )}>{stats.trustScore}%</h3>
+                (currentUser?.trustPoints || 0) >= 90 ? "text-success" : (currentUser?.trustPoints || 0) >= 60 ? "text-warning" : "text-error"
+              )}>{currentUser?.trustPoints || 0}</h3>
             </div>
           </section>
 
           {/* Tabs */}
           <div className="flex gap-4 mb-8 overflow-x-auto pb-2 hide-scrollbar">
-            {['orders', 'prices', 'history', 'payout'].map((tab) => (
+            {['orders', 'prices', 'history', 'payout', 'settings'].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab as any)}
@@ -390,6 +406,19 @@ export default function VendorDashboard() {
                           <span className="text-[10px] font-black uppercase tracking-widest text-primary">Wash + Iron</span>
                           <span className="font-headline font-black text-primary">₦{service.washIronPrice}</span>
                         </div>
+                        
+                        {/* Sub-items display */}
+                        {service.subItems && service.subItems.length > 0 && (
+                          <div className="pt-4 border-t border-primary/5 space-y-2">
+                             <p className="text-[8px] font-black uppercase tracking-widest text-on-surface-variant opacity-60">Sub-Items</p>
+                             {service.subItems.map((si: any) => (
+                               <div key={si.id} className="flex justify-between items-center text-[10px] font-bold">
+                                 <span className="text-on-surface-variant">{si.name}</span>
+                                 <span className="text-primary">₦{si.price}</span>
+                               </div>
+                             ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -554,6 +583,71 @@ export default function VendorDashboard() {
                   <h3 className="font-headline font-black text-xl mb-6">Payout History</h3>
                   <div className="py-10 text-center border-2 border-dashed border-primary/10 rounded-[2.5rem]">
                     <p className="text-on-surface-variant font-medium">No payouts yet.</p>
+                  </div>
+                </div>
+              </motion.section>
+            )}
+
+            {activeTab === 'settings' && (
+              <motion.section 
+                key="settings"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="space-y-8"
+              >
+                <div className="bg-surface-container-low p-8 rounded-[2.5rem] border border-primary/5">
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-2xl font-headline font-black">Shop Settings</h3>
+                    <button 
+                      onClick={async () => {
+                        const shopName = prompt("Enter Shop Name:", currentUser?.shopName);
+                        const shopAddress = prompt("Enter Shop Address:", currentUser?.shopAddress);
+                        const whatsappNumber = prompt("Enter WhatsApp Number:", currentUser?.whatsappNumber);
+                        const bankName = prompt("Enter Bank Name:", currentUser?.bankName);
+                        const bankAccountNumber = prompt("Enter Bank Account Number (10 digits):", currentUser?.bankAccountNumber);
+                        if (bankAccountNumber && (bankAccountNumber.length !== 10 || isNaN(Number(bankAccountNumber)))) {
+                          alert("Account number must be exactly 10 digits.");
+                          return;
+                        }
+
+                        const landmark = prompt("Enter Area Landmark (e.g. Under-G):", currentUser?.landmark);
+
+                        if (currentUser?.uid) {
+                          await db.updateUser(currentUser.uid, {
+                            shopName: shopName || currentUser.shopName,
+                            shopAddress: shopAddress || currentUser.shopAddress,
+                            whatsappNumber: whatsappNumber || currentUser.whatsappNumber,
+                            bankName: bankName || currentUser.bankName,
+                            bankAccountNumber: bankAccountNumber || currentUser.bankAccountNumber,
+                            landmark: landmark || currentUser.landmark
+                          });
+                          setNotification({ message: "Settings updated successfully!", type: 'success' });
+                          setTimeout(() => setNotification(null), 2000);
+                        }
+                      }}
+                      className="text-primary font-black uppercase tracking-widest text-[10px] flex items-center gap-1"
+                    >
+                      <Edit3 className="w-3 h-3" /> EDIT SETTINGS
+                    </button>
+                  </div>
+                  <div className="space-y-6">
+                    <div className="p-6 bg-white rounded-2xl border border-primary/5">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Shop Area / Landmark</p>
+                      <p className="font-headline font-bold text-on-surface">{currentUser?.landmark || 'Not set'}</p>
+                    </div>
+                    <div className="p-6 bg-white rounded-2xl border border-primary/5">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Shop Address</p>
+                      <p className="font-headline font-bold text-on-surface">{currentUser?.shopAddress || 'Not set'}</p>
+                    </div>
+                    <div className="p-6 bg-white rounded-2xl border border-primary/5">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">WhatsApp Number</p>
+                      <p className="font-headline font-bold text-on-surface">{currentUser?.whatsappNumber || 'Not set'}</p>
+                    </div>
+                    <div className="p-6 bg-white rounded-2xl border border-primary/5">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Bank Details</p>
+                      <p className="font-headline font-bold text-on-surface">{currentUser?.bankName} - {currentUser?.bankAccountNumber}</p>
+                      <p className="text-xs font-medium text-on-surface-variant">{currentUser?.bankAccountName}</p>
+                    </div>
                   </div>
                 </div>
               </motion.section>
@@ -742,6 +836,62 @@ export default function VendorDashboard() {
                           className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
                         />
                       </div>
+                  </div>
+
+                  {/* Sub-items Section (Multi-Item) */}
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center px-4">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Sub-items (e.g. Duvet, Bedsheet)</label>
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          const subItems = [...(editingService.subItems || []), { id: Date.now(), name: '', price: 0 }];
+                          setEditingService({ ...editingService, subItems });
+                        }}
+                        className="text-primary font-black text-[10px] uppercase tracking-widest flex items-center gap-1"
+                      >
+                        <Plus className="w-3 h-3" /> ADD SUB-ITEM
+                      </button>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      {(editingService.subItems || []).map((si: any, idx: number) => (
+                        <div key={si.id} className="flex gap-3 items-center bg-surface-container-highest/30 p-3 rounded-2xl border border-primary/5">
+                          <input 
+                            type="text" 
+                            placeholder="Item Name"
+                            value={si.name}
+                            onChange={(e) => {
+                              const subItems = [...editingService.subItems];
+                              subItems[idx].name = e.target.value;
+                              setEditingService({ ...editingService, subItems });
+                            }}
+                            className="flex-1 h-10 bg-white rounded-xl px-4 text-xs font-bold outline-none"
+                          />
+                          <input 
+                            type="number" 
+                            placeholder="Price"
+                            value={si.price}
+                            onChange={(e) => {
+                              const subItems = [...editingService.subItems];
+                              subItems[idx].price = parseInt(e.target.value) || 0;
+                              setEditingService({ ...editingService, subItems });
+                            }}
+                            className="w-24 h-10 bg-white rounded-xl px-4 text-xs font-bold outline-none"
+                          />
+                          <button 
+                            type="button"
+                            onClick={() => {
+                              const subItems = editingService.subItems.filter((_: any, i: number) => i !== idx);
+                              setEditingService({ ...editingService, subItems });
+                            }}
+                            className="text-error p-2"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
 
                   <div className="flex gap-4 pt-4">

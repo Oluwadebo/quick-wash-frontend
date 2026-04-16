@@ -14,9 +14,11 @@ interface UserData {
   landmark?: string;
   role: UserRole;
   shopName?: string;
+  shopAddress?: string;
   vehicleType?: string;
   isApproved?: boolean;
   nin?: string;
+  address?: string;
   whatsappNumber?: string;
   bankAccountName?: string;
   bankAccountNumber?: string;
@@ -74,15 +76,21 @@ export function useAuth() {
     setError(null);
     
     // Validation
+    if (!data.phoneNumber || !/^\d{11}$/.test(data.phoneNumber)) {
+      setError('Phone number must be exactly 11 digits!');
+      setIsProcessing(false);
+      return;
+    }
+
     if (data.role === 'rider') {
-      if (!data.nin || !/^\d+$/.test(data.nin)) {
-        setError('NIN must be numbers only!');
+      if (!data.nin || !/^\d{11}$/.test(data.nin)) {
+        setError('NIN must be exactly 11 digits!');
         setIsProcessing(false);
         return;
       }
     }
-    if (data.role === 'vendor') {
-      if (!data.bankAccountNumber || !/^\d+$/.test(data.bankAccountNumber)) {
+    if (data.role === 'vendor' || data.role === 'rider') {
+      if (data.bankAccountNumber && !/^\d+$/.test(data.bankAccountNumber)) {
         setError('Bank Account Number must be numbers only!');
         setIsProcessing(false);
         return;
