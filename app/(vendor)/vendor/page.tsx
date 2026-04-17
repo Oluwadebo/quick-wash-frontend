@@ -8,17 +8,18 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
 import { formatRelativeTime } from '@/lib/time';
-import { X, History, Wallet, ShoppingBag, Volume2, TrendingUp, Star, ShieldCheck, Clock, Package, ArrowRight, Play, AlertTriangle, Edit3, Trash2, Plus, Shirt } from 'lucide-react';
+import { X, History, Wallet, ShoppingBag, Volume2, TrendingUp, Star, ShieldCheck, Clock, Package, ArrowRight, Play, AlertTriangle, Edit3, Trash2, Plus, Shirt, ArrowUpRight, ArrowDownLeft, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
 import { db, Order, UserData } from '@/lib/DatabaseService';
 import { Toast } from '@/components/shared/Toast';
 
 const generateCode = () => Math.floor(1000 + Math.random() * 9000).toString();
 
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 
 export default function VendorDashboard() {
   const { user: currentUser } = useAuth();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [activeTab, setActiveTab] = React.useState<'orders' | 'history' | 'payout' | 'prices' | 'settings'>('orders');
 
   React.useEffect(() => {
@@ -29,13 +30,13 @@ export default function VendorDashboard() {
   }, [searchParams]);
   const [orders, setOrders] = React.useState<Order[]>([]);
   const [selectedOrder, setSelectedOrder] = React.useState<Order | null>(null);
-  const [handoverInput, setHandoverInput] = React.useState('');
+  const [handoverInput, setHandoverInput] = React.useState<{ [key: string]: string }>({});
   const [isPriceModalOpen, setIsPriceModalOpen] = React.useState(false);
   const [isServicePickerOpen, setIsServicePickerOpen] = React.useState(false);
   const [globalServices, setGlobalServices] = React.useState<string[]>([]);
   const [editingService, setEditingService] = React.useState<any>(null);
   const [services, setServices] = React.useState<any[]>([]);
-  const [notification, setNotification] = React.useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [notification, setNotification] = React.useState<{ message: string; type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
 
   const [stats, setStats] = React.useState({
     totalEarnings: 0,
@@ -48,6 +49,8 @@ export default function VendorDashboard() {
     const init = async () => {
       if (currentUser?.uid) {
         const allOrders = await db.getOrders();
+        
+        // Strict vendor filtering
         const vendorOrders = allOrders.filter((o: Order) => o.vendorId === currentUser.uid);
         
         // Check for 3-day delay penalty
@@ -56,13 +59,12 @@ export default function VendorDashboard() {
         let penaltyApplied = false;
 
         const checkedOrders = await Promise.all(vendorOrders.map(async (o: Order) => {
-          if (o.status === 'washing' && o.time) {
+          if (o.status.toLowerCase() === 'washing' && o.time) {
             const startTime = new Date(o.time).getTime();
             if (now - startTime > threeDays && !o.penaltyApplied) {
               o.penaltyApplied = true;
               penaltyApplied = true;
               
-              // Deduct trust points
               if (currentUser?.uid) {
                 await db.adjustTrustPoints(currentUser.uid, 'vendor_delay');
               }
@@ -74,61 +76,20 @@ export default function VendorDashboard() {
 
         setOrders(checkedOrders);
 
-        // Load services
-        const allServices = JSON.parse(localStorage.getItem('qw_vendor_services') || '[]');
-        setServices(allServices.filter((s: any) => s.vendorId === currentUser.uid));
-
-        // Load global services
-        const gServices = JSON.parse(localStorage.getItem('qw_global_services') || '["Shirt", "Trousers", "Jeans", "Bedding", "Towel", "Suit", "Native Wear", "Gown"]');
-        setGlobalServices(gServices);
-
-        // Process 24h Payout Release
-        const twentyFourHours = 24 * 60 * 60 * 1000;
-        let payoutHappened = false;
+        // Load Services using DatabaseService
+        const vendorPrices = await db.getVendorPriceList(currentUser.uid);
+        setServices(vendorPrices);
         
-        const updatedOrders = await Promise.all(allOrders.map(async (o: Order) => {
-          if (o.vendorId === currentUser.uid && 
-              o.status === 'delivered' && 
-              o.deliveredAt && 
-              !o.payoutReleased && 
-              !o.disputed) {
-            const deliveredTime = new Date(o.deliveredAt).getTime();
-            if (now - deliveredTime >= twentyFourHours) {
-              o.status = 'completed'; // Mark as completed after 24h
-              o.payoutReleased = true;
-              payoutHappened = true;
-              
-              // Move 20% from pending to wallet
-              const me = await db.getUser(currentUser.uid);
-              if (me) {
-                const releaseAmount = o.totalPrice * 0.2;
-                await db.updateUser(me.uid, { 
-                  walletBalance: (me.walletBalance || 0) + releaseAmount,
-                  pendingBalance: Math.max(0, (me.pendingBalance || 0) - releaseAmount)
-                });
-                await db.recordTransaction(me.uid, {
-                  type: 'deposit',
-                  amount: releaseAmount,
-                  desc: `Auto-Release Payout (24h) - Order #${o.id}`
-                });
-              }
-              await db.saveOrder(o);
-            }
-          }
-          return o;
-        }));
-
-        if (payoutHappened) {
-          setOrders(updatedOrders.filter((o: Order) => o.vendorId === currentUser.uid));
-        }
+        const gServices = JSON.parse(localStorage.getItem('qw_global_services') || '["Shirt", "Jeans", "Native", "Suit", "Duvet", "Bedsheet"]');
+        setGlobalServices(gServices);
 
         const me = await db.getUser(currentUser.uid);
         if (me) {
           setStats({
             totalEarnings: me.walletBalance || 0,
             pendingBalance: me.pendingBalance || 0,
-            activeOrders: vendorOrders.filter((o: Order) => !['delivered', 'completed', 'Cancelled'].includes(o.status)).length,
-            trustScore: me.trustPoints || 0
+            activeOrders: vendorOrders.filter(o => !['delivered', 'completed', 'cancelled'].includes(o.status.toLowerCase())).length,
+            trustScore: me.trustPoints || 100
           });
         }
       }
@@ -152,7 +113,8 @@ export default function VendorDashboard() {
   };
 
   const handleVerifyHandover = async (order: Order) => {
-    if (handoverInput === order.code2) {
+    const input = handoverInput[order.id];
+    if (input === order.code2) {
       const itemsPrice = order.itemsPrice || 0;
       const vendorShare = itemsPrice * 0.8;
       const vendorPending = itemsPrice * 0.2;
@@ -173,9 +135,9 @@ export default function VendorDashboard() {
       }
 
       await handleStatusUpdate(order.id, 'washing', 'bg-primary text-on-primary');
-      setHandoverInput('');
+      setHandoverInput(prev => ({ ...prev, [order.id]: '' }));
       window.dispatchEvent(new Event('storage'));
-    } else {
+    } else if (input && input.length === 4) {
       setNotification({ message: "Invalid handover code. Please check with the rider.", type: 'error' });
       setTimeout(() => setNotification(null), 2000);
     }
@@ -204,26 +166,28 @@ export default function VendorDashboard() {
     }
   };
 
-  const handleSaveService = (e: React.FormEvent) => {
+  const handleSaveService = async (e: React.FormEvent) => {
     e.preventDefault();
-    const allServices = JSON.parse(localStorage.getItem('qw_vendor_services') || '[]');
+    if (!currentUser) return;
+
     let updated;
     const serviceToSave = {
       ...editingService,
       id: editingService.id || Date.now(),
-      vendorId: currentUser?.uid,
+      vendorId: currentUser.uid,
       subItems: editingService.subItems || []
     };
     
     if (editingService.id) {
-      updated = allServices.map((s: any) => s.id === editingService.id ? serviceToSave : s);
+      updated = services.map((s: any) => s.id === editingService.id ? serviceToSave : s);
     } else {
-      updated = [...allServices, serviceToSave];
+      updated = [...services, serviceToSave];
     }
-    localStorage.setItem('qw_vendor_services', JSON.stringify(updated));
-    setServices(updated.filter((s: any) => s.vendorId === currentUser?.uid));
+    
+    await db.saveVendorPriceList(currentUser.uid, updated);
+    setServices(updated);
 
-    // Update global services
+    // Update global services if new
     const gServices = JSON.parse(localStorage.getItem('qw_global_services') || '[]');
     if (!gServices.includes(editingService.name)) {
       const newGServices = [...gServices, editingService.name];
@@ -233,18 +197,19 @@ export default function VendorDashboard() {
 
     setIsPriceModalOpen(false);
     setEditingService(null);
-    setNotification({ message: "Service saved successfully!", type: 'success' });
+    setNotification({ message: "Service prices saved!", type: 'success' });
     setTimeout(() => setNotification(null), 2000);
   };
 
-  const handleDeleteService = (id: number) => {
-    if (confirm('Delete this service?')) {
-      const allServices = JSON.parse(localStorage.getItem('qw_vendor_services') || '[]');
-      const updated = allServices.filter((s: any) => s.id !== id);
-      localStorage.setItem('qw_vendor_services', JSON.stringify(updated));
-      setServices(updated.filter((s: any) => s.vendorId === currentUser?.uid));
-      setNotification({ message: "Service deleted.", type: 'info' });
-      setTimeout(() => setNotification(null), 2000);
+  const handleDeleteService = async (id: number) => {
+    if (confirm('Delete this entire service from your shop?')) {
+      const updated = services.filter((s: any) => s.id !== id);
+      if (currentUser?.uid) {
+        await db.saveVendorPriceList(currentUser.uid, updated);
+        setServices(updated);
+        setNotification({ message: "Service removed from your list.", type: 'info' });
+        setTimeout(() => setNotification(null), 2000);
+      }
     }
   };
 
@@ -394,17 +359,32 @@ export default function VendorDashboard() {
                       <h3 className="text-2xl font-headline font-black text-on-surface mb-6">{service.name}</h3>
                       
                       <div className="space-y-4">
-                        <div className="flex justify-between items-center p-4 bg-surface-container-lowest rounded-2xl border border-primary/5">
+                        <div className={cn(
+                          "flex justify-between items-center p-4 rounded-2xl border",
+                          service.washDisabled ? "bg-surface-container-highest/50 border-error/10 opacity-60" : "bg-surface-container-lowest border-primary/5"
+                        )}>
                           <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Wash Only</span>
-                          <span className="font-headline font-black text-primary">₦{service.washPrice}</span>
+                          <span className={cn("font-headline font-black", service.washDisabled ? "text-error" : "text-primary")}>
+                            {service.washDisabled ? 'DISABLED' : `₦${service.washPrice}`}
+                          </span>
                         </div>
-                        <div className="flex justify-between items-center p-4 bg-surface-container-lowest rounded-2xl border border-primary/5">
+                        <div className={cn(
+                          "flex justify-between items-center p-4 rounded-2xl border",
+                          service.ironDisabled ? "bg-surface-container-highest/50 border-error/10 opacity-60" : "bg-surface-container-lowest border-primary/5"
+                        )}>
                           <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Iron Only</span>
-                          <span className="font-headline font-black text-primary">₦{service.ironPrice}</span>
+                          <span className={cn("font-headline font-black", service.ironDisabled ? "text-error" : "text-primary")}>
+                            {service.ironDisabled ? 'DISABLED' : `₦${service.ironPrice}`}
+                          </span>
                         </div>
-                        <div className="flex justify-between items-center p-4 bg-primary/5 rounded-2xl border border-primary/10">
-                          <span className="text-[10px] font-black uppercase tracking-widest text-primary">Wash + Iron</span>
-                          <span className="font-headline font-black text-primary">₦{service.washIronPrice}</span>
+                        <div className={cn(
+                          "flex justify-between items-center p-4 rounded-2xl border",
+                          service.washIronDisabled ? "bg-surface-container-highest/50 border-error/10 opacity-60" : "bg-primary/5 border-primary/10"
+                        )}>
+                          <span className={cn("text-[10px] font-black uppercase tracking-widest", service.washIronDisabled ? "text-on-surface-variant" : "text-primary")}>Wash + Iron</span>
+                          <span className={cn("font-headline font-black", service.washIronDisabled ? "text-error" : "text-primary")}>
+                            {service.washIronDisabled ? 'DISABLED' : `₦${service.washIronPrice}`}
+                          </span>
                         </div>
                         
                         {/* Sub-items display */}
@@ -444,7 +424,7 @@ export default function VendorDashboard() {
                 animate={{ opacity: 1, y: 0 }}
                 className="space-y-6"
               >
-                {orders.filter(o => !['delivered', 'completed', 'Cancelled'].includes(o.status)).map((order) => (
+                {orders.filter(o => !['delivered', 'completed', 'cancelled'].includes(o.status.toLowerCase())).map((order) => (
                   <div 
                     key={order.id}
                     className="bg-surface-container-low p-8 rounded-[2.5rem] border border-primary/5 shadow-sm hover:shadow-xl transition-all"
@@ -456,43 +436,53 @@ export default function VendorDashboard() {
                         </div>
                         <div>
                           <h4 className="font-headline font-black text-xl text-on-surface">Order #{order.id}</h4>
-                          <p className="text-xs font-bold text-on-surface-variant">{formatRelativeTime(order.time)} • {order.customerName}</p>
+                          <p className="text-xs font-bold text-on-surface-variant tracking-widest">{formatRelativeTime(order.time)} • {order.customerName}</p>
                         </div>
                       </div>
                       <span className={cn(
                         "px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest",
-                        order.color
+                        ['picked_up', 'washing', 'ready', 'picked_up_delivery'].includes(order.status.toLowerCase()) ? "bg-primary text-on-primary shadow-lg shadow-primary/20" : order.color
                       )}>
                         {order.status}
                       </span>
                     </div>
 
-                    <p className="text-sm font-medium text-on-surface-variant mb-8 line-clamp-2 bg-surface-container-lowest p-4 rounded-2xl border border-primary/5">
+                    <p className="text-sm font-medium text-on-surface-variant mb-8 line-clamp-2 bg-surface-container-lowest p-4 rounded-2xl border border-primary/5 italic">
                       {order.items}
                     </p>
 
                     <div className="flex gap-4">
-                      {order.status === 'picked_up' && (
-                        <div className="flex-1 flex gap-3">
-                          <input 
-                            type="text" 
-                            placeholder="Enter Code 2 from Rider"
-                            value={handoverInput}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              setHandoverInput(val);
-                              if (val === order.code2) handleVerifyHandover(order);
-                            }}
-                            className="flex-1 h-14 bg-surface-container-highest rounded-xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
-                          />
+                      {order.status.toLowerCase() === 'picked_up' && (
+                        <div className="flex-1 flex flex-col gap-3">
+                          <div className="flex gap-3">
+                            <input 
+                              type="text" 
+                              placeholder="Enter Code 2 from Rider"
+                              value={handoverInput[order.id] || ''}
+                              onChange={(e) => {
+                                const val = e.target.value.replace(/\D/g, '');
+                                setHandoverInput(prev => ({ ...prev, [order.id]: val }));
+                                if (val.length === 4) handleVerifyHandover(order);
+                              }}
+                              className="flex-1 h-14 bg-surface-container-highest rounded-xl px-6 font-headline font-black tracking-[0.2em] outline-none focus:ring-4 ring-primary/20 text-center"
+                              maxLength={4}
+                            />
+                            <button 
+                              onClick={() => handleVerifyHandover(order)}
+                              className="w-14 h-14 bg-primary text-on-primary rounded-xl flex items-center justify-center active:scale-95"
+                            >
+                              <ShieldCheck className="w-6 h-6" />
+                            </button>
+                          </div>
+                          <p className="text-[10px] font-black text-primary uppercase tracking-[0.2em] text-center">Auto-verifies on 4th digit</p>
                         </div>
                       )}
-                      {order.status === 'washing' && (
+                      {order.status.toLowerCase() === 'washing' && (
                         <button 
                           onClick={() => toggleReadyForDelivery(order.id, true)}
-                          className="flex-1 h-14 bg-success text-on-success rounded-xl font-headline font-black text-sm shadow-lg shadow-success/20 active:scale-95 transition-transform"
+                          className="flex-1 h-14 bg-success text-on-success rounded-xl font-headline font-black text-sm shadow-xl shadow-success/20 active:scale-95 transition-transform flex items-center justify-center gap-2"
                         >
-                          READY FOR DELIVERY
+                          <CheckCircle2 className="w-5 h-5" /> MARK AS READY
                         </button>
                       )}
                       {order.status === 'ready' && (
@@ -533,30 +523,43 @@ export default function VendorDashboard() {
                 animate={{ opacity: 1, x: 0 }}
                 className="space-y-4"
               >
-                {orders.filter(o => ['delivered', 'completed', 'Cancelled'].includes(o.status)).map((order) => (
-                  <div key={order.id} className="bg-surface-container-low p-6 rounded-3xl border border-primary/5 flex justify-between items-center">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-xl bg-surface-container-highest flex items-center justify-center">
-                        <History className="w-6 h-6 text-on-surface-variant" />
+                {(() => {
+                  const historical = orders.filter((o: any) => 
+                    ['delivered', 'completed', 'cancelled'].includes(o.status.toLowerCase())
+                  );
+
+                  if (historical.length > 0) {
+                    return historical.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()).map((order) => (
+                      <div key={order.id} className="bg-surface-container-low p-6 rounded-3xl border border-primary/5 flex justify-between items-center group hover:bg-white transition-colors">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 rounded-xl bg-surface-container-highest flex items-center justify-center">
+                            <History className="w-6 h-6 text-on-surface-variant" />
+                          </div>
+                          <div>
+                            <h4 className="font-headline font-black text-on-surface">Order #{order.id}</h4>
+                            <p className="text-[10px] font-bold text-on-surface-variant">{formatRelativeTime(order.time)} • ₦{(order.totalPrice || 0).toLocaleString()}</p>
+                          </div>
+                        </div>
+                        <span className={cn(
+                          "px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest",
+                          ['delivered', 'completed'].includes(order.status.toLowerCase()) ? "bg-success/10 text-success" : "bg-error/10 text-error"
+                        )}>
+                          {order.status}
+                        </span>
                       </div>
-                      <div>
-                        <h4 className="font-headline font-black text-on-surface">Order #{order.id}</h4>
-                        <p className="text-[10px] font-bold text-on-surface-variant">{formatRelativeTime(order.time)} • ₦{(order.totalPrice || 0).toLocaleString()}</p>
+                    ));
+                  }
+                  
+                  return (
+                    <div className="py-20 text-center border-2 border-dashed border-primary/10 rounded-[2.5rem]">
+                      <div className="w-16 h-16 bg-primary/5 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <History className="w-8 h-8 text-primary/20" />
                       </div>
+                      <p className="text-on-surface-variant font-headline font-bold text-xl">No order history yet.</p>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant opacity-60">Completed orders will appear here</p>
                     </div>
-                    <span className={cn(
-                      "px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest",
-                      ['delivered', 'completed'].includes(order.status) ? "bg-success/10 text-success" : "bg-error/10 text-error"
-                    )}>
-                      {order.status}
-                    </span>
-                  </div>
-                ))}
-                {orders.filter(o => ['delivered', 'completed', 'Cancelled'].includes(o.status)).length === 0 && (
-                  <div className="py-20 text-center">
-                    <p className="text-on-surface-variant font-medium">No order history yet.</p>
-                  </div>
-                )}
+                  );
+                })()}
               </motion.section>
             )}
 
@@ -569,20 +572,51 @@ export default function VendorDashboard() {
               >
                 <div className="bg-primary text-on-primary p-10 rounded-[3rem] shadow-2xl shadow-primary/30">
                   <p className="font-label text-xs uppercase tracking-[0.3em] font-black mb-4 opacity-80">Available for Payout</p>
-                  <h2 className="text-6xl font-headline font-black mb-8 tracking-tighter">₦{(stats.totalEarnings || 0).toLocaleString()}</h2>
+                  <h2 className="text-6xl font-headline font-black mb-8 tracking-tighter">₦{(currentUser?.walletBalance || 0).toLocaleString()}</h2>
                   <button 
                     onClick={handleWithdrawal}
-                    disabled={stats.totalEarnings < 8000}
+                    disabled={(currentUser?.walletBalance || 0) < 2000}
                     className="w-full h-16 bg-white text-primary rounded-2xl font-headline font-black text-lg active:scale-[0.98] transition-all disabled:opacity-50"
                   >
-                    {stats.totalEarnings < 8000 ? 'MIN ₦8,000 REQUIRED' : 'WITHDRAW NOW'}
+                    {(currentUser?.walletBalance || 0) < 2000 ? 'MIN ₦2,000 REQUIRED' : 'WITHDRAW NOW'}
                   </button>
                 </div>
                 
                 <div>
-                  <h3 className="font-headline font-black text-xl mb-6">Payout History</h3>
-                  <div className="py-10 text-center border-2 border-dashed border-primary/10 rounded-[2.5rem]">
-                    <p className="text-on-surface-variant font-medium">No payouts yet.</p>
+                  <h3 className="font-headline font-black text-xl mb-6">Recent Transactions</h3>
+                  <div className="space-y-4">
+                    {(() => {
+                      const transactions = JSON.parse(localStorage.getItem(`qw_transactions_${currentUser?.uid}`) || '[]');
+                      if (transactions.length > 0) {
+                        return transactions.sort((a: any, b: any) => new Date(b.time).getTime() - new Date(a.time).getTime()).map((tx: any) => (
+                          <div key={tx.id} className="bg-surface-container-low p-6 rounded-3xl border border-primary/5 flex justify-between items-center group hover:bg-white transition-colors">
+                            <div className="flex items-center gap-4">
+                              <div className={cn(
+                                "w-12 h-12 rounded-xl flex items-center justify-center",
+                                tx.type === 'deposit' ? "bg-success/10 text-success" : "bg-error/10 text-error"
+                              )}>
+                                {tx.type === 'deposit' ? <ArrowDownLeft className="w-6 h-6" /> : <ArrowUpRight className="w-6 h-6" />}
+                              </div>
+                              <div>
+                                <h4 className="font-headline font-black text-on-surface">{tx.desc}</h4>
+                                <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">{formatRelativeTime(tx.time)} • {tx.type}</p>
+                              </div>
+                            </div>
+                            <span className={cn(
+                              "text-lg font-headline font-black",
+                              tx.type === 'deposit' ? "text-success" : "text-error"
+                            )}>
+                              {tx.type === 'deposit' ? '+' : '-'}₦{tx.amount.toLocaleString()}
+                            </span>
+                          </div>
+                        ));
+                      }
+                      return (
+                        <div className="py-20 text-center border-2 border-dashed border-primary/10 rounded-[2.5rem]">
+                          <p className="text-on-surface-variant font-medium">No transactions yet.</p>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               </motion.section>
@@ -595,58 +629,93 @@ export default function VendorDashboard() {
                 animate={{ opacity: 1, scale: 1 }}
                 className="space-y-8"
               >
-                <div className="bg-surface-container-low p-8 rounded-[2.5rem] border border-primary/5">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <button 
+                    onClick={() => router.push('/vendor/price-list')}
+                    className="flex flex-col items-center justify-center p-10 bg-primary/5 border-2 border-dashed border-primary/20 rounded-[3rem] group hover:bg-primary/10 transition-all text-center"
+                  >
+                    <div className="w-20 h-20 bg-primary/10 rounded-3xl flex items-center justify-center mb-6 text-primary group-hover:scale-110 transition-transform">
+                      <ShoppingBag className="w-10 h-10" />
+                    </div>
+                    <h3 className="text-2xl font-headline font-black text-on-surface mb-2">Manage Price List</h3>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant opacity-60">Set your prices for laundry items</p>
+                  </button>
+
+                  <div className="bg-surface-container-low p-8 rounded-[2.5rem] border border-primary/5">
+                    <div className="flex justify-between items-center mb-6">
+                      <h3 className="text-2xl font-headline font-black">Shop Info</h3>
+                      <button 
+                        onClick={async () => {
+                          const shopName = prompt("Enter Shop Name:", currentUser?.shopName);
+                          const whatsappNumber = prompt("Enter WhatsApp Number:", currentUser?.whatsappNumber);
+                          const landmark = prompt("Enter Area Landmark (e.g. Under-G):", currentUser?.landmark);
+
+                          if (currentUser?.uid) {
+                            await db.updateUser(currentUser.uid, {
+                              shopName: shopName || currentUser.shopName,
+                              whatsappNumber: whatsappNumber || currentUser.whatsappNumber,
+                              landmark: landmark || currentUser.landmark
+                            });
+                            setNotification({ message: "Settings updated successfully!", type: 'success' });
+                            setTimeout(() => setNotification(null), 2000);
+                          }
+                        }}
+                        className="text-primary font-black uppercase tracking-widest text-[10px] flex items-center gap-1"
+                      >
+                        <Edit3 className="w-3 h-3" /> EDIT SHOP
+                      </button>
+                    </div>
+                    <div className="space-y-4">
+                      <div className="p-4 bg-white rounded-2xl border border-primary/5">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">Landmark</p>
+                        <p className="font-headline font-bold text-on-surface">{currentUser?.landmark || 'Not set'}</p>
+                      </div>
+                      <div className="p-4 bg-white rounded-2xl border border-primary/5">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">WhatsApp</p>
+                        <p className="font-headline font-bold text-on-surface">{currentUser?.whatsappNumber || 'Not set'}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-surface-container-low p-8 rounded-[3rem] border border-primary/5">
                   <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-2xl font-headline font-black">Shop Settings</h3>
+                    <h3 className="text-2xl font-headline font-black">Payout Details</h3>
                     <button 
                       onClick={async () => {
-                        const shopName = prompt("Enter Shop Name:", currentUser?.shopName);
-                        const shopAddress = prompt("Enter Shop Address:", currentUser?.shopAddress);
-                        const whatsappNumber = prompt("Enter WhatsApp Number:", currentUser?.whatsappNumber);
                         const bankName = prompt("Enter Bank Name:", currentUser?.bankName);
                         const bankAccountNumber = prompt("Enter Bank Account Number (10 digits):", currentUser?.bankAccountNumber);
                         if (bankAccountNumber && (bankAccountNumber.length !== 10 || isNaN(Number(bankAccountNumber)))) {
                           alert("Account number must be exactly 10 digits.");
                           return;
                         }
-
-                        const landmark = prompt("Enter Area Landmark (e.g. Under-G):", currentUser?.landmark);
+                        const bankAccountName = prompt("Enter Account Name:", currentUser?.bankAccountName);
 
                         if (currentUser?.uid) {
                           await db.updateUser(currentUser.uid, {
-                            shopName: shopName || currentUser.shopName,
-                            shopAddress: shopAddress || currentUser.shopAddress,
-                            whatsappNumber: whatsappNumber || currentUser.whatsappNumber,
                             bankName: bankName || currentUser.bankName,
                             bankAccountNumber: bankAccountNumber || currentUser.bankAccountNumber,
-                            landmark: landmark || currentUser.landmark
+                            bankAccountName: bankAccountName || currentUser.bankAccountName
                           });
-                          setNotification({ message: "Settings updated successfully!", type: 'success' });
+                          setNotification({ message: "Bank details updated!", type: 'success' });
                           setTimeout(() => setNotification(null), 2000);
                         }
                       }}
                       className="text-primary font-black uppercase tracking-widest text-[10px] flex items-center gap-1"
                     >
-                      <Edit3 className="w-3 h-3" /> EDIT SETTINGS
+                      <Plus className="w-3 h-3" /> UPDATE BANK
                     </button>
                   </div>
-                  <div className="space-y-6">
-                    <div className="p-6 bg-white rounded-2xl border border-primary/5">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Shop Area / Landmark</p>
-                      <p className="font-headline font-bold text-on-surface">{currentUser?.landmark || 'Not set'}</p>
-                    </div>
-                    <div className="p-6 bg-white rounded-2xl border border-primary/5">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Shop Address</p>
-                      <p className="font-headline font-bold text-on-surface">{currentUser?.shopAddress || 'Not set'}</p>
-                    </div>
-                    <div className="p-6 bg-white rounded-2xl border border-primary/5">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">WhatsApp Number</p>
-                      <p className="font-headline font-bold text-on-surface">{currentUser?.whatsappNumber || 'Not set'}</p>
-                    </div>
-                    <div className="p-6 bg-white rounded-2xl border border-primary/5">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Bank Details</p>
-                      <p className="font-headline font-bold text-on-surface">{currentUser?.bankName} - {currentUser?.bankAccountNumber}</p>
-                      <p className="text-xs font-medium text-on-surface-variant">{currentUser?.bankAccountName}</p>
+                  <div className="p-6 bg-white rounded-[2rem] border border-primary/5">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">{currentUser?.bankName || 'NOT SET'}</p>
+                        <p className="text-xl font-headline font-black text-on-surface">{currentUser?.bankAccountNumber || '#### #### ##'}</p>
+                        <p className="text-xs font-medium text-on-surface-variant">{currentUser?.bankAccountName || 'Account Holder Name'}</p>
+                      </div>
+                      <div className="w-12 h-12 bg-surface-container-highest rounded-xl flex items-center justify-center">
+                        <Wallet className="w-6 h-6 text-on-surface-variant" />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -794,38 +863,86 @@ export default function VendorDashboard() {
                   </div>
                   
                   <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
+                      <div className="space-y-2 relative">
                         <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Wash Only (₦)</label>
-                        <input 
-                          type="number" 
-                          required
-                          value={editingService.washPrice || 0}
-                          onChange={(e) => setEditingService({ ...editingService, washPrice: parseInt(e.target.value) || 0 })}
-                          className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
-                        />
+                        <div className="relative">
+                          <input 
+                            type="number" 
+                            disabled={editingService.washDisabled}
+                            value={editingService.washDisabled ? '' : (editingService.washPrice || 0)}
+                            onChange={(e) => setEditingService({ ...editingService, washPrice: parseInt(e.target.value) || 0 })}
+                            className={cn(
+                              "w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary",
+                              editingService.washDisabled && "opacity-50 cursor-not-allowed bg-surface-container-highest"
+                            )}
+                            placeholder={editingService.washDisabled ? "OFF" : "Price"}
+                          />
+                          <button 
+                            type="button"
+                            onClick={() => setEditingService({ ...editingService, washDisabled: !editingService.washDisabled })}
+                            className={cn(
+                              "absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-lg transition-colors",
+                              editingService.washDisabled ? "text-error hover:bg-error/10" : "text-primary hover:bg-primary/10"
+                            )}
+                          >
+                            {editingService.washDisabled ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
                       </div>
-                      <div className="space-y-2">
+                      <div className="space-y-2 relative">
                         <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Iron Only (₦)</label>
-                        <input 
-                          type="number" 
-                          required
-                          value={editingService.ironPrice || 0}
-                          onChange={(e) => setEditingService({ ...editingService, ironPrice: parseInt(e.target.value) || 0 })}
-                          className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
-                        />
+                        <div className="relative">
+                          <input 
+                            type="number" 
+                            disabled={editingService.ironDisabled}
+                            value={editingService.ironDisabled ? '' : (editingService.ironPrice || 0)}
+                            onChange={(e) => setEditingService({ ...editingService, ironPrice: parseInt(e.target.value) || 0 })}
+                            className={cn(
+                              "w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary",
+                              editingService.ironDisabled && "opacity-50 cursor-not-allowed bg-surface-container-highest"
+                            )}
+                            placeholder={editingService.ironDisabled ? "OFF" : "Price"}
+                          />
+                          <button 
+                            type="button"
+                            onClick={() => setEditingService({ ...editingService, ironDisabled: !editingService.ironDisabled })}
+                            className={cn(
+                              "absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-lg transition-colors",
+                              editingService.ironDisabled ? "text-error hover:bg-error/10" : "text-primary hover:bg-primary/10"
+                            )}
+                          >
+                            {editingService.ironDisabled ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
                       </div>
                     </div>
   
                     <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
+                      <div className="space-y-2 relative">
                         <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Wash + Iron (₦)</label>
-                        <input 
-                          type="number" 
-                          required
-                          value={editingService.washIronPrice || 0}
-                          onChange={(e) => setEditingService({ ...editingService, washIronPrice: parseInt(e.target.value) || 0 })}
-                          className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
-                        />
+                        <div className="relative">
+                          <input 
+                            type="number" 
+                            disabled={editingService.washIronDisabled}
+                            value={editingService.washIronDisabled ? '' : (editingService.washIronPrice || 0)}
+                            onChange={(e) => setEditingService({ ...editingService, washIronPrice: parseInt(e.target.value) || 0 })}
+                            className={cn(
+                              "w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary",
+                              editingService.washIronDisabled && "opacity-50 cursor-not-allowed bg-surface-container-highest"
+                            )}
+                            placeholder={editingService.washIronDisabled ? "OFF" : "Price"}
+                          />
+                          <button 
+                            type="button"
+                            onClick={() => setEditingService({ ...editingService, washIronDisabled: !editingService.washIronDisabled })}
+                            className={cn(
+                              "absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-lg transition-colors",
+                              editingService.washIronDisabled ? "text-error hover:bg-error/10" : "text-primary hover:bg-primary/10"
+                            )}
+                          >
+                            {editingService.washIronDisabled ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
                       </div>
                       <div className="space-y-2">
                         <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">White Premium (+₦)</label>

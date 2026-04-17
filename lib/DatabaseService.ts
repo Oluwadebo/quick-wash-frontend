@@ -296,15 +296,15 @@ class DatabaseService {
     let status = rider.status;
     let restrictionExpires = rider.restrictionExpires;
 
-    // 3. Check for 3 consecutive returns -> 2 day suspension
-    if (consecutiveReturns >= 3) {
+    // 3. Check for 5 consecutive returns -> 2 day suspension
+    if (consecutiveReturns >= 5) {
       status = 'suspended';
       restrictionExpires = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
     }
 
     await this.updateUser(riderUid, {
       walletBalance: newBalance,
-      consecutiveReturns: consecutiveReturns >= 3 ? 0 : consecutiveReturns, // Reset if suspended
+      consecutiveReturns: consecutiveReturns >= 5 ? 0 : consecutiveReturns, // Reset if suspended
       status,
       restrictionExpires
     });
@@ -331,6 +331,7 @@ class DatabaseService {
       returnReason: reason,
       code2: null,
       code4: null,
+      handoverCode: null,
       color: 'bg-warning/20 text-warning'
     };
     await this.saveOrder(updatedOrder);
@@ -365,6 +366,21 @@ class DatabaseService {
     const history = JSON.parse(localStorage.getItem(`qw_wallet_history_${uid}`) || '[]');
     history.unshift({ ...transaction, id: Math.random().toString(36).substr(2, 9), date: new Date().toISOString() });
     localStorage.setItem(`qw_wallet_history_${uid}`, JSON.stringify(history));
+  }
+  // --- PRICE LISTS ---
+
+  async getVendorPriceList(vendorUid: string): Promise<any[]> {
+    await this.delay();
+    const allLists = JSON.parse(localStorage.getItem('qw_vendor_price_lists') || '{}');
+    return allLists[vendorUid] || [];
+  }
+
+  async saveVendorPriceList(vendorUid: string, priceList: any[]): Promise<void> {
+    await this.delay();
+    const allLists = JSON.parse(localStorage.getItem('qw_vendor_price_lists') || '{}');
+    allLists[vendorUid] = priceList;
+    localStorage.setItem('qw_vendor_price_lists', JSON.stringify(allLists));
+    window.dispatchEvent(new Event('storage'));
   }
 }
 

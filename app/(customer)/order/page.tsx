@@ -139,27 +139,26 @@ function OrderPageContent() {
         const foundVendor = await db.getUser(vendorId);
         setVendor(foundVendor);
 
-        const vendorServices = JSON.parse(localStorage.getItem('qw_vendor_services') || '[]');
-        const myServices = vendorServices.filter((s: any) => s.vendorId === vendorId);
+        const myServices = await db.getVendorPriceList(vendorId);
         
-        if (myServices.length > 0) {
+        if (myServices && myServices.length > 0) {
           const mapped = myServices.map((vs: any) => ({
             id: vs.id.toString(),
             name: vs.name,
-            desc: 'Professional Cleaning',
-            icon: Shirt,
+            desc: vs.category || 'Professional Cleaning',
+            icon: vs.icon === 'Bed' ? Bed : (vs.icon === 'Shirt' ? Shirt : ShoppingBag),
             unit: 'unit',
             count: 0,
             services: [
-              { name: 'Wash', price: vs.washPrice },
-              { name: 'Iron', price: vs.ironPrice },
-              { name: 'Wash + Iron', price: vs.washIronPrice }
-            ],
-            selectedService: 'Wash',
+              { name: 'Wash', price: vs.washPrice, disabled: vs.washDisabled },
+              { name: 'Iron', price: vs.ironPrice, disabled: vs.ironDisabled },
+              { name: 'Wash + Iron', price: vs.washIronPrice, disabled: vs.washIronDisabled }
+            ].filter(s => !s.disabled && s.price !== -1),
+            selectedService: !vs.washDisabled ? 'Wash' : (!vs.ironDisabled ? 'Iron' : 'Wash + Iron'),
             hasStainRemover: false,
-            stainRemoverPrice: 500,
-            basePrice: vs.washPrice,
-            subItems: vs.subItems || []
+            stainRemoverPrice: vs.whitePremium || 500,
+            basePrice: !vs.washDisabled ? vs.washPrice : (!vs.ironDisabled ? vs.ironPrice : vs.washIronPrice),
+            subItems: vs.subItems ? vs.subItems.map((si: any) => ({ ...si, count: 0 })) : undefined
           }));
           setCart(mapped);
         } else {
@@ -313,29 +312,36 @@ function OrderPageContent() {
     }).join(', ');
 
     const newOrderId = generateId();
-    const code1 = Math.floor(1000 + Math.random() * 9000).toString();
     
     const newOrder: Order = {
       id: newOrderId,
       customerUid: currentUserData.uid,
       customerName: currentUserData.fullName || 'Guest',
-      customerPhone: currentUserData.phoneNumber,
+      customerPhone: currentUserData.phoneNumber || '',
+      customerLandmark: pickupLandmark,
+      customerAddress: pickupAddress,
       items: itemsDescription,
       itemsPrice,
       riderFee,
       totalPrice,
       status: 'confirm',
-      code1,
       time: new Date().toISOString(),
-      color: 'bg-warning/20 text-warning',
-      vendorId: vendorId || 'campus-cleans',
-      vendorName: vendor?.shopName || 'Quick-Wash Partner',
-      vendorLandmark: vendor?.landmark,
-      customerAddress: pickupAddress,
-      customerLandmark: pickupLandmark,
       createdAt: new Date().toISOString(),
+      color: 'bg-warning/20 text-warning',
+      
+      vendorId: vendorId || vendor?.uid || '',
+      vendorName: vendor?.fullName || vendor?.shopName || 'Quick-Wash Partner',
+      vendorPhone: vendor?.phoneNumber || '',
+      vendorAddress: vendor?.address || vendor?.shopAddress || '',
+      vendorLandmark: vendor?.landmark || '',
+      
+      code1: Math.floor(1000 + Math.random() * 9000).toString(),
+      code2: Math.floor(1000 + Math.random() * 9000).toString(),
+      code3: Math.floor(1000 + Math.random() * 9000).toString(),
+      code4: Math.floor(1000 + Math.random() * 9000).toString(),
+      
       paidAt: new Date().toISOString(),
-      paymentMethod // Use the selected method
+      paymentMethod
     } as any;
 
     try {

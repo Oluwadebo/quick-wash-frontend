@@ -26,6 +26,7 @@ export default function RiderDashboard() {
   }, [searchParams]);
   const [tasks, setTasks] = React.useState<Order[]>([]);
   const [availableOrders, setAvailableOrders] = React.useState<Order[]>([]);
+  const [allMyOrders, setAllMyOrders] = React.useState<Order[]>([]);
   const [stats, setStats] = React.useState({
     walletBalance: 0,
     trustScore: 100,
@@ -44,8 +45,12 @@ export default function RiderDashboard() {
       if (currentUser?.uid) {
         const allOrders = await db.getOrders();
         
+        // My entire history
+        const myAll = allOrders.filter((o: Order) => o.riderUid === currentUser.uid);
+        setAllMyOrders(myAll);
+
         // Tasks assigned to this rider - STRICT UID FILTERING
-        const myTasks = allOrders.filter((o: Order) => o.riderUid === currentUser.uid && !['Delivered', 'Cancelled'].includes(o.status));
+        const myTasks = myAll.filter((o: Order) => !['Delivered', 'Cancelled', 'Completed'].includes(o.status));
         setTasks(myTasks);
 
         // Orders available for pickup (not yet assigned)
@@ -60,7 +65,7 @@ export default function RiderDashboard() {
         setStats({
           walletBalance: me?.walletBalance || 0,
           trustScore: me?.trustScore || 100,
-          completedTasks: allOrders.filter((o: Order) => o.riderUid === currentUser.uid && o.status === 'completed').length
+          completedTasks: myAll.filter((o: Order) => o.status === 'Completed' || o.status === 'Delivered').length
         });
       }
     };
@@ -154,7 +159,7 @@ export default function RiderDashboard() {
     setTasks(allOrders.filter((o: Order) => o.riderUid === currentUser?.uid && !['Delivered', 'Cancelled'].includes(o.status)));
   };
 
-  const handleVerifyPickup = async (order: Order) => {
+  const handleVerifyPickup = React.useCallback(async (order: Order) => {
     const input = handoverInput[order.id];
     if (input === order.code1) {
       // First 50% rider fee to rider on pickup
@@ -191,9 +196,9 @@ export default function RiderDashboard() {
       setHandoverInput(prev => ({ ...prev, [order.id]: '' }));
       window.dispatchEvent(new Event('storage'));
     }
-  };
+  }, [currentUser, handoverInput]);
 
-  const handleVerifyPickupDelivery = async (order: Order) => {
+  const handleVerifyPickupDelivery = React.useCallback(async (order: Order) => {
     const input = handoverInput[order.id];
     if (input === order.code3) {
       // Generate Code 4 (Rider sees, Customer enters)
@@ -214,16 +219,41 @@ export default function RiderDashboard() {
       setHandoverInput(prev => ({ ...prev, [order.id]: '' }));
       window.dispatchEvent(new Event('storage'));
     }
-  };
+  }, [handoverInput]);
+
+  // Handover Code Auto-Check
+  React.useEffect(() => {
+    const checkCodes = async () => {
+      for (const order of tasks) {
+        const input = handoverInput[order.id];
+        if (input) {
+          if (order.status === 'rider_assign_pickup' && input === order.code1) {
+            await handleVerifyPickup(order);
+          } else if (order.status === 'rider_assign_delivery' && input === order.code3) {
+            await handleVerifyPickupDelivery(order);
+          }
+        }
+      }
+    };
+    checkCodes();
+  }, [handoverInput, tasks, handleVerifyPickup, handleVerifyPickupDelivery]);
 
   const handleWithdrawal = async () => {
     if (stats.walletBalance < 2000) return;
+    setIsProcessing(true);
     
     if (currentUser?.uid) {
       await db.updateUser(currentUser.uid, { withdrawalRequested: true });
+      await db.recordTransaction(currentUser.uid, {
+        type: 'withdrawal',
+        amount: stats.walletBalance,
+        desc: 'Withdrawal Request'
+      });
       setNotification({ message: "Withdrawal request submitted!", type: 'success' });
       setTimeout(() => setNotification(null), 3000);
+      window.dispatchEvent(new Event('storage'));
     }
+    setIsProcessing(false);
   };
 
   const handleStartNavigation = (landmark: string) => {
@@ -402,76 +432,77 @@ export default function RiderDashboard() {
                             </div>
                           </div>
 
-                          <div className="flex gap-4">
-                            <button 
-                              onClick={() => handleStartNavigation(destinationLandmark || '')}
-                              className="flex-1 h-14 bg-surface-container-highest text-on-surface rounded-xl font-headline font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-transform"
-                            >
-                              <Navigation className="w-5 h-5" /> NAVIGATE
-                            </button>
-                            
-                            {order.status === 'rider_assign_pickup' && (
-                              <div className="flex-1 flex gap-3">
-                                <input 
-                                  type="text" 
-                                  placeholder="Code 1"
-                                  value={handoverInput[order.id] || ''}
-                                  onChange={(e) => {
-                                    const val = e.target.value;
-                                    setHandoverInput(prev => ({ ...prev, [order.id]: val }));
-                                    if (val === order.code1) handleVerifyPickup(order);
-                                  }}
-                                  className="w-24 h-14 bg-surface-container-highest rounded-xl px-4 text-center font-headline font-black text-xl outline-none focus:ring-2 ring-primary"
-                                />
-                                <div className="flex-1 h-14 bg-primary/10 text-primary rounded-xl font-headline font-black text-[10px] flex items-center justify-center text-center px-2">
-                                  ENTER CODE FROM CUSTOMER
-                                </div>
-                              </div>
-                            )}
-
-                            {order.status === 'picked_up' && (
-                              <div className="flex-1 p-4 bg-secondary/10 rounded-xl border border-secondary/20 flex flex-col items-center justify-center">
-                                <p className="text-[10px] font-black text-secondary uppercase tracking-widest mb-1">CODE FOR VENDOR</p>
-                                <p className="text-2xl font-headline font-black text-secondary tracking-[0.3em]">{order.code2}</p>
-                              </div>
-                            )}
-                            
-                            {order.status === 'rider_assign_delivery' && (
-                              <div className="flex-1 flex gap-3">
-                                <input 
-                                  type="text" 
-                                  placeholder="Code 3"
-                                  value={handoverInput[order.id] || ''}
-                                  onChange={(e) => {
-                                    const val = e.target.value;
-                                    setHandoverInput(prev => ({ ...prev, [order.id]: val }));
-                                    if (val === order.code3) handleVerifyPickupDelivery(order);
-                                  }}
-                                  className="w-24 h-14 bg-surface-container-highest rounded-xl px-4 text-center font-headline font-black text-xl outline-none focus:ring-2 ring-primary"
-                                />
-                                <div className="flex-1 h-14 bg-tertiary/10 text-tertiary rounded-xl font-headline font-black text-[10px] flex items-center justify-center text-center px-2">
-                                  ENTER CODE FROM VENDOR
-                                </div>
-                              </div>
-                            )}
-
-                            {order.status === 'picked_up_delivery' && (
-                              <div className="flex-1 p-4 bg-tertiary/10 rounded-xl border border-tertiary/20 flex flex-col items-center justify-center">
-                                <p className="text-[10px] font-black text-tertiary uppercase tracking-widest mb-1">CODE FOR CUSTOMER</p>
-                                <p className="text-2xl font-headline font-black text-tertiary tracking-[0.3em]">{order.code4}</p>
-                              </div>
-                            )}
-                            {order.status.includes('picked_up') && (
+                          <div className="flex flex-col gap-4 mt-8 pt-8 border-t border-primary/5">
+                            <div className="flex gap-4">
                               <button 
-                                onClick={() => {
-                                  setSelectedOrderId(order.id);
-                                  setIsReturnModalOpen(true);
-                                }}
-                                className="w-full h-12 bg-error/10 text-error rounded-xl font-headline font-black text-xs active:scale-95 transition-transform"
+                                onClick={() => handleStartNavigation((isPickup || order.status === 'picked_up') ? order.customerLandmark || '' : order.vendorLandmark || '')}
+                                className="flex-1 h-16 bg-surface-container-highest text-on-surface rounded-2xl font-headline font-black text-sm flex items-center justify-center gap-3 active:scale-95 transition-transform shadow-sm"
                               >
-                                RETURN ORDER (₦200 PENALTY)
+                                <Navigation className="w-5 h-5 text-primary" /> NAVIGATE
                               </button>
-                            )}
+
+                              {order.status === 'rider_assign_pickup' && (
+                                <div className="flex-[2] flex gap-3">
+                                  <input 
+                                    type="text" 
+                                    placeholder="Code 1"
+                                    value={handoverInput[order.id] || ''}
+                                    onChange={(e) => {
+                                      const val = e.target.value.replace(/\D/g, '');
+                                      setHandoverInput(prev => ({ ...prev, [order.id]: val }));
+                                      if (val.length === 4) handleVerifyPickup(order);
+                                    }}
+                                    className="w-24 h-16 bg-surface-container-highest rounded-2xl px-4 text-center font-headline font-black text-xl outline-none focus:ring-4 ring-primary/20"
+                                    maxLength={4}
+                                  />
+                                  <div className="flex-1 h-16 bg-primary/10 text-primary rounded-2xl font-headline font-black text-[10px] flex items-center justify-center text-center px-4 leading-tight uppercase tracking-wider">
+                                    Get Pickup Code From Customer
+                                  </div>
+                                </div>
+                              )}
+
+                              {order.status === 'picked_up' && (
+                                <div className="flex-[2] p-4 bg-secondary/10 rounded-2xl border border-secondary/20 flex flex-col items-center justify-center h-16">
+                                  <p className="text-[10px] font-black text-secondary uppercase tracking-[0.2em]">VENDOR CODE: <span className="text-xl ml-2 font-black">{order.code2}</span></p>
+                                </div>
+                              )}
+                              
+                              {order.status === 'rider_assign_delivery' && (
+                                <div className="flex-[2] flex gap-3">
+                                  <input 
+                                    type="text" 
+                                    placeholder="Code 3"
+                                    value={handoverInput[order.id] || ''}
+                                    onChange={(e) => {
+                                      const val = e.target.value.replace(/\D/g, '');
+                                      setHandoverInput(prev => ({ ...prev, [order.id]: val }));
+                                      if (val.length === 4) handleVerifyPickupDelivery(order);
+                                    }}
+                                    className="w-24 h-16 bg-surface-container-highest rounded-2xl px-4 text-center font-headline font-black text-xl outline-none focus:ring-4 ring-tertiary/20"
+                                    maxLength={4}
+                                  />
+                                  <div className="flex-1 h-16 bg-tertiary/10 text-tertiary rounded-2xl font-headline font-black text-[10px] flex items-center justify-center text-center px-4 leading-tight uppercase tracking-wider">
+                                    Get Delivery Code From Vendor
+                                  </div>
+                                </div>
+                              )}
+
+                              {order.status === 'picked_up_delivery' && (
+                                <div className="flex-[2] p-4 bg-tertiary/10 rounded-2xl border border-tertiary/20 flex flex-col items-center justify-center h-16">
+                                  <p className="text-[10px] font-black text-tertiary uppercase tracking-[0.2em]">CUSTOMER CODE: <span className="text-xl ml-2 font-black">{order.code4}</span></p>
+                                </div>
+                              )}
+                            </div>
+
+                            <button 
+                              onClick={() => {
+                                setSelectedOrderId(order.id);
+                                setIsReturnModalOpen(true);
+                              }}
+                              className="w-full h-14 bg-error/5 text-error hover:bg-error/10 rounded-2xl font-headline font-black text-xs active:scale-95 transition-all flex items-center justify-center gap-2 border border-error/10 uppercase tracking-widest"
+                            >
+                              <X className="w-5 h-5" /> REJECT / RETURN ORDER (₦200 PENALTY)
+                            </button>
                           </div>
                         </div>
                       );
@@ -493,10 +524,43 @@ export default function RiderDashboard() {
                 animate={{ opacity: 1, x: 0 }}
                 className="space-y-4"
               >
-                {/* History items would go here */}
-                <div className="py-20 text-center border-2 border-dashed border-primary/10 rounded-[3rem]">
-                  <p className="text-on-surface-variant font-medium">No delivery history yet.</p>
-                </div>
+                {(() => {
+                  const historical = allMyOrders.filter((o: any) => 
+                    ['delivered', 'completed', 'cancelled'].includes(o.status.toLowerCase())
+                  );
+
+                  if (historical.length > 0) {
+                    return historical.sort((a: any, b: any) => new Date(b.deliveredAt || b.time).getTime() - new Date(a.deliveredAt || a.time).getTime()).map((order: any) => (
+                      <div key={order.id} className="bg-surface-container-low p-6 rounded-3xl border border-primary/5 flex justify-between items-center group hover:bg-white transition-colors">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 rounded-xl bg-surface-container-highest flex items-center justify-center">
+                            <History className="w-6 h-6 text-on-surface-variant" />
+                          </div>
+                          <div>
+                            <h4 className="font-headline font-black text-on-surface">Order #{order.id}</h4>
+                            <p className="text-[10px] font-bold text-on-surface-variant">{formatRelativeTime(order.deliveredAt || order.time)} • {order.items}</p>
+                          </div>
+                        </div>
+                        <span className={cn(
+                          "px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest",
+                          order.status.toLowerCase() === 'completed' || order.status.toLowerCase() === 'delivered' ? "bg-success/10 text-success" : "bg-error/10 text-error"
+                        )}>
+                          {order.status}
+                        </span>
+                      </div>
+                    ));
+                  }
+                  
+                  return (
+                    <div className="py-20 text-center border-2 border-dashed border-primary/10 rounded-[3rem]">
+                      <div className="w-16 h-16 bg-primary/5 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <History className="w-8 h-8 text-primary/20" />
+                      </div>
+                      <p className="text-on-surface-variant font-headline font-bold text-xl">No delivery history yet.</p>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant opacity-60">Complete tasks to see them here</p>
+                    </div>
+                  );
+                })()}
               </motion.section>
             )}
 

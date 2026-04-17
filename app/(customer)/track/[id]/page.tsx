@@ -22,6 +22,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
   const [rider, setRider] = React.useState<UserData | null>(null);
 
   const [notification, setNotification] = React.useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
+  const [handoverInput, setHandoverInput] = React.useState('');
 
   React.useEffect(() => {
     const init = async () => {
@@ -138,12 +139,16 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
 
       setOrder(updatedOrder);
       setNotification({ message: 'Delivery verified! Thank you.', type: 'success' });
+      setHandoverInput('');
       
       // Customer reward for successful completion
       if (order.customerUid) await db.adjustTrustPoints(order.customerUid, 'completed_order');
 
       setTimeout(() => setNotification(null), 3000);
       window.dispatchEvent(new Event('storage'));
+    } else {
+      setNotification({ message: 'Incorrect delivery code! Please check with the rider.', type: 'error' });
+      setTimeout(() => setNotification(null), 3000);
     }
   };
 
@@ -297,12 +302,17 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
                     type="text" 
                     placeholder="Enter Code 4"
                     maxLength={4}
+                    value={handoverInput}
                     onChange={(e) => {
-                      if (e.target.value.length === 4) handleVerifyDelivery(e.target.value);
+                      const val = e.target.value.replace(/\D/g, '');
+                      setHandoverInput(val);
+                      if (val.length === 4) {
+                        handleVerifyDelivery(val);
+                      }
                     }}
                     className="w-48 h-20 bg-surface-container-low rounded-2xl text-center text-4xl font-headline font-black text-primary shadow-xl border-2 border-primary/20 outline-none focus:border-primary transition-all"
                   />
-                  <p className="text-[10px] font-black text-primary uppercase tracking-widest">ASK RIDER FOR CODE 4</p>
+                  <p className="text-[10px] font-black text-primary uppercase tracking-widest text-center">ASK RIDER FOR CODE 4 TO CONFIRM DELIVERY</p>
                 </div>
               )}
 

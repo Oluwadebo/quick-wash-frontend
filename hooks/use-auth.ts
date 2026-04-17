@@ -166,7 +166,7 @@ export function useAuth() {
     localStorage.removeItem('qw_user');
     localStorage.removeItem('qw_current_order_id');
     setUser(null);
-    router.push('/');
+    router.push('/auth');
   }, [router]);
 
   // Sync auth state across tabs

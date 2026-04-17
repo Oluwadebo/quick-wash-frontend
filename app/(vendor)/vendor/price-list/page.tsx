@@ -6,6 +6,7 @@ import { Shirt, ShoppingBag, Bed, Sparkles, Plus, Edit3, Trash2, Check, X, Dropl
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
+import { db } from '@/lib/DatabaseService';
 
 interface ServicePrice {
   wash: number;
@@ -74,24 +75,43 @@ const defaultServices: Service[] = [
 export default function PriceListPage() {
   const [services, setServices] = React.useState<Service[]>([]);
   const [editingId, setEditingId] = React.useState<string | null>(null);
-  const [isAdding, setIsAdding] = React.useState(false);
   const [user, setUser] = React.useState<any>(null);
 
   React.useEffect(() => {
-    const currentUser = JSON.parse(localStorage.getItem('qw_user') || '{}');
-    setUser(currentUser);
-    const stored = localStorage.getItem(`qw_services_${currentUser.phoneNumber}`);
-    if (stored) {
-      setServices(JSON.parse(stored));
-    } else {
-      setServices(defaultServices);
-      localStorage.setItem(`qw_services_${currentUser.phoneNumber}`, JSON.stringify(defaultServices));
-    }
+    const init = async () => {
+      const currentUser = JSON.parse(localStorage.getItem('qw_user') || '{}');
+      setUser(currentUser);
+      if (currentUser.uid) {
+        const stored = await db.getVendorPriceList(currentUser.uid);
+        if (stored && stored.length > 0) {
+          setServices(stored);
+        } else {
+          setServices(defaultServices);
+          await db.saveVendorPriceList(currentUser.uid, defaultServices);
+        }
+      }
+    };
+    init();
   }, []);
 
-  const saveServices = (updated: Service[]) => {
+  const saveServices = async (updated: Service[]) => {
     setServices(updated);
-    localStorage.setItem(`qw_services_${user.phoneNumber}`, JSON.stringify(updated));
+    if (user?.uid) {
+      await db.saveVendorPriceList(user.uid, updated);
+    }
+  };
+
+  const handleToggleOption = (id: string, field: keyof ServicePrice) => {
+    const updated = services.map(s => {
+      if (s.id === id) {
+        const currentPrice = s.prices[field];
+        // Toggle by setting to 0 or restoring a default if needed
+        // For simplicity, we just set it to 0 which will hide it in the UI if we add a check
+        return { ...s, prices: { ...s.prices, [field]: currentPrice === -1 ? 0 : -1 } };
+      }
+      return s;
+    });
+    saveServices(updated);
   };
 
   const handleDelete = (id: string) => {
@@ -264,22 +284,30 @@ export default function PriceListPage() {
                     ))
                   ) : (
                     <>
-                      <div className="bg-white p-4 rounded-2xl border border-primary/5 text-center">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">Wash</p>
-                        <p className="text-lg font-headline font-black text-primary">₦{service.prices.wash}</p>
-                      </div>
-                      <div className="bg-white p-4 rounded-2xl border border-primary/5 text-center">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">Iron</p>
-                        <p className="text-lg font-headline font-black text-primary">₦{service.prices.iron}</p>
-                      </div>
-                      <div className="bg-white p-4 rounded-2xl border border-primary/5 text-center">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">Wash+Iron</p>
-                        <p className="text-lg font-headline font-black text-primary">₦{service.prices.washIron}</p>
-                      </div>
-                      <div className="bg-white p-4 rounded-2xl border border-primary/5 text-center">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">White</p>
-                        <p className="text-lg font-headline font-black text-tertiary">₦{service.prices.whitePremium}</p>
-                      </div>
+                      {service.prices.wash !== -1 && (
+                        <div className="bg-white p-4 rounded-2xl border border-primary/5 text-center">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">Wash</p>
+                          <p className="text-lg font-headline font-black text-primary">₦{service.prices.wash}</p>
+                        </div>
+                      )}
+                      {service.prices.iron !== -1 && (
+                        <div className="bg-white p-4 rounded-2xl border border-primary/5 text-center">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">Iron</p>
+                          <p className="text-lg font-headline font-black text-primary">₦{service.prices.iron}</p>
+                        </div>
+                      )}
+                      {service.prices.washIron !== -1 && (
+                        <div className="bg-white p-4 rounded-2xl border border-primary/5 text-center">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">Wash+Iron</p>
+                          <p className="text-lg font-headline font-black text-primary">₦{service.prices.washIron}</p>
+                        </div>
+                      )}
+                      {service.prices.whitePremium !== -1 && (
+                        <div className="bg-white p-4 rounded-2xl border border-primary/5 text-center">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">White</p>
+                          <p className="text-lg font-headline font-black text-tertiary">₦{service.prices.whitePremium}</p>
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -299,9 +327,9 @@ export default function PriceListPage() {
                               <div key={sub.id} className="space-y-2 p-4 bg-surface-container-lowest rounded-2xl border border-primary/5 relative group/sub">
                                 <button 
                                   onClick={() => removeSubService(service.id, sub.id)}
-                                  className="absolute -top-2 -right-2 w-6 h-6 bg-error text-white rounded-full flex items-center justify-center opacity-0 group-hover/sub:opacity-100 transition-opacity"
+                                  className="absolute -top-2 -right-2 w-6 h-6 bg-error text-white rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-all"
                                 >
-                                  <X className="w-3 h-3" />
+                                  <Trash2 className="w-3 h-3" />
                                 </button>
                                 <input 
                                   value={sub.name}
@@ -329,15 +357,25 @@ export default function PriceListPage() {
                         ) : (
                           <>
                             {(Object.keys(service.prices) as Array<keyof ServicePrice>).map(field => (
-                              <div key={field} className="space-y-2">
+                              <div key={field} className={cn(
+                                "space-y-2 p-4 rounded-2xl border transition-all relative group/price",
+                                service.prices[field] === -1 ? "bg-surface-variant/10 opacity-40 grayscale" : "bg-surface-container-lowest border-primary/5"
+                              )}>
+                                <button 
+                                  onClick={() => handleToggleOption(service.id, field)}
+                                  className="absolute -top-2 -right-2 w-6 h-6 bg-error text-white rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-all"
+                                >
+                                  {service.prices[field] === -1 ? <Plus className="w-3 h-3" /> : <Trash2 className="w-3 h-3" />}
+                                </button>
                                 <label className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant">{field.replace(/([A-Z])/g, ' $1')} Price</label>
                                 <div className="relative">
                                   <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-primary">₦</span>
                                   <input 
                                     type="number"
-                                    value={service.prices[field]}
+                                    disabled={service.prices[field] === -1}
+                                    value={service.prices[field] === -1 ? 0 : service.prices[field]}
                                     onChange={(e) => handleUpdatePrice(service.id, field, parseInt(e.target.value) || 0)}
-                                    className="w-full h-12 bg-surface-container-lowest rounded-xl pl-10 pr-4 font-headline font-bold outline-none border border-primary/10 focus:border-primary"
+                                    className="w-full h-12 bg-white rounded-xl pl-10 pr-4 font-headline font-bold outline-none border border-primary/10 focus:border-primary"
                                   />
                                 </div>
                               </div>

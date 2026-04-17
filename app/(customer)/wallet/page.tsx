@@ -2,7 +2,7 @@
 
 import React from 'react';
 import TopAppBar from '@/components/shared/TopAppBar';
-import { Wallet, ArrowUpRight, ArrowDownLeft, Plus, History, CreditCard, Landmark, ShieldCheck, ChevronRight } from 'lucide-react';
+import { Wallet, ArrowUpRight, ArrowDownLeft, Plus, History, CreditCard, Landmark, ShieldCheck, ChevronRight, Bolt } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
@@ -12,6 +12,7 @@ export default function WalletPage() {
   const [balance, setBalance] = React.useState(0);
   const [history, setHistory] = React.useState<any[]>([]);
   const [isFunding, setIsFunding] = React.useState(false);
+  const [paymentMethod, setPaymentMethod] = React.useState<'wallet' | 'transfer' | 'card'>('wallet');
   const [fundAmount, setFundAmount] = React.useState('');
   const [isProcessing, setIsProcessing] = React.useState(false);
 
@@ -105,24 +106,36 @@ export default function WalletPage() {
 
         {/* Quick Actions */}
         <section className="grid grid-cols-2 gap-4">
-          <div className="bg-surface-container-low p-6 rounded-[2rem] border border-primary/5 flex flex-col gap-4">
-            <div className="w-12 h-12 rounded-xl bg-tertiary/10 text-tertiary flex items-center justify-center">
+          <button 
+            onClick={() => {
+              setIsFunding(true);
+              setPaymentMethod('transfer');
+            }}
+            className="group bg-surface-container-low p-6 rounded-[2rem] border border-primary/5 flex flex-col gap-4 text-left active:scale-95 transition-transform"
+          >
+            <div className="w-12 h-12 rounded-xl bg-tertiary/10 text-tertiary flex items-center justify-center group-hover:bg-tertiary group-hover:text-white transition-colors">
               <Landmark className="w-6 h-6" />
             </div>
             <div>
               <h4 className="font-headline font-black text-sm">Bank Transfer</h4>
               <p className="text-[10px] font-medium text-on-surface-variant">Instant funding via transfer</p>
             </div>
-          </div>
-          <div className="bg-surface-container-low p-6 rounded-[2rem] border border-primary/5 flex flex-col gap-4">
-            <div className="w-12 h-12 rounded-xl bg-secondary/10 text-secondary flex items-center justify-center">
+          </button>
+          <button 
+            onClick={() => {
+              setIsFunding(true);
+              setPaymentMethod('card');
+            }}
+            className="group bg-surface-container-low p-6 rounded-[2rem] border border-primary/5 flex flex-col gap-4 text-left active:scale-95 transition-transform"
+          >
+            <div className="w-12 h-12 rounded-xl bg-secondary/10 text-secondary flex items-center justify-center group-hover:bg-secondary group-hover:text-white transition-colors">
               <CreditCard className="w-6 h-6" />
             </div>
             <div>
               <h4 className="font-headline font-black text-sm">Debit Card</h4>
               <p className="text-[10px] font-medium text-on-surface-variant">Secure card payment</p>
             </div>
-          </div>
+          </button>
         </section>
 
         {/* History */}
@@ -198,6 +211,58 @@ export default function WalletPage() {
               </p>
 
               <div className="space-y-6">
+                <div className="flex gap-4 mb-4">
+                  <button 
+                    onClick={() => setPaymentMethod('transfer')}
+                    className={cn(
+                      "flex-1 flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all",
+                      paymentMethod === 'transfer' ? "bg-primary/5 border-primary text-primary" : "bg-surface-container border-primary/5 text-on-surface-variant"
+                    )}
+                  >
+                    <Landmark className="w-6 h-6" />
+                    <span className="text-[10px] font-black uppercase tracking-widest">Transfer</span>
+                  </button>
+                  <button 
+                    onClick={() => setPaymentMethod('card')}
+                    className={cn(
+                      "flex-1 flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all",
+                      paymentMethod === 'card' ? "bg-primary/5 border-primary text-primary" : "bg-surface-container border-primary/5 text-on-surface-variant"
+                    )}
+                  >
+                    <CreditCard className="w-6 h-6" />
+                    <span className="text-[10px] font-black uppercase tracking-widest">Card</span>
+                  </button>
+                </div>
+
+                {paymentMethod === 'transfer' && (
+                  <motion.div 
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    className="p-6 bg-warning/10 rounded-2xl border border-warning/20 mb-6"
+                  >
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
+                        <p className="text-[10px] font-black text-warning-dark uppercase tracking-widest mb-1 text-primary">Transfer to:</p>
+                        <p className="text-sm font-bold text-on-surface">Kuda Bank</p>
+                        <p className="text-xl font-headline font-black text-on-surface">2031194566</p>
+                        <p className="text-xs font-medium text-on-surface-variant">Name: Quick-Wash Laundry</p>
+                      </div>
+                      <button 
+                        onClick={() => {
+                          navigator.clipboard.writeText('2031194566');
+                          alert('Account number copied!');
+                        }}
+                        className="p-2 bg-white rounded-lg shadow-sm active:scale-90 transition-transform"
+                      >
+                         <Bolt className="w-4 h-4 text-primary" />
+                      </button>
+                    </div>
+                    <p className="text-[9px] font-medium text-on-surface-variant italic">
+                      Transfer the exact amount and enter it below. Your wallet will be funded once the system detects the payment.
+                    </p>
+                  </motion.div>
+                )}
+
                 <div className="relative">
                   <span className="absolute left-6 top-1/2 -translate-y-1/2 text-3xl font-headline font-black text-primary">₦</span>
                   <input 

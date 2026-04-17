@@ -2,20 +2,35 @@
 
 import React from 'react';
 import { motion } from 'motion/react';
-import { AlertTriangle, ShieldAlert, MessageSquare, ArrowLeft } from 'lucide-react';
+import { AlertTriangle, ShieldAlert, MessageSquare, ArrowLeft, LogOut } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 
 export default function SuspendedPage() {
-  const { user } = useAuth();
+  const { user, loading, logout } = useAuth();
   const router = useRouter();
 
-  if (user?.status !== 'suspended' && user?.status !== 'restricted') {
-    // If they are active, send them back
-    if (typeof window !== 'undefined') {
-      router.push('/');
+  React.useEffect(() => {
+    if (!loading && user && user.status !== 'suspended' && user.status !== 'restricted') {
+      router.push(user.role ? `/${user.role}` : '/');
     }
+  }, [user, loading, router]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-surface">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
+          <p className="font-headline font-bold text-on-surface-variant">Checking Status...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // If redirecting, don't show the error UI
+  if (user && user.status !== 'suspended' && user.status !== 'restricted') {
+    return null;
   }
 
   return (
@@ -48,13 +63,13 @@ export default function SuspendedPage() {
             CONTACT SUPPORT
           </button>
           
-          <Link 
-            href="/auth?login=true"
-            className="w-full h-16 bg-surface-container-highest text-on-surface rounded-2xl font-headline font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-transform"
+          <button 
+            onClick={() => logout()}
+            className="w-full h-16 bg-error/10 text-error rounded-2xl font-headline font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-transform"
           >
-            <ArrowLeft className="w-4 h-4" />
-            BACK TO LOGIN
-          </Link>
+            <LogOut className="w-5 h-5" />
+            LOGOUT ACCOUNT
+          </button>
         </div>
 
         <p className="mt-8 text-[10px] font-black text-outline uppercase tracking-[0.2em]">Quick-Wash Security System</p>

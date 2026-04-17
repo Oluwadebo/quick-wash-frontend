@@ -354,7 +354,7 @@ export default function LandmarkSelectionPage() {
                 {/* Hover Tooltip */}
                 <div className={cn(
                   "absolute bottom-full mb-4 left-1/2 -translate-x-1/2 w-56 p-5 bg-surface-container-high rounded-[2rem] shadow-2xl transition-all z-50 border border-primary/10 pointer-events-none",
-                  activeBadgeId === badge.id || "group-hover:opacity-100 opacity-0"
+                  activeBadgeId === badge.id ? "opacity-100 visible" : "group-hover:opacity-100 opacity-0 invisible group-hover:visible"
                 )}>
                   <p className="text-xs font-headline font-black text-on-surface mb-1">{badge.name}</p>
                   <p className="text-[10px] font-medium text-on-surface-variant leading-relaxed mb-4">{badge.criteria}</p>

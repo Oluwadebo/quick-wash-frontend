@@ -48,8 +48,9 @@ const vendorItems: NavItem[] = [
 
 const riderItems: NavItem[] = [
   { label: 'Dashboard', icon: Home, href: '/rider' },
-  { label: 'Wallet', icon: Wallet, href: '/rider?tab=wallet' },
   { label: 'History', icon: History, href: '/rider?tab=history' },
+  { label: 'Wallet', icon: Wallet, href: '/rider?tab=wallet' },
+  { label: 'Settings', icon: User, href: '/rider?tab=settings' },
 ];
 
 const adminItems: NavItem[] = [
