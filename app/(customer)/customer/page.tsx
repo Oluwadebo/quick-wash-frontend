@@ -37,15 +37,17 @@ export default function LandmarkSelectionPage() {
         const userCartKeys = allKeys.filter(k => k.startsWith(`qw_pending_cart_${me.uid}_`));
         
         let hasItems = false;
-        for (const key of userCartKeys) {
-          const cartData = JSON.parse(localStorage.getItem(key) || '[]');
-          if (cartData.some((i: any) => i.count > 0)) {
-            hasItems = true;
-            setPendingCart(cartData);
-            setPendingVendorId(key.split('_').pop() || null);
-            break;
+          const prefix = `qw_pending_cart_${me.uid}_`;
+          for (const key of userCartKeys) {
+            const cartData = JSON.parse(localStorage.getItem(key) || '[]');
+            if (cartData.some((i: any) => i.count > 0)) {
+              hasItems = true;
+              setPendingCart(cartData);
+              // Extract the full vendorId correctly, even if it contains underscores
+              setPendingVendorId(key.replace(prefix, '') || null);
+              break;
+            }
           }
-        }
 
         const allOrders = await db.getOrders();
         

@@ -92,7 +92,7 @@ function OrderPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const vendorId = searchParams.get('vendor');
-  const [cart, setCart] = React.useState(defaultItems);
+  const [cart, setCart] = React.useState<any[]>(defaultItems);
   const [isPaid, setIsPaid] = React.useState(false);
   const [isPaying, setIsPaying] = React.useState(false);
   const [vendor, setVendor] = React.useState<UserData | null>(null);
@@ -104,105 +104,108 @@ function OrderPageContent() {
   const [showLocationModal, setShowLocationModal] = React.useState(false);
   const [paymentMethod, setPaymentMethod] = React.useState<'wallet' | 'transfer' | 'card'>('wallet');
   const [isPaymentModalOpen, setIsPaymentModalOpen] = React.useState(false);
+  const [isInitialized, setIsInitialized] = React.useState(false);
 
   React.useEffect(() => {
-    const init = async () => {
+    const initPage = async () => {
+      if (!vendorId) return;
+
+      // 1. Load Auth & Existing Order
       const storedUser = localStorage.getItem('qw_user');
+      let user = null;
       if (storedUser) {
-        const user = JSON.parse(storedUser);
+        user = JSON.parse(storedUser);
         setCurrentUser(user);
         
-        // Check for existing paid but unconfirmed orders - STRICT UID FILTERING
         const orders = await db.getOrders();
         const existing = orders.find((o: Order) => 
           o.customerUid === user.uid && 
           o.status === 'confirm' &&
-          (vendorId ? o.vendorId === vendorId : true)
+          o.vendorId === vendorId
         );
         if (existing) {
           setExistingOrderId(existing.id);
           setIsPaid(true);
-        } else {
-          setExistingOrderId(null);
-          setIsPaid(false);
         }
       }
-    };
-    init();
-  }, [vendorId]);
 
-  // Load vendor services
-  React.useEffect(() => {
-    const loadVendor = async () => {
-      if (vendorId) {
-        const foundVendor = await db.getUser(vendorId);
-        setVendor(foundVendor);
+      // 2. Load Vendor Info
+      const foundVendor = await db.getUser(vendorId);
+      setVendor(foundVendor);
 
-        const myServices = await db.getVendorPriceList(vendorId);
-        
-        if (myServices && myServices.length > 0) {
-          const mapped = myServices.map((vs: any) => ({
+      // 3. Load Price List base structure
+      const myServices = await db.getVendorPriceList(vendorId);
+      let initialCart = [];
+      
+      if (myServices && myServices.length > 0) {
+        initialCart = myServices.map((vs: any) => {
+          const services = [
+            { name: 'Wash', price: vs.washPrice, disabled: vs.washDisabled },
+            { name: 'Iron', price: vs.ironPrice, disabled: vs.ironDisabled },
+            { name: 'Wash + Iron', price: vs.washIronPrice, disabled: vs.washIronDisabled }
+          ].filter(s => !s.disabled && s.price !== -1 && s.price !== undefined);
+
+          return {
             id: vs.id.toString(),
             name: vs.name,
             desc: vs.category || 'Professional Cleaning',
             icon: vs.icon === 'Bed' ? Bed : (vs.icon === 'Shirt' ? Shirt : ShoppingBag),
             unit: 'unit',
             count: 0,
-            services: [
-              { name: 'Wash', price: vs.washPrice, disabled: vs.washDisabled },
-              { name: 'Iron', price: vs.ironPrice, disabled: vs.ironDisabled },
-              { name: 'Wash + Iron', price: vs.washIronPrice, disabled: vs.washIronDisabled }
-            ].filter(s => !s.disabled && s.price !== -1 && s.price !== undefined),
-            selectedService: !vs.washDisabled ? 'Wash' : (!vs.ironDisabled ? 'Iron' : (vs.washIronPrice !== -1 ? 'Wash + Iron' : 'Wash')),
+            services: services.length > 0 ? services : [{ name: 'Standard Wash', price: (typeof vs.washPrice === 'number' ? vs.washPrice : 500) }],
+            selectedService: services.length > 0 ? (services.find(s => s.name === 'Wash') ? 'Wash' : services[0].name) : 'Standard Wash',
             hasStainRemover: false,
-            stainRemoverPrice: vs.whitePremium || 500,
-            basePrice: !vs.washDisabled ? vs.washPrice : (!vs.ironDisabled ? vs.ironPrice : vs.washIronPrice),
-            subItems: vs.subItems ? vs.subItems.map((si: any) => ({ ...si, count: 0 })) : undefined
-          }));
-          setCart(mapped);
-        } else {
-          setCart(defaultItems);
+            stainRemoverPrice: (typeof vs.whitePremium === 'number' ? vs.whitePremium : 500),
+            basePrice: services.length > 0 ? services[0].price : (typeof vs.washPrice === 'number' ? vs.washPrice : 500),
+            subItems: (vs.subItems && vs.subItems.length > 0) ? vs.subItems.map((si: any) => ({ ...si, count: 0 })) : undefined
+          };
+        });
+      } else if (vendorId) {
+        // Fallback to default items only if no vendor-specific services exist
+        initialCart = defaultItems.map(item => ({ ...item, count: 0 }));
+      }
+
+      // 4. Restore Saved Count Data
+      if (user?.uid) {
+        const savedCartStr = localStorage.getItem(`qw_pending_cart_${user.uid}_${vendorId}`);
+        if (savedCartStr) {
+          try {
+            const savedCart = JSON.parse(savedCartStr);
+            initialCart = initialCart.map(item => {
+              const savedItem = savedCart.find((p: any) => p.id === item.id);
+              if (savedItem) {
+                return { 
+                  ...item, 
+                  count: savedItem.count || 0,
+                  selectedService: savedItem.selectedService || item.selectedService,
+                  hasStainRemover: !!savedItem.hasStainRemover,
+                  subItems: item.subItems ? item.subItems.map(si => {
+                    const savedSi = savedItem.subItems?.find((ssi: any) => ssi.id === si.id);
+                    return savedSi ? { ...si, count: savedSi.count || 0 } : si;
+                  }) : undefined
+                };
+              }
+              return item;
+            });
+          } catch (e) {
+            console.error('Failed to parse saved cart', e);
+          }
         }
       }
+
+      setCart(initialCart);
+      setIsInitialized(true);
     };
-    loadVendor();
+
+    initPage();
   }, [vendorId]);
 
-  // Persistence: Load from localStorage if exists
+  // Save to localStorage whenever cart changes AFTER initialization
   React.useEffect(() => {
-    if (!currentUser?.uid || !vendorId) return;
-    const savedCart = localStorage.getItem(`qw_pending_cart_${currentUser.uid}_${vendorId}`);
-    if (savedCart) {
-      try {
-        const parsed = JSON.parse(savedCart);
-        setCart(prev => prev.map(item => {
-          const savedItem = parsed.find((p: any) => p.id === item.id);
-          if (savedItem) {
-            return { 
-              ...item, 
-              count: savedItem.count,
-              selectedService: savedItem.selectedService,
-              hasStainRemover: savedItem.hasStainRemover,
-              subItems: item.subItems ? item.subItems.map(si => {
-                const savedSi = savedItem.subItems?.find((ssi: any) => ssi.id === si.id);
-                return savedSi ? { ...si, count: savedSi.count } : si;
-              }) : undefined
-            };
-          }
-          return item;
-        }));
-      } catch (e) {
-        console.error('Failed to parse saved cart', e);
-      }
-    }
-  }, [currentUser, vendorId]);
-
-  // Save to localStorage whenever cart changes
-  React.useEffect(() => {
-    if (currentUser?.uid && vendorId) {
+    if (isInitialized && currentUser?.uid && vendorId) {
       localStorage.setItem(`qw_pending_cart_${currentUser.uid}_${vendorId}`, JSON.stringify(cart));
     }
-  }, [cart, currentUser, vendorId]);
+  }, [cart, currentUser, vendorId, isInitialized]);
 
   const updateCount = (id: string, delta: number) => {
     if (isPaid) return;
@@ -225,31 +228,38 @@ function OrderPageContent() {
     }));
   };
 
-  const updateService = (id: string, serviceName: string) => {
+  const updateService = (id: string, serviceName: string, e?: React.MouseEvent) => {
     if (isPaid) return;
+    if (e) e.stopPropagation(); // Prevent card onClick from firing
     setCart(prev => prev.map(item => 
       item.id === id ? { ...item, selectedService: serviceName } : item
     ));
   };
 
-  const toggleStainRemover = (id: string) => {
+  const toggleStainRemover = (id: string, e?: React.MouseEvent) => {
     if (isPaid) return;
+    if (e) e.stopPropagation(); // Prevent card onClick from firing
     setCart(prev => prev.map(item => 
       item.id === id ? { ...item, hasStainRemover: !item.hasStainRemover } : item
     ));
   };
 
   const getItemPrice = (item: any) => {
-    if (item.subItems) {
-      const subTotal = item.subItems.reduce((acc: number, si: any) => acc + ((Number(si.count) || 0) * (Number(si.price) || 0)), 0);
+    if (item.subItems && item.subItems.length > 0) {
+      const subTotal = item.subItems.reduce((acc: number, si: any) => {
+        const p = typeof si.price === 'string' ? parseFloat(si.price.replace(/[^0-9.]/g, '')) : Number(si.price);
+        return acc + ((Number(si.count) || 0) * (p || 0));
+      }, 0);
       const stainPrice = item.hasStainRemover ? (Number(item.stainRemoverPrice) || 0) : 0;
       return subTotal + ((Number(item.count) || 0) > 0 ? stainPrice : 0);
     }
     const service = item.services?.find((s: any) => s.name === item.selectedService);
-    const servicePrice = service ? (service.price ?? item.basePrice ?? 0) : (item.basePrice ?? 0);
+    let sPrice = service ? (service.price ?? item.basePrice ?? 0) : (item.basePrice ?? 0);
+    if (typeof sPrice === 'string') sPrice = parseFloat(sPrice.replace(/[^0-9.]/g, '')) || 0;
+    
     const stainPrice = item.hasStainRemover ? (Number(item.stainRemoverPrice) || 0) : 0;
     const count = Number(item.count) || 0;
-    return (count * (Number(servicePrice) || 0)) + (count > 0 ? stainPrice : 0);
+    return (count * (Number(sPrice) || 0)) + (count > 0 ? stainPrice : 0);
   };
 
   const totalItems = cart.reduce((acc, item) => acc + (Number(item.count) || 0), 0);
@@ -419,6 +429,20 @@ function OrderPageContent() {
     }
   }, [router, existingOrderId, pickupAddress, pickupLandmark]);
 
+  if (vendorId && !isInitialized) {
+    return (
+      <div className="min-h-screen bg-mint flex flex-col items-center justify-center p-8 text-center">
+        <motion.div 
+          animate={{ rotate: 360 }}
+          transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+          className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full mb-6"
+        />
+        <h2 className="text-2xl font-headline font-black text-on-surface mb-2 tracking-tight">Resuming your order...</h2>
+        <p className="text-on-surface-variant font-medium text-sm">Please wait while we load the vendor list and your previous selections.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="pb-64">
       <TopAppBar showAudioToggle />
@@ -473,7 +497,7 @@ function OrderPageContent() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.1 }}
               onClick={() => {
-                if (!isPaid && !item.subItems) {
+                if (!isPaid && (!item.subItems || item.subItems.length === 0)) {
                   updateCount(item.id, 1);
                 }
               }}
@@ -495,7 +519,7 @@ function OrderPageContent() {
               </div>
 
               <div className="flex flex-col flex-1">
-                {item.subItems && (
+                {item.subItems && item.subItems.length > 0 && (
                   <div className="grid grid-cols-1 gap-3 mb-6">
                     {item.subItems.map(si => (
                       <div key={si.id} className="bg-white/50 p-4 rounded-2xl border border-primary/5 flex items-center justify-between">
@@ -505,14 +529,14 @@ function OrderPageContent() {
                         </div>
                         <div className="flex items-center gap-2">
                           <button 
-                            onClick={() => updateSubItemCount(item.id, si.id, -1)}
+                            onClick={(e) => { e.stopPropagation(); updateSubItemCount(item.id, si.id, -1); }}
                             className="w-7 h-7 flex items-center justify-center rounded-lg bg-surface-container active:scale-90 transition-transform"
                           >
                             <Minus className="w-3 h-3" />
                           </button>
                           <span className="font-headline font-black text-sm min-w-[1.5ch] text-center">{si.count}</span>
                           <button 
-                            onClick={() => updateSubItemCount(item.id, si.id, 1)}
+                            onClick={(e) => { e.stopPropagation(); updateSubItemCount(item.id, si.id, 1); }}
                             className="w-7 h-7 flex items-center justify-center rounded-lg bg-primary text-white active:scale-90 transition-transform"
                           >
                             <Plus className="w-3 h-3" />
@@ -527,7 +551,7 @@ function OrderPageContent() {
                   {/* Stain Remover Toggle Row */}
                   {item.count > 0 && (
                     <div 
-                      onClick={() => toggleStainRemover(item.id)}
+                      onClick={(e) => toggleStainRemover(item.id, e)}
                       className={cn(
                         "flex items-center justify-between p-4 rounded-2xl border cursor-pointer transition-all",
                         item.hasStainRemover 
@@ -559,7 +583,7 @@ function OrderPageContent() {
                     {item.services.map(service => (
                       <button 
                         key={service.name}
-                        onClick={() => updateService(item.id, service.name)}
+                        onClick={(e) => updateService(item.id, service.name, e)}
                         className={cn(
                           "px-3 py-3 rounded-xl font-headline font-black text-[10px] uppercase tracking-wider transition-all active:scale-95 text-center",
                           item.selectedService === service.name 
@@ -574,17 +598,17 @@ function OrderPageContent() {
                   </div>
 
                   {/* Quantity Selector - Moved inside card below services */}
-                  {!item.subItems && (
+                  {(!item.subItems || item.subItems.length === 0) && (
                     <div className="flex items-center justify-between bg-white p-3 rounded-[2rem] shadow-xl border border-primary/5">
                       <button 
-                        onClick={() => updateCount(item.id, -1)}
+                        onClick={(e) => { e.stopPropagation(); updateCount(item.id, -1); }}
                         className="w-12 h-12 flex items-center justify-center rounded-2xl bg-surface-container hover:bg-primary-container/30 transition-colors active:scale-90"
                       >
                         <Minus className="w-5 h-5" />
                       </button>
                       <span className="font-headline font-black text-2xl px-2 min-w-[2ch] text-center">{item.count}</span>
                       <button 
-                        onClick={() => updateCount(item.id, 1)}
+                        onClick={(e) => { e.stopPropagation(); updateCount(item.id, 1); }}
                         className="w-12 h-12 flex items-center justify-center rounded-2xl bg-primary text-white hover:opacity-90 active:scale-90 transition-all shadow-lg shadow-primary/20"
                       >
                         <Plus className="w-5 h-5" />
@@ -598,7 +622,7 @@ function OrderPageContent() {
                 <div className="flex items-center gap-2 text-on-surface-variant opacity-60">
                   <CreditCard className="w-5 h-5" />
                   <span className="text-[10px] font-label font-bold uppercase tracking-widest">
-                    {item.subItems ? 'Custom' : `₦${item.basePrice}/${item.unit}`}
+                    {(item.subItems && item.subItems.length > 0) ? 'Custom' : `₦${item.basePrice}/${item.unit}`}
                   </span>
                 </div>
                 <div className="text-right">
