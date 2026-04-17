@@ -22,16 +22,17 @@ export default function VendorSelectionPage() {
   React.useEffect(() => {
     const allUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
     const approvedVendors = allUsers
-      .filter((u: any) => u.role === 'vendor' && u.isApproved)
+      .filter((u: any) => u.role?.toLowerCase() === 'vendor' && u.isApproved !== false)
       .map((u: any) => ({
-        id: u.phoneNumber,
+        id: u.uid,
         name: u.shopName || u.fullName || 'Anonymous Vendor',
-        priceRange: '₦2,000/KG', // Default price range
+        priceRange: '₦2,000/KG', 
         rating: u.trustPoints ? (u.trustPoints / 20) : 4.5,
         reviews: Math.floor(Math.random() * 50),
         distance: 'Local',
         turnaround: u.turnaroundTime || '24h Standard',
-        image: `https://picsum.photos/seed/laundry-${u.phoneNumber}/800/600`
+        image: `https://picsum.photos/seed/laundry-${u.phoneNumber}/800/600`,
+        isRaining: u.isRaining || false
       }));
     
     setVendors(approvedVendors);
@@ -129,14 +130,15 @@ export default function VendorSelectionPage() {
 
         {/* Vendor Grid */}
         <section className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {filteredVendors.map((vendor) => (
-            <VendorCard 
-              key={vendor.id}
-              {...vendor}
-            />
-          ))}
-          {filteredVendors.length === 0 && (
-            <div className="col-span-full py-20 text-center">
+          {filteredVendors.length > 0 ? (
+            filteredVendors.map((vendor, idx) => (
+              <VendorCard 
+                key={vendor.id || `vendor-${idx}`}
+                {...vendor}
+              />
+            ))
+          ) : (
+            <div key="no-vendors" className="col-span-full py-20 text-center">
               <p className="text-on-surface-variant font-headline font-bold text-xl">No vendors found matching your search.</p>
             </div>
           )}

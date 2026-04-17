@@ -5,7 +5,7 @@ import TopAppBar from '@/components/shared/TopAppBar';
 import SealedBagUploader from '@/components/shared/SealedBagUploader';
 import ReadyToReceiveButton from '@/components/shared/ReadyToReceiveButton';
 import Link from 'next/link';
-import { ArrowLeft, ShieldCheck, ShoppingBag, WashingMachine, CheckCircle, MessageCircle, Shield, Package, DoorOpen, Info, Phone, Copy } from 'lucide-react';
+import { ArrowLeft, ShieldCheck, ShoppingBag, WashingMachine, CheckCircle, MessageCircle, Shield, Package, DoorOpen, Info, Phone, Copy, CreditCard, ArrowRight, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
@@ -25,9 +25,10 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
   const [handoverInput, setHandoverInput] = React.useState('');
 
   React.useEffect(() => {
-    const init = async () => {
+    const refresh = async () => {
       const allOrders = await db.getOrders();
-      const currentUser = JSON.parse(localStorage.getItem('qw_user') || '{}');
+      const userData = localStorage.getItem('qw_user');
+      const currentUser = userData ? JSON.parse(userData) : {};
       const found = allOrders.find((o: Order) => o.id === resolvedParams.id);
       
       // STRICT UID FILTERING
@@ -45,7 +46,14 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
       }
       setLoading(false);
     };
-    init();
+
+    refresh();
+    window.addEventListener('storage', refresh);
+    const interval = setInterval(refresh, 5000); 
+    return () => {
+      window.removeEventListener('storage', refresh);
+      clearInterval(interval);
+    };
   }, [resolvedParams.id]);
 
   if (loading) return <div className="pt-32 text-center font-headline font-black text-on-surface">Loading...</div>;
@@ -90,15 +98,15 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
   };
 
   const steps = [
-    { id: 'confirm', label: 'Confirmed' },
-    { id: 'rider_assign_pickup', label: 'Rider Heading' },
-    { id: 'picked_up', label: 'To Laundry' },
-    { id: 'washing', label: 'Washing' },
-    { id: 'ready', label: 'Ready' },
-    { id: 'rider_assign_delivery', label: 'Rider Heading' },
-    { id: 'picked_up_delivery', label: 'Delivering' },
-    { id: 'delivered', label: 'Delivered' },
-    { id: 'completed', label: 'Completed' }
+    { id: 'confirm', label: 'Paid', icon: CreditCard },
+    { id: 'rider_assign_pickup', label: 'Heading', icon: Phone },
+    { id: 'picked_up', label: 'Laundry', icon: Package },
+    { id: 'washing', label: 'Washing', icon: WashingMachine },
+    { id: 'ready', label: 'Ready', icon: CheckCircle },
+    { id: 'rider_assign_delivery', label: 'Heading', icon: ArrowRight },
+    { id: 'picked_up_delivery', label: 'Delivering', icon: ShoppingBag },
+    { id: 'delivered', label: 'Arrived', icon: DoorOpen },
+    { id: 'completed', label: 'Done', icon: ShieldCheck }
   ];
 
   const currentStepIdx = steps.findIndex(s => s.id === order.status);
@@ -254,7 +262,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
                     isActive ? "bg-primary text-on-primary" : "bg-surface-container-highest text-on-surface-variant",
                     isCurrent && "ring-4 ring-primary-container shadow-xl"
                   )}>
-                    <CheckCircle className="w-5 h-5 fill-current" />
+                    {step.icon ? <step.icon className="w-5 h-5" /> : <CheckCircle className="w-5 h-5 fill-current" />}
                   </div>
                   <span className={cn(
                     "font-headline text-[8px] font-black uppercase tracking-widest text-center",
@@ -402,13 +410,19 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
         </section>
 
         {/* Cancel Button */}
-        {(order.status === 'Awaiting Pickup Confirmation' || order.status === 'Pending Pickup') && (
-          <button 
-            onClick={handleCancelOrder}
-            className="w-full h-16 bg-error/10 text-error rounded-2xl font-headline font-black text-sm active:scale-95 transition-transform"
-          >
-            CANCEL ORDER
-          </button>
+        {(order.status === 'confirm' || order.status === 'rider_assign_pickup') && (
+          <div className="mt-8">
+            <button 
+              onClick={handleCancelOrder}
+              className="w-full h-16 bg-error text-white rounded-2xl font-headline font-black text-sm active:scale-95 transition-transform shadow-xl shadow-error/20 flex items-center justify-center gap-3"
+            >
+              <AlertTriangle className="w-5 h-5" />
+              CANCEL ORDER & REFUND
+            </button>
+            <p className="text-center text-[10px] font-bold text-error uppercase tracking-widest mt-3 opacity-60">
+              Full refund to wallet before rider pickup
+            </p>
+          </div>
         )}
       </main>
 

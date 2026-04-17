@@ -18,6 +18,7 @@ interface VendorCardProps {
   turnaround: string;
   isStudentFriendly?: boolean;
   whatsappNumber?: string;
+  isRaining?: boolean;
 }
 
 export default function VendorCard({
@@ -30,15 +31,26 @@ export default function VendorCard({
   distance,
   turnaround,
   isStudentFriendly = true,
-  whatsappNumber = '2348000000000'
+  whatsappNumber = '2348000000000',
+  isRaining = false
 }: VendorCardProps) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
-      className="group bg-surface-container-low rounded-[2.5rem] overflow-hidden border border-primary/5 hover:border-primary/20 transition-all hover:shadow-2xl hover:shadow-primary/5"
+      className={cn(
+        "group bg-surface-container-low rounded-[2.5rem] overflow-hidden border border-primary/5 hover:border-primary/20 transition-all hover:shadow-2xl hover:shadow-primary/5 relative",
+        isRaining && "grayscale opacity-80"
+      )}
     >
+      {isRaining && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-surface/40 backdrop-blur-sm pointer-events-none">
+          <div className="bg-error text-white px-8 py-4 rounded-full font-headline font-black text-xs shadow-2xl rotate-[-5deg] border-4 border-white uppercase tracking-[0.2em] flex items-center gap-2">
+            <span className="animate-bounce">🌧️</span> CLOSED (RAINING)
+          </div>
+        </div>
+      )}
       {/* Big Shop Photo */}
       <div className="relative h-72 w-full overflow-hidden">
         <Image
@@ -108,10 +120,14 @@ export default function VendorCard({
             WhatsApp
           </a>
           <Link
-            href={`/order?vendor=${id}`}
-            className="signature-gradient text-white py-5 rounded-2xl font-headline font-black text-sm flex items-center justify-center gap-3 shadow-lg shadow-primary/20 active:scale-[0.98] transition-all"
+            href={isRaining ? '#' : `/order?vendor=${id}`}
+            onClick={(e) => isRaining && e.preventDefault()}
+            className={cn(
+              "signature-gradient text-white py-5 rounded-2xl font-headline font-black text-sm flex items-center justify-center gap-3 shadow-lg shadow-primary/20 active:scale-[0.98] transition-all",
+              isRaining && "bg-none bg-surface-container-high text-on-surface-variant shadow-none cursor-not-allowed"
+            )}
           >
-            Choose Vendor
+            {isRaining ? 'Closed (Rain)' : 'Choose Vendor'}
             <ArrowRight className="w-5 h-5" />
           </Link>
         </div>

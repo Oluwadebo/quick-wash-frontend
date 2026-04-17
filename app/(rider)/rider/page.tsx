@@ -45,19 +45,25 @@ export default function RiderDashboard() {
       if (currentUser?.uid) {
         const allOrders = await db.getOrders();
         
-        // My entire history
-        const myAll = allOrders.filter((o: Order) => o.riderUid === currentUser.uid);
+        // My entire history sorted by time (latest first)
+        const myAll = allOrders
+          .filter((o: Order) => o.riderUid === currentUser.uid)
+          .sort((a, b) => new Date(b.time || 0).getTime() - new Date(a.time || 0).getTime());
         setAllMyOrders(myAll);
 
-        // Tasks assigned to this rider - STRICT UID FILTERING
-        const myTasks = myAll.filter((o: Order) => !['Delivered', 'Cancelled', 'Completed'].includes(o.status));
+        // Tasks assigned to this rider - Sorted by claimedAt (latest first)
+        const myTasks = myAll
+          .filter((o: Order) => !['Delivered', 'Cancelled', 'Completed'].includes(o.status))
+          .sort((a, b) => new Date(b.claimedAt || 0).getTime() - new Date(a.claimedAt || 0).getTime());
         setTasks(myTasks);
 
-        // Orders available for pickup (not yet assigned)
-        const available = allOrders.filter((o: Order) => {
-          const isAvailable = (o.status === 'rider_assign_pickup' || o.status === 'rider_assign_delivery') && !o.riderUid;
-          return isAvailable;
-        });
+        // Orders available for pickup (not yet assigned) - Latest first
+        const available = allOrders
+          .filter((o: Order) => {
+            const isAvailable = (o.status === 'rider_assign_pickup' || o.status === 'rider_assign_delivery') && !o.riderUid;
+            return isAvailable;
+          })
+          .sort((a, b) => new Date(b.time || 0).getTime() - new Date(a.time || 0).getTime());
         setAvailableOrders(available);
 
         const me = await db.getUser(currentUser.uid);
@@ -364,6 +370,7 @@ export default function RiderDashboard() {
                         <div key={order.id} className="bg-surface-container-low p-8 rounded-[2.5rem] border-2 border-primary/20 shadow-xl">
                           <div className="flex justify-between items-start mb-6">
                             <div>
+                              <p className="font-label text-[10px] font-black uppercase tracking-widest text-primary mb-1 leading-none">Order #{order.id}</p>
                               <h4 className="font-headline font-black text-xl text-on-surface mb-2">{order.customerName}</h4>
                               <div className="space-y-2">
                                 <div className="flex items-center gap-2 text-primary">
@@ -391,6 +398,50 @@ export default function RiderDashboard() {
                   </div>
                 )}
 
+                {/* Urgent Alerts for Assigned Rider */}
+                {(() => {
+                  const urgentDeliveries = tasks.filter(o => o.status === 'ready' || o.status === 'rider_assign_delivery');
+                  if (urgentDeliveries.length === 0) return null;
+                  
+                  return (
+                    <div className="mb-12 space-y-4">
+                      <div className="flex items-center gap-3 mb-6">
+                        <div className="w-10 h-10 rounded-xl bg-primary text-on-primary flex items-center justify-center">
+                          <Zap className="w-6 h-6 fill-current" />
+                        </div>
+                        <div>
+                          <p className="font-label text-[10px] font-black uppercase tracking-[0.2em] text-primary">Delivery Notifications</p>
+                          <h2 className="text-2xl font-headline font-black text-on-surface">Urgent Actions</h2>
+                        </div>
+                      </div>
+
+                      {urgentDeliveries.map(order => (
+                        <motion.div 
+                          key={`alert-${order.id}`}
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          className="bg-primary/5 border-2 border-primary/20 rounded-[2.5rem] p-8 flex flex-col md:flex-row items-center justify-between gap-6"
+                        >
+                          <div className="flex items-center gap-6">
+                            <div className="w-16 h-16 rounded-3xl bg-primary text-white flex items-center justify-center shadow-lg">
+                              <Bike className="w-8 h-8" />
+                            </div>
+                            <div>
+                              <h3 className="text-xl font-headline font-black text-on-surface">
+                                {order.status === 'ready' ? 'Ready for Pickup from Vendor' : 'Customer Ready to Receive'}
+                              </h3>
+                              <p className="font-medium text-on-surface-variant">Order #{order.id} • {order.items}</p>
+                            </div>
+                          </div>
+                          <div className="w-full md:w-auto text-center font-headline font-black text-sm text-primary animate-pulse bg-primary/10 px-4 py-2 rounded-xl">
+                            ACTIVE TASK
+                          </div>
+                        </motion.div>
+                      ))}
+                    </div>
+                  );
+                })()}
+
                 {/* My Tasks */}
                 <div>
                   <h3 className="font-headline font-black text-xl mb-6">My Active Tasks</h3>
@@ -416,6 +467,9 @@ export default function RiderDashboard() {
                               </div>
                               <div>
                                 <h4 className="font-headline font-black text-xl text-on-surface">
+                                  Order #{order.id}
+                                </h4>
+                                <h4 className="font-headline font-black text-sm text-primary">
                                   {isPickup ? 'Pickup from' : isDelivery ? 'Deliver to' : 'Heading to'} {destinationName}
                                 </h4>
                                 <p className="text-xs font-bold text-on-surface-variant">{destinationLandmark} • {destinationPhone}</p>

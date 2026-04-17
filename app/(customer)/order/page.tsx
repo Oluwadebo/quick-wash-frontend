@@ -4,9 +4,11 @@ import React from 'react';
 import { useRouter } from 'next/navigation';
 import TopAppBar from '@/components/shared/TopAppBar';
 import ReadyForPickupButton from '@/components/shared/ReadyForPickupButton';
-import { Minus, Plus, Sparkles, Shirt, ShoppingBag, Bed, CreditCard, Bolt, Info, ChevronRight, ShieldCheck, Check, MapPin, ShieldAlert, Wallet, History } from 'lucide-react';
+import { Minus, Plus, Sparkles, Shirt, ShoppingBag, Bed, CreditCard, Bolt, Info, ChevronRight, ShieldCheck, Check, MapPin, ShieldAlert, Wallet, History, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
+import { db, Order, UserData } from '@/lib/DatabaseService';
+import { Toast } from '@/components/shared/Toast';
 
 import { formatRelativeTime } from '@/lib/time';
 import { useSearchParams } from 'next/navigation';
@@ -86,9 +88,6 @@ export default function OrderPage() {
   );
 }
 
-import { db, Order, UserData } from '@/lib/DatabaseService';
-import { Toast } from '@/components/shared/Toast';
-
 function OrderPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -153,8 +152,8 @@ function OrderPageContent() {
               { name: 'Wash', price: vs.washPrice, disabled: vs.washDisabled },
               { name: 'Iron', price: vs.ironPrice, disabled: vs.ironDisabled },
               { name: 'Wash + Iron', price: vs.washIronPrice, disabled: vs.washIronDisabled }
-            ].filter(s => !s.disabled && s.price !== -1),
-            selectedService: !vs.washDisabled ? 'Wash' : (!vs.ironDisabled ? 'Iron' : 'Wash + Iron'),
+            ].filter(s => !s.disabled && s.price !== -1 && s.price !== undefined),
+            selectedService: !vs.washDisabled ? 'Wash' : (!vs.ironDisabled ? 'Iron' : (vs.washIronPrice !== -1 ? 'Wash + Iron' : 'Wash')),
             hasStainRemover: false,
             stainRemoverPrice: vs.whitePremium || 500,
             basePrice: !vs.washDisabled ? vs.washPrice : (!vs.ironDisabled ? vs.ironPrice : vs.washIronPrice),
@@ -473,8 +472,13 @@ function OrderPageContent() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.1 }}
+              onClick={() => {
+                if (!isPaid && !item.subItems) {
+                  updateCount(item.id, 1);
+                }
+              }}
               className={cn(
-                "rounded-[3rem] p-8 border border-primary/5 transition-all hover:shadow-2xl hover:shadow-primary/5 bg-surface-container-low flex flex-col h-full",
+                "rounded-[3rem] p-8 border border-primary/5 transition-all hover:shadow-2xl hover:shadow-primary/5 bg-surface-container-low flex flex-col h-full cursor-pointer",
                 item.count > 0 && "ring-4 ring-primary-container"
               )}
             >

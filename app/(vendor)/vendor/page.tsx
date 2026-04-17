@@ -277,7 +277,7 @@ export default function VendorDashboard() {
                     if (currentUser?.uid) {
                       const newRainState = !currentUser.isRaining;
                       await db.updateUser(currentUser.uid, { isRaining: newRainState });
-                      setCurrentUser(prev => prev ? { ...prev, isRaining: newRainState } : null);
+                      
                       setNotification({ 
                         message: newRainState ? "Rain Reported! Shop hidden from customers." : "Rain Cleared! Shop is visible again.", 
                         type: newRainState ? 'info' : 'success' 

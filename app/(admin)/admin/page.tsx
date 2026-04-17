@@ -15,6 +15,7 @@ import { useAuth } from '@/hooks/use-auth';
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
 import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
+import { db } from '@/lib/DatabaseService';
 
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -54,7 +55,7 @@ export default function AdminDashboard() {
     isApproved: true
   });
 
-  const isSuperAdmin = currentUser?.phoneNumber === '09012345678';
+  const isSuperAdmin = currentUser?.phoneNumber === '09012345678' || currentUser?.email === 'ogunwedebo21@gmail.com';
 
   const handleRestrictUser = (phone: string, status: 'active' | 'restricted' | 'suspended') => {
     if (!isSuperAdmin) {
@@ -171,13 +172,31 @@ export default function AdminDashboard() {
     setIsUserModalOpen(true);
   };
 
-  const handleDeleteUser = (phone: string) => {
+  const handleDeleteUser = async (uid: string) => {
+    if (!isSuperAdmin) {
+      alert('Only Super Admin can delete users.');
+      return;
+    }
+
     if (confirm('Are you sure you want to delete this user?')) {
-      const users = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
-      const updated = users.filter((u: any) => u.phoneNumber !== phone);
-      localStorage.setItem('qw_all_users', JSON.stringify(updated));
+      await db.deleteUser(uid);
+      const updated = await db.getUsers();
       setAllUsers(updated);
       setPendingUsers(updated.filter((u: any) => !u.isApproved));
+
+      // Audit Log
+      const logs = JSON.parse(localStorage.getItem('qw_audit_logs') || '[]');
+      logs.push({
+        id: Date.now(),
+        action: 'User Deleted',
+        target: uid,
+        admin: currentUser?.phoneNumber,
+        time: new Date().toISOString(),
+        details: `Super Admin deleted user with UID: ${uid}`
+      });
+      localStorage.setItem('qw_audit_logs', JSON.stringify(logs));
+      
+      alert('User deleted successfully.');
     }
   };
 
@@ -675,13 +694,15 @@ export default function AdminDashboard() {
                                     </button>
                                   </>
                                 )}
-                                <button 
-                                  onClick={() => handleDeleteUser(u.phoneNumber)}
-                                  className="p-2 rounded-lg bg-surface-container-highest text-on-surface-variant hover:text-error transition-colors"
-                                  title="Delete User"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
+                                {isSuperAdmin && (
+                                  <button 
+                                    onClick={() => handleDeleteUser(u.uid)}
+                                    className="p-2 rounded-lg bg-surface-container-highest text-on-surface-variant hover:text-error transition-colors"
+                                    title="Delete User"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>

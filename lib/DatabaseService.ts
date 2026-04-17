@@ -41,6 +41,8 @@ export interface UserData {
   bankName?: string;
   turnaroundTime?: string;
   capacity?: number;
+  address?: string;
+  shopAddress?: string;
   landmark?: string;
 }
 
@@ -55,6 +57,7 @@ export interface Order {
   customerAddress?: string;
   customerLandmark?: string;
   vendorLandmark?: string;
+  vendorAddress?: string;
   items: string;
   itemsPrice: number;
   riderFee: number;
@@ -160,6 +163,14 @@ class DatabaseService {
     
     window.dispatchEvent(new Event('storage'));
     return users[index];
+  }
+
+  async deleteUser(uid: string): Promise<void> {
+    await this.delay();
+    const users = await this.getUsers();
+    const updated = users.filter(u => u.uid !== uid);
+    localStorage.setItem('qw_all_users', JSON.stringify(updated));
+    window.dispatchEvent(new Event('storage'));
   }
 
   // --- ORDERS ---
