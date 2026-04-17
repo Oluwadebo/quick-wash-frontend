@@ -8,13 +8,14 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
 import { formatRelativeTime } from '@/lib/time';
-import { X, History, Wallet, ShoppingBag, Volume2, TrendingUp, Star, ShieldCheck, Clock, Package, ArrowRight, Play, AlertTriangle, Edit3, Trash2, Plus, Shirt, ArrowUpRight, ArrowDownLeft, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
+import { X, History, Wallet, ShoppingBag, Volume2, TrendingUp, Star, ShieldCheck, Clock, Package, ArrowRight, Play, AlertTriangle, Edit3, Trash2, Plus, Shirt, ArrowUpRight, ArrowDownLeft, Eye, EyeOff, CheckCircle2, CloudRain, Droplets } from 'lucide-react';
 import { db, Order, UserData } from '@/lib/DatabaseService';
 import { Toast } from '@/components/shared/Toast';
 
 const generateCode = () => Math.floor(1000 + Math.random() * 9000).toString();
 
 import { useSearchParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 export default function VendorDashboard() {
   const { user: currentUser } = useAuth();
@@ -50,8 +51,10 @@ export default function VendorDashboard() {
       if (currentUser?.uid) {
         const allOrders = await db.getOrders();
         
-        // Strict vendor filtering
-        const vendorOrders = allOrders.filter((o: Order) => o.vendorId === currentUser.uid);
+        // Case-insensitive vendor filtering
+        const vendorOrders = allOrders.filter((o: Order) => 
+          o.vendorId && o.vendorId.toLowerCase() === currentUser.uid.toLowerCase()
+        );
         
         // Check for 3-day delay penalty
         const now = new Date().getTime();
@@ -104,7 +107,7 @@ export default function VendorDashboard() {
       await db.saveOrder(updatedOrder);
       
       const allOrders = await db.getOrders();
-      setOrders(allOrders.filter((o: Order) => o.vendorId === currentUser?.uid));
+      setOrders(allOrders.filter((o: Order) => o.vendorId?.toLowerCase() === currentUser?.uid?.toLowerCase()));
       setSelectedOrder(null);
       
       setNotification({ message: `Order status updated to ${newStatus}`, type: 'success' });
@@ -157,7 +160,7 @@ export default function VendorDashboard() {
       await db.saveOrder(updatedOrder);
       
       const allOrders = await db.getOrders();
-      setOrders(allOrders.filter((o: Order) => o.vendorId === currentUser?.uid));
+      setOrders(allOrders.filter((o: Order) => o.vendorId?.toLowerCase() === currentUser?.uid?.toLowerCase()));
       setSelectedOrder(null);
       
       setNotification({ message: isReady ? "Order is ready for delivery!" : "Order moved back to washing.", type: 'success' });
@@ -254,21 +257,70 @@ export default function VendorDashboard() {
             )}
           </AnimatePresence>
           <header className="mb-10">
-            <div className="flex items-center gap-4 mb-2">
-              <div className="w-12 h-12 rounded-2xl bg-primary-container flex items-center justify-center">
-                <TrendingUp className="text-primary w-6 h-6" />
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+              <div>
+                <div className="flex items-center gap-4 mb-2">
+                  <div className="w-12 h-12 rounded-2xl bg-primary-container flex items-center justify-center">
+                    <TrendingUp className="text-primary w-6 h-6" />
+                  </div>
+                  <p className="font-label text-xs font-black uppercase tracking-[0.2em] text-primary">Live Dashboard</p>
+                </div>
+                <h1 className="text-[3.5rem] leading-[0.95] font-headline font-black text-on-surface mb-2 tracking-tighter">
+                  Welcome, {currentUser?.shopName || 'Vendor'}!
+                </h1>
+                <p className="text-on-surface-variant font-medium">Manage your laundry operations with visual precision.</p>
               </div>
-              <p className="font-label text-xs font-black uppercase tracking-[0.2em] text-primary">Live Dashboard</p>
+
+              <div className="flex flex-wrap items-center gap-4 w-full md:w-auto">
+                <button
+                  onClick={async () => {
+                    if (currentUser?.uid) {
+                      const newRainState = !currentUser.isRaining;
+                      await db.updateUser(currentUser.uid, { isRaining: newRainState });
+                      setCurrentUser(prev => prev ? { ...prev, isRaining: newRainState } : null);
+                      setNotification({ 
+                        message: newRainState ? "Rain Reported! Shop hidden from customers." : "Rain Cleared! Shop is visible again.", 
+                        type: newRainState ? 'info' : 'success' 
+                      });
+                      
+                      const alerts = JSON.parse(localStorage.getItem('qw_alerts') || '[]');
+                      alerts.push({
+                        id: Date.now(),
+                        type: 'WEATHER',
+                        msg: `Heavy rain reported at ${currentUser?.shopName || 'a vendor shop'}.`,
+                        time: new Date().toISOString(),
+                        vendorId: currentUser.uid
+                      });
+                      localStorage.setItem('qw_alerts', JSON.stringify(alerts));
+                      
+                      setTimeout(() => setNotification(null), 3000);
+                      if (newRainState) window.dispatchEvent(new Event('qw_audio_rain'));
+                    }
+                  }}
+                  className={cn(
+                    "h-24 px-8 rounded-[2rem] font-headline font-black text-[10px] flex flex-col items-center justify-center gap-2 transition-all active:scale-95 shadow-xl min-w-[140px] uppercase tracking-[0.1em]",
+                    currentUser?.isRaining 
+                      ? "bg-primary text-white ring-8 ring-primary/20" 
+                      : "bg-surface-container-highest text-on-surface hover:bg-primary/10 border-4 border-primary/10"
+                  )}
+                >
+                  <CloudRain className={cn("w-8 h-8", currentUser?.isRaining ? "animate-bounce" : "opacity-40")} />
+                  {currentUser?.isRaining ? "RAIN REPORTED" : "REPORT RAIN"}
+                </button>
+
+                <button
+                  onClick={() => {
+                    setNotification({ message: "Pickup Broadcast Sent to Nearby Riders!", type: 'success' });
+                    setTimeout(() => setNotification(null), 3000);
+                    window.dispatchEvent(new Event('qw_audio_pickup_broadcast'));
+                  }}
+                  className="h-24 px-8 bg-tertiary text-on-tertiary rounded-[2rem] font-headline font-black text-[10px] flex flex-col items-center justify-center gap-2 transition-all active:scale-95 shadow-xl shadow-tertiary/30 min-w-[140px] uppercase tracking-[0.1em]"
+                >
+                  <Droplets className="w-8 h-8 rotate-180" />
+                  READY FOR PICKUP
+                </button>
+              </div>
             </div>
-            <h1 className="text-[3.5rem] leading-[0.95] font-headline font-black text-on-surface mb-6 tracking-tighter">
-              Welcome, {currentUser?.shopName || 'Vendor'}!
-            </h1>
-            <button 
-              onClick={handleReportRain}
-              className="flex items-center gap-3 px-6 py-3 bg-warning/10 text-warning rounded-2xl font-headline font-black text-xs hover:bg-warning/20 transition-all active:scale-95"
-            >
-              <AlertTriangle className="w-5 h-5" /> REPORT RAIN
-            </button>
           </header>
 
           {/* Stats Grid */}
@@ -634,7 +686,7 @@ export default function VendorDashboard() {
                     onClick={() => router.push('/vendor/price-list')}
                     className="flex flex-col items-center justify-center p-10 bg-primary/5 border-2 border-dashed border-primary/20 rounded-[3rem] group hover:bg-primary/10 transition-all text-center"
                   >
-                    <div className="w-20 h-20 bg-primary/10 rounded-3xl flex items-center justify-center mb-6 text-primary group-hover:scale-110 transition-transform">
+                    <div className="w-20 h-20 bg-primary/10 rounded-3xl flex items-center justify-center mb-6 text-primary group-hover:scale-110 transition-transform shadow-lg">
                       <ShoppingBag className="w-10 h-10" />
                     </div>
                     <h3 className="text-2xl font-headline font-black text-on-surface mb-2">Manage Price List</h3>
@@ -644,26 +696,34 @@ export default function VendorDashboard() {
                   <div className="bg-surface-container-low p-8 rounded-[2.5rem] border border-primary/5">
                     <div className="flex justify-between items-center mb-6">
                       <h3 className="text-2xl font-headline font-black">Shop Info</h3>
-                      <button 
-                        onClick={async () => {
-                          const shopName = prompt("Enter Shop Name:", currentUser?.shopName);
-                          const whatsappNumber = prompt("Enter WhatsApp Number:", currentUser?.whatsappNumber);
-                          const landmark = prompt("Enter Area Landmark (e.g. Under-G):", currentUser?.landmark);
+                      <div className="flex gap-2">
+                        <Link 
+                          href="/vendor/price-list"
+                          className="px-4 py-2 bg-primary/10 text-primary rounded-xl font-headline font-black text-[10px] uppercase tracking-widest flex items-center gap-2 hover:bg-primary/20"
+                        >
+                          <ShoppingBag className="w-3 h-3" /> Price List
+                        </Link>
+                        <button 
+                          onClick={async () => {
+                            const shopName = prompt("Enter Shop Name:", currentUser?.shopName);
+                            const whatsappNumber = prompt("Enter WhatsApp Number:", currentUser?.whatsappNumber);
+                            const landmark = prompt("Enter Area Landmark (e.g. Under-G):", currentUser?.landmark);
 
-                          if (currentUser?.uid) {
-                            await db.updateUser(currentUser.uid, {
-                              shopName: shopName || currentUser.shopName,
-                              whatsappNumber: whatsappNumber || currentUser.whatsappNumber,
-                              landmark: landmark || currentUser.landmark
-                            });
-                            setNotification({ message: "Settings updated successfully!", type: 'success' });
-                            setTimeout(() => setNotification(null), 2000);
-                          }
-                        }}
-                        className="text-primary font-black uppercase tracking-widest text-[10px] flex items-center gap-1"
-                      >
-                        <Edit3 className="w-3 h-3" /> EDIT SHOP
-                      </button>
+                            if (currentUser?.uid) {
+                              await db.updateUser(currentUser.uid, {
+                                shopName: shopName || currentUser.shopName,
+                                whatsappNumber: whatsappNumber || currentUser.whatsappNumber,
+                                landmark: landmark || currentUser.landmark
+                              });
+                              setNotification({ message: "Settings updated successfully!", type: 'success' });
+                              setTimeout(() => setNotification(null), 2000);
+                            }
+                          }}
+                          className="text-primary font-black uppercase tracking-widest text-[10px] flex items-center gap-1"
+                        >
+                          <Edit3 className="w-3 h-3" /> EDIT SHOP
+                        </button>
+                      </div>
                     </div>
                     <div className="space-y-4">
                       <div className="p-4 bg-white rounded-2xl border border-primary/5">

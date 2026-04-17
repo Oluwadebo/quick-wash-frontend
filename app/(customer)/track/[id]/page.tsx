@@ -59,18 +59,14 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
 
   const handleCancelOrder = async () => {
     if (order?.status === 'confirm' || order?.status === 'rider_assign_pickup') {
-      if (confirm('Are you sure you want to cancel this order? Your payment will be refunded to your wallet.')) {
+      if (confirm('Are you sure you want to cancel this order? Your payment will be fully refunded to your wallet.')) {
         const updatedOrder = { ...order, status: 'Cancelled', color: 'bg-error/10 text-error', refunded: true };
         await db.saveOrder(updatedOrder);
         
         // Refund customer
         const customer = await db.getUser(order.customerUid);
         if (customer) {
-          // Penalty if cancelling after rider is assigned for pickup
-          if (order.status === 'rider_assign_pickup') {
-            await db.adjustTrustPoints(customer.uid, 'cancel_after_ready');
-          }
-
+          // Full refund, no trust point penalty if before pickup as requested
           await db.updateUser(customer.uid, { 
             walletBalance: (customer.walletBalance || 0) + (order.totalPrice || 0) 
           });
@@ -78,12 +74,12 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
           await db.recordTransaction(customer.uid, {
             type: 'deposit',
             amount: order.totalPrice,
-            desc: 'Order Cancellation Refund'
+            desc: 'Order Cancellation Refund (Full)'
           });
         }
 
         setOrder(updatedOrder);
-        setNotification({ message: 'Order cancelled and refunded successfully.', type: 'success' });
+        setNotification({ message: 'Order cancelled and fully refunded successfully.', type: 'success' });
         setTimeout(() => setNotification(null), 3000);
         window.dispatchEvent(new Event('storage'));
       }
@@ -95,11 +91,11 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
 
   const steps = [
     { id: 'confirm', label: 'Confirmed' },
-    { id: 'rider_assign_pickup', label: 'Pickup' },
-    { id: 'picked_up', label: 'Washing' },
+    { id: 'rider_assign_pickup', label: 'Rider Heading' },
+    { id: 'picked_up', label: 'To Laundry' },
     { id: 'washing', label: 'Washing' },
     { id: 'ready', label: 'Ready' },
-    { id: 'rider_assign_delivery', label: 'Delivery' },
+    { id: 'rider_assign_delivery', label: 'Rider Heading' },
     { id: 'picked_up_delivery', label: 'Delivering' },
     { id: 'delivered', label: 'Delivered' },
     { id: 'completed', label: 'Completed' }

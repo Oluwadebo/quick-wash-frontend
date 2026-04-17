@@ -73,6 +73,8 @@ export interface Order {
   code4?: string | null;
   handoverCode?: string | null;
   readyForDeliveryAt?: string | null;
+  washingAt?: string | null;
+  readyAt?: string | null;
   pickedUpAt?: string | null;
   pickedUpDeliveryAt?: string | null;
   paidAt?: string | null;
@@ -236,7 +238,59 @@ class DatabaseService {
     
     order.status = status;
     order.color = color;
+    
+    // Track transitions
+    if (status === 'picked_up') order.pickedUpAt = new Date().toISOString();
+    if (status === 'washing') order.washingAt = new Date().toISOString();
+    if (status === 'ready') order.readyAt = new Date().toISOString();
+    if (status === 'picked_up_delivery') order.pickedUpDeliveryAt = new Date().toISOString();
+    if (status === 'delivered') order.deliveredAt = new Date().toISOString();
+    if (status === 'completed') order.completedAt = new Date().toISOString();
+    
     return await this.saveOrder(order);
+  }
+
+  /**
+   * Auto-cancel orders unassigned for > 20 mins
+   */
+  async runAutoCancel(): Promise<void> {
+    const orders = await this.getOrders();
+    const now = new Date().getTime();
+    const twentyMins = 20 * 60 * 1000;
+    let changed = false;
+
+    // Filter unassigned orders older than 20 mins
+    const updatedOrders = await Promise.all(orders.map(async (o) => {
+      // unassigned implies rider_assign_pickup or rider_assign_delivery without a riderUid
+      const isUnassigned = (o.status === 'rider_assign_pickup' || o.status === 'rider_assign_delivery') && !o.riderUid;
+      if (isUnassigned && o.time) {
+        const orderTime = new Date(o.time).getTime();
+        if (now - orderTime > twentyMins && o.status !== 'cancelled') {
+          // Cancel and Refund
+          const customer = await this.getUser(o.customerUid);
+          if (customer) {
+            await this.updateUser(o.customerUid, {
+              walletBalance: (customer.walletBalance || 0) + (o.totalPrice || 0)
+            });
+            await this.recordTransaction(o.customerUid, {
+              type: 'deposit',
+              amount: o.totalPrice,
+              desc: `Order #${o.id} Refund - No rider available`
+            });
+          }
+          o.status = 'cancelled';
+          o.color = 'bg-error text-on-error';
+          changed = true;
+          console.log(`Auto-cancelled order ${o.id}`);
+        }
+      }
+      return o;
+    }));
+
+    if (changed) {
+      localStorage.setItem('qw_orders', JSON.stringify(updatedOrders));
+      window.dispatchEvent(new Event('storage'));
+    }
   }
 
   async adjustTrustPoints(uid: string, action: TrustAction): Promise<UserData> {
@@ -372,7 +426,9 @@ class DatabaseService {
   async getVendorPriceList(vendorUid: string): Promise<any[]> {
     await this.delay();
     const allLists = JSON.parse(localStorage.getItem('qw_vendor_price_lists') || '{}');
-    return allLists[vendorUid] || [];
+    // Case-insensitive lookup
+    const key = Object.keys(allLists).find(k => k.toLowerCase() === vendorUid.toLowerCase());
+    return key ? allLists[key] : [];
   }
 
   async saveVendorPriceList(vendorUid: string, priceList: any[]): Promise<void> {

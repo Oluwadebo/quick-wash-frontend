@@ -2,18 +2,11 @@
 
 import React from 'react';
 import TopAppBar from '@/components/shared/TopAppBar';
-import { Shirt, ShoppingBag, Bed, Sparkles, Plus, Edit3, Trash2, Check, X, Droplets, Zap, Info } from 'lucide-react';
+import { Shirt, ShoppingBag, Bed, Sparkles, Plus, Edit3, Trash2, Check, X, Droplets, Zap, Info, Eye, EyeOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
 import { db } from '@/lib/DatabaseService';
-
-interface ServicePrice {
-  wash: number;
-  iron: number;
-  washIron: number;
-  whitePremium: number;
-}
 
 interface SubService {
   id: string;
@@ -34,8 +27,14 @@ interface Service {
   id: string;
   name: string;
   category: string;
-  prices: ServicePrice;
-  subServices?: SubService[];
+  washPrice: number;
+  ironPrice: number;
+  washIronPrice: number;
+  whitePremium: number;
+  washDisabled?: boolean;
+  ironDisabled?: boolean;
+  washIronDisabled?: boolean;
+  subItems?: SubService[];
   icon: string;
   color: string;
 }
@@ -45,7 +44,7 @@ const defaultServices: Service[] = [
     id: 'shirts', 
     name: 'Shirts & Tops', 
     category: 'General', 
-    prices: { wash: 200, iron: 150, washIron: 300, whitePremium: 100 },
+    washPrice: 200, ironPrice: 150, washIronPrice: 300, whitePremium: 100,
     icon: 'Shirt', 
     color: 'bg-primary-container text-on-primary-container' 
   },
@@ -53,7 +52,7 @@ const defaultServices: Service[] = [
     id: 'trousers', 
     name: 'Trousers & Jeans', 
     category: 'General', 
-    prices: { wash: 250, iron: 200, washIron: 400, whitePremium: 150 },
+    washPrice: 250, ironPrice: 200, washIronPrice: 400, whitePremium: 150,
     icon: 'ShoppingBag', 
     color: 'bg-secondary-container text-on-secondary-container' 
   },
@@ -61,8 +60,8 @@ const defaultServices: Service[] = [
     id: 'beddings', 
     name: 'Beddings', 
     category: 'Special', 
-    prices: { wash: 0, iron: 0, washIron: 0, whitePremium: 0 },
-    subServices: [
+    washPrice: 0, ironPrice: 0, washIronPrice: 0, whitePremium: 0,
+    subItems: [
       { id: 'bedsheet', name: 'Bedsheet', price: 400 },
       { id: 'duvet', name: 'Duvet', price: 1200 },
       { id: 'pillowcase', name: 'Pillow Case', price: 150 }
@@ -101,13 +100,12 @@ export default function PriceListPage() {
     }
   };
 
-  const handleToggleOption = (id: string, field: keyof ServicePrice) => {
+  const handleToggleOption = (id: string, field: 'wash' | 'iron' | 'washIron') => {
     const updated = services.map(s => {
       if (s.id === id) {
-        const currentPrice = s.prices[field];
-        // Toggle by setting to 0 or restoring a default if needed
-        // For simplicity, we just set it to 0 which will hide it in the UI if we add a check
-        return { ...s, prices: { ...s.prices, [field]: currentPrice === -1 ? 0 : -1 } };
+        if (field === 'wash') return { ...s, washDisabled: !s.washDisabled };
+        if (field === 'iron') return { ...s, ironDisabled: !s.ironDisabled };
+        if (field === 'washIron') return { ...s, washIronDisabled: !s.washIronDisabled };
       }
       return s;
     });
@@ -120,10 +118,10 @@ export default function PriceListPage() {
     }
   };
 
-  const handleUpdatePrice = (id: string, field: keyof ServicePrice, value: number) => {
+  const handleUpdatePrice = (id: string, field: 'washPrice' | 'ironPrice' | 'washIronPrice' | 'whitePremium', value: number) => {
     const updated = services.map(s => {
       if (s.id === id) {
-        return { ...s, prices: { ...s.prices, [field]: value } };
+        return { ...s, [field]: value };
       }
       return s;
     });
@@ -133,10 +131,10 @@ export default function PriceListPage() {
   const handleUpdateSubPrice = (serviceId: string, subId: string, value: number) => {
     const updated = services.map(s => {
       if (s.id === serviceId) {
-        const updatedSubs = s.subServices?.map(sub => 
+        const updatedSubs = s.subItems?.map(sub => 
           sub.id === subId ? { ...sub, price: value } : sub
         );
-        return { ...s, subServices: updatedSubs };
+        return { ...s, subItems: updatedSubs };
       }
       return s;
     });
@@ -151,7 +149,7 @@ export default function PriceListPage() {
           name: 'New Item',
           price: 0
         };
-        return { ...s, subServices: [...(s.subServices || []), newSub] };
+        return { ...s, subItems: [...(s.subItems || []), newSub] };
       }
       return s;
     });
@@ -161,7 +159,7 @@ export default function PriceListPage() {
   const removeSubService = (serviceId: string, subId: string) => {
     const updated = services.map(s => {
       if (s.id === serviceId) {
-        return { ...s, subServices: s.subServices?.filter(sub => sub.id !== subId) };
+        return { ...s, subItems: s.subItems?.filter(sub => sub.id !== subId) };
       }
       return s;
     });
@@ -176,10 +174,10 @@ export default function PriceListPage() {
   const updateSubServiceName = (serviceId: string, subId: string, name: string) => {
     const updated = services.map(s => {
       if (s.id === serviceId) {
-        const updatedSubs = s.subServices?.map(sub => 
+        const updatedSubs = s.subItems?.map(sub => 
           sub.id === subId ? { ...sub, name } : sub
         );
-        return { ...s, subServices: updatedSubs };
+        return { ...s, subItems: updatedSubs };
       }
       return s;
     });
@@ -191,7 +189,10 @@ export default function PriceListPage() {
       id: Date.now().toString(),
       name: 'New Service',
       category: 'Custom',
-      prices: { wash: 0, iron: 0, washIron: 0, whitePremium: 0 },
+      washPrice: 0,
+      ironPrice: 0,
+      washIronPrice: 0,
+      whitePremium: 0,
       icon: 'Droplets',
       color: 'bg-surface-container-highest text-on-surface'
     };
@@ -275,8 +276,8 @@ export default function PriceListPage() {
                 </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  {service.subServices && service.subServices.length > 0 ? (
-                    service.subServices.map(sub => (
+                  {service.subItems && service.subItems.length > 0 ? (
+                    service.subItems.map(sub => (
                       <div key={sub.id} className="bg-white p-4 rounded-2xl border border-primary/5 text-center">
                         <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">{sub.name}</p>
                         <p className="text-lg font-headline font-black text-primary">₦{sub.price}</p>
@@ -284,28 +285,28 @@ export default function PriceListPage() {
                     ))
                   ) : (
                     <>
-                      {service.prices.wash !== -1 && (
+                      {!service.washDisabled && (
                         <div className="bg-white p-4 rounded-2xl border border-primary/5 text-center">
                           <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">Wash</p>
-                          <p className="text-lg font-headline font-black text-primary">₦{service.prices.wash}</p>
+                          <p className="text-lg font-headline font-black text-primary">₦{service.washPrice}</p>
                         </div>
                       )}
-                      {service.prices.iron !== -1 && (
+                      {!service.ironDisabled && (
                         <div className="bg-white p-4 rounded-2xl border border-primary/5 text-center">
                           <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">Iron</p>
-                          <p className="text-lg font-headline font-black text-primary">₦{service.prices.iron}</p>
+                          <p className="text-lg font-headline font-black text-primary">₦{service.ironPrice}</p>
                         </div>
                       )}
-                      {service.prices.washIron !== -1 && (
+                      {!service.washIronDisabled && (
                         <div className="bg-white p-4 rounded-2xl border border-primary/5 text-center">
                           <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">Wash+Iron</p>
-                          <p className="text-lg font-headline font-black text-primary">₦{service.prices.washIron}</p>
+                          <p className="text-lg font-headline font-black text-primary">₦{service.washIronPrice}</p>
                         </div>
                       )}
-                      {service.prices.whitePremium !== -1 && (
+                      {service.whitePremium > 0 && (
                         <div className="bg-white p-4 rounded-2xl border border-primary/5 text-center">
                           <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">White</p>
-                          <p className="text-lg font-headline font-black text-tertiary">₦{service.prices.whitePremium}</p>
+                          <p className="text-lg font-headline font-black text-tertiary">₦{service.whitePremium}</p>
                         </div>
                       )}
                     </>
@@ -321,9 +322,9 @@ export default function PriceListPage() {
                       className="mt-8 pt-8 border-t border-primary/10 space-y-6"
                     >
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {service.subServices ? (
+                        {service.subItems ? (
                           <>
-                            {service.subServices.map(sub => (
+                            {service.subItems.map(sub => (
                               <div key={sub.id} className="space-y-2 p-4 bg-surface-container-lowest rounded-2xl border border-primary/5 relative group/sub">
                                 <button 
                                   onClick={() => removeSubService(service.id, sub.id)}
@@ -332,7 +333,7 @@ export default function PriceListPage() {
                                   <Trash2 className="w-3 h-3" />
                                 </button>
                                 <input 
-                                  value={sub.name}
+                                  value={sub.name || ''}
                                   onChange={(e) => updateSubServiceName(service.id, sub.id, e.target.value)}
                                   className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant bg-transparent border-b border-primary/20 outline-none w-full mb-2"
                                 />
@@ -340,7 +341,7 @@ export default function PriceListPage() {
                                   <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-primary">₦</span>
                                   <input 
                                     type="number"
-                                    value={sub.price}
+                                    value={sub.price || 0}
                                     onChange={(e) => handleUpdateSubPrice(service.id, sub.id, parseInt(e.target.value) || 0)}
                                     className="w-full h-12 bg-white rounded-xl pl-10 pr-4 font-headline font-bold outline-none border border-primary/10 focus:border-primary"
                                   />
@@ -356,25 +357,32 @@ export default function PriceListPage() {
                           </>
                         ) : (
                           <>
-                            {(Object.keys(service.prices) as Array<keyof ServicePrice>).map(field => (
-                              <div key={field} className={cn(
+                           {[
+                              { label: 'Wash', val: service.washPrice, field: 'washPrice', disabled: service.washDisabled, toggle: 'wash' },
+                              { label: 'Iron', val: service.ironPrice, field: 'ironPrice', disabled: service.ironDisabled, toggle: 'iron' },
+                              { label: 'Wash + Iron', val: service.washIronPrice, field: 'washIronPrice', disabled: service.washIronDisabled, toggle: 'washIron' },
+                              { label: 'White Premium', val: service.whitePremium, field: 'whitePremium' }
+                           ].map(item => (
+                              <div key={item.field} className={cn(
                                 "space-y-2 p-4 rounded-2xl border transition-all relative group/price",
-                                service.prices[field] === -1 ? "bg-surface-variant/10 opacity-40 grayscale" : "bg-surface-container-lowest border-primary/5"
+                                item.disabled ? "bg-surface-variant/10 opacity-40 grayscale" : "bg-surface-container-lowest border-primary/5"
                               )}>
-                                <button 
-                                  onClick={() => handleToggleOption(service.id, field)}
-                                  className="absolute -top-2 -right-2 w-6 h-6 bg-error text-white rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-all"
-                                >
-                                  {service.prices[field] === -1 ? <Plus className="w-3 h-3" /> : <Trash2 className="w-3 h-3" />}
-                                </button>
-                                <label className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant">{field.replace(/([A-Z])/g, ' $1')} Price</label>
+                                {item.toggle && (
+                                  <button 
+                                    onClick={() => handleToggleOption(service.id, item.toggle as any)}
+                                    className="absolute -top-2 -right-2 w-6 h-6 bg-primary text-white rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-all"
+                                  >
+                                    {item.disabled ? <Plus className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                                  </button>
+                                )}
+                                <label className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant">{item.label} Price</label>
                                 <div className="relative">
                                   <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-primary">₦</span>
                                   <input 
                                     type="number"
-                                    disabled={service.prices[field] === -1}
-                                    value={service.prices[field] === -1 ? 0 : service.prices[field]}
-                                    onChange={(e) => handleUpdatePrice(service.id, field, parseInt(e.target.value) || 0)}
+                                    disabled={item.disabled}
+                                    value={item.disabled ? 0 : (item.val || 0)}
+                                    onChange={(e) => handleUpdatePrice(service.id, item.field as any, parseInt(e.target.value) || 0)}
                                     className="w-full h-12 bg-white rounded-xl pl-10 pr-4 font-headline font-bold outline-none border border-primary/10 focus:border-primary"
                                   />
                                 </div>
@@ -382,7 +390,7 @@ export default function PriceListPage() {
                             ))}
                             <button 
                               onClick={() => {
-                                const updated = services.map(s => s.id === service.id ? { ...s, subServices: [] } : s);
+                                const updated = services.map(s => s.id === service.id ? { ...s, subItems: [] } : s);
                                 saveServices(updated);
                               }}
                               className="md:col-span-2 h-12 border-2 border-dashed border-tertiary/20 rounded-xl flex items-center justify-center gap-2 text-tertiary font-headline font-bold text-xs hover:bg-tertiary/5 transition-colors"

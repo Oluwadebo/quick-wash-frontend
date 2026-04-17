@@ -494,15 +494,17 @@ export default function RiderDashboard() {
                               )}
                             </div>
 
-                            <button 
-                              onClick={() => {
-                                setSelectedOrderId(order.id);
-                                setIsReturnModalOpen(true);
-                              }}
-                              className="w-full h-14 bg-error/5 text-error hover:bg-error/10 rounded-2xl font-headline font-black text-xs active:scale-95 transition-all flex items-center justify-center gap-2 border border-error/10 uppercase tracking-widest"
-                            >
-                              <X className="w-5 h-5" /> REJECT / RETURN ORDER (₦200 PENALTY)
-                            </button>
+                            {(order.status === 'rider_assign_pickup' || order.status === 'rider_assign_delivery') && (
+                              <button 
+                                onClick={() => {
+                                  setSelectedOrderId(order.id);
+                                  setIsReturnModalOpen(true);
+                                }}
+                                className="w-full h-14 bg-error/5 text-error hover:bg-error/10 rounded-2xl font-headline font-black text-xs active:scale-95 transition-all flex items-center justify-center gap-2 border border-error/10 uppercase tracking-widest"
+                              >
+                                <X className="w-5 h-5" /> REJECT / RETURN ORDER (₦200 PENALTY)
+                              </button>
+                            )}
                           </div>
                         </div>
                       );

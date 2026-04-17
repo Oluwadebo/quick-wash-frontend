@@ -6,6 +6,7 @@ import Link from 'next/link';
 import YorubaAudioToggle from './YorubaAudioToggle';
 import { useAuth } from '@/hooks/use-auth';
 import Image from 'next/image';
+import { db } from '@/lib/DatabaseService';
 
 interface TopAppBarProps {
   title?: string;
@@ -23,6 +24,19 @@ export default function TopAppBar({
   roleLabel
 }: TopAppBarProps) {
   const { user, logout } = useAuth();
+  
+  useEffect(() => {
+    // Run auto-cancel every minute
+    const interval = setInterval(() => {
+      db.runAutoCancel();
+    }, 60000);
+    
+    // Run once on mount
+    db.runAutoCancel();
+    
+    return () => clearInterval(interval);
+  }, []);
+
   const homeLink = user?.role === 'customer' ? '/customer' : (user?.role ? `/${user.role}` : '/');
   const profileLink = user?.role === 'customer' 
     ? '/profile' 
