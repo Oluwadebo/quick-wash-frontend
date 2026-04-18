@@ -48,6 +48,8 @@ export default function VendorDashboard() {
     trustScore: 100
   });
 
+  const [payoutHistory, setPayoutHistory] = React.useState<any[]>([]);
+
   React.useEffect(() => {
     const init = async () => {
       if (currentUser?.uid) {
@@ -61,19 +63,15 @@ export default function VendorDashboard() {
         // Check for 3-day delay penalty
         const now = new Date().getTime();
         const threeDays = 3 * 24 * 60 * 60 * 1000;
-        let penaltyApplied = false;
 
         const checkedOrders = await Promise.all(vendorOrders.map(async (o: Order) => {
           if (o.status.toLowerCase() === 'washing' && o.time) {
             const startTime = new Date(o.time).getTime();
             if (now - startTime > threeDays && !o.penaltyApplied) {
-              o.penaltyApplied = true;
-              penaltyApplied = true;
-              
-              if (currentUser?.uid) {
-                await db.adjustTrustPoints(currentUser.uid, 'vendor_delay');
-              }
-              await db.saveOrder(o);
+              const updated = { ...o, penaltyApplied: true };
+              await db.adjustTrustPoints(currentUser.uid, 'vendor_delay');
+              await db.saveOrder(updated);
+              return updated;
             }
           }
           return o;
@@ -85,7 +83,7 @@ export default function VendorDashboard() {
         const vendorPrices = await db.getVendorPriceList(currentUser.uid);
         setServices(vendorPrices);
         
-        const gServices = JSON.parse(localStorage.getItem('qw_global_services') || '["Shirt", "Jeans", "Native", "Suit", "Duvet", "Bedsheet"]');
+        const gServices = await db.getGlobalServices();
         setGlobalServices(gServices);
 
         const me = await db.getUser(currentUser.uid);
@@ -97,6 +95,9 @@ export default function VendorDashboard() {
             trustScore: me.trustPoints || 100
           });
         }
+
+        const history = await db.getWalletHistory(currentUser.uid);
+        setPayoutHistory(history);
       }
     };
     init();
@@ -192,11 +193,10 @@ export default function VendorDashboard() {
     await db.saveVendorPriceList(currentUser.uid, updated);
     setServices(updated);
 
-    // Update global services if new
-    const gServices = JSON.parse(localStorage.getItem('qw_global_services') || '[]');
+    const gServices = await db.getGlobalServices();
     if (!gServices.includes(editingService.name)) {
       const newGServices = [...gServices, editingService.name];
-      localStorage.setItem('qw_global_services', JSON.stringify(newGServices));
+      await db.saveGlobalServices(newGServices);
       setGlobalServices(newGServices);
     }
 
@@ -218,8 +218,8 @@ export default function VendorDashboard() {
     }
   };
 
-  const handleReportRain = () => {
-    const alerts = JSON.parse(localStorage.getItem('qw_alerts') || '[]');
+  const handleReportRain = async () => {
+    const alerts = await db.getAlerts();
     const newAlert = {
       id: Date.now(),
       type: 'WEATHER ALERT',
@@ -228,8 +228,7 @@ export default function VendorDashboard() {
       vendorId: currentUser?.uid,
       time: new Date().toISOString()
     };
-    alerts.push(newAlert);
-    localStorage.setItem('qw_alerts', JSON.stringify(alerts));
+    await db.saveAlerts([...alerts, newAlert]);
     setNotification({ message: "Rain reported! Customers and riders notified.", type: 'warning' as any });
     setTimeout(() => setNotification(null), 2000);
   };
@@ -285,15 +284,14 @@ export default function VendorDashboard() {
                         type: newRainState ? 'info' : 'success' 
                       });
                       
-                      const alerts = JSON.parse(localStorage.getItem('qw_alerts') || '[]');
-                      alerts.push({
+                      const alerts = await db.getAlerts();
+                      await db.saveAlerts([...alerts, {
                         id: Date.now(),
                         type: 'WEATHER',
                         msg: `Heavy rain reported at ${currentUser?.shopName || 'a vendor shop'}.`,
                         time: new Date().toISOString(),
                         vendorId: currentUser.uid
-                      });
-                      localStorage.setItem('qw_alerts', JSON.stringify(alerts));
+                      }]);
                       
                       setTimeout(() => setNotification(null), 3000);
                       if (newRainState) window.dispatchEvent(new Event('qw_audio_rain'));
@@ -772,8 +770,7 @@ export default function VendorDashboard() {
                   <div className="space-y-4">
                     {(() => {
                       const now = new Date();
-                      const history = JSON.parse(localStorage.getItem(`qw_wallet_history_${currentUser?.uid}`) || '[]');
-                      const filteredTransactions = history.filter((tx: any) => {
+                      const filteredTransactions = payoutHistory.filter((tx: any) => {
                         const itemDate = new Date(tx.date || tx.time);
                         if (timeRange === 'today') return itemDate.toDateString() === now.toDateString();
                         if (timeRange === 'custom') {

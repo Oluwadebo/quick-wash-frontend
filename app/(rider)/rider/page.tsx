@@ -42,6 +42,8 @@ export default function RiderDashboard() {
   const [timeRange, setTimeRange] = React.useState<'today' | '7d' | '14d' | '30d' | '2m' | 'custom'>('30d');
   const [customRange, setCustomRange] = React.useState({ start: '', end: '' });
 
+  const [walletHistory, setWalletHistory] = React.useState<any[]>([]);
+
   React.useEffect(() => {
     const refreshData = async () => {
       if (currentUser?.uid) {
@@ -75,12 +77,13 @@ export default function RiderDashboard() {
           trustScore: me?.trustScore || 100,
           completedTasks: myAll.filter((o: Order) => o.status === 'Completed' || o.status === 'Delivered').length
         });
+
+        const history = await db.getWalletHistory(currentUser.uid);
+        setWalletHistory(history);
       }
     };
 
     refreshData();
-    window.addEventListener('storage', refreshData);
-    return () => window.removeEventListener('storage', refreshData);
   }, [currentUser]);
 
   const handleAcceptOrder = async (orderId: string) => {
@@ -271,7 +274,7 @@ export default function RiderDashboard() {
   };
 
   const handleReportRain = async () => {
-    const alerts = JSON.parse(localStorage.getItem('qw_alerts') || '[]');
+    const alerts = await db.getAlerts();
     const newAlert = {
       id: Date.now(),
       type: 'WEATHER ALERT',
@@ -280,8 +283,7 @@ export default function RiderDashboard() {
       riderUid: currentUser?.uid,
       time: new Date().toISOString()
     };
-    alerts.push(newAlert);
-    localStorage.setItem('qw_alerts', JSON.stringify(alerts));
+    await db.saveAlerts([...alerts, newAlert]);
     setNotification({ message: 'Rain reported! Customers and vendors have been notified.', type: 'info' });
     setTimeout(() => setNotification(null), 3000);
   };
@@ -851,8 +853,7 @@ export default function RiderDashboard() {
                   <div className="space-y-4">
                     {(() => {
                       const now = new Date();
-                      const history = JSON.parse(localStorage.getItem(`qw_wallet_history_${currentUser?.uid}`) || '[]');
-                      const filteredTransactions = history.filter((tx: any) => {
+                      const filteredTransactions = walletHistory.filter((tx: any) => {
                         const itemDate = new Date(tx.date || tx.time);
                         if (timeRange === 'today') return itemDate.toDateString() === now.toDateString();
                         if (timeRange === 'custom') {
@@ -903,9 +904,9 @@ export default function RiderDashboard() {
                           <div className="w-20 h-20 bg-primary/5 rounded-full flex items-center justify-center mx-auto mb-4">
                             <History className="w-10 h-10 text-primary/20" />
                           </div>
-                          <h4 className="font-headline font-black text-on-surface">{history.length > 0 ? 'No results found' : 'No transactions yet'}</h4>
+                          <h4 className="font-headline font-black text-on-surface">{walletHistory.length > 0 ? 'No results found' : 'No transactions yet'}</h4>
                           <p className="text-xs font-medium text-on-surface-variant mt-1">
-                            {history.length > 0 ? 'Try adjusting your filters to see more.' : 'Your financial history will appear here.'}
+                            {walletHistory.length > 0 ? 'Try adjusting your filters to see more.' : 'Your financial history will appear here.'}
                           </p>
                         </div>
                       );

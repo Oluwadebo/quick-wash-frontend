@@ -69,7 +69,7 @@ export default function LandmarkSelectionPage() {
         setRecentOrders(filtered.sort((a: Order, b: Order) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
       }
 
-      const activeAlerts = JSON.parse(localStorage.getItem('qw_alerts') || '[]');
+      const activeAlerts = await db.getAlerts();
       setAlerts(activeAlerts.filter((a: any) => a.type === 'Weather'));
     };
     init();

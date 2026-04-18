@@ -26,19 +26,7 @@ export default function WalletPage() {
         const found = await db.getUser(user.uid);
         setBalance(found?.walletBalance || 0);
         
-        // Unified lookup: Use UID
-        let allHistory = JSON.parse(localStorage.getItem(`qw_wallet_history_${user.uid}`) || '[]');
-        
-        // MIGRATION / FALLBACK: If no history for UID but exists for phoneNumber, merge them
-        if (allHistory.length === 0 && user.phoneNumber) {
-          const oldHistory = JSON.parse(localStorage.getItem(`qw_wallet_history_${user.phoneNumber}`) || '[]');
-          if (oldHistory.length > 0) {
-            allHistory = oldHistory;
-            localStorage.setItem(`qw_wallet_history_${user.uid}`, JSON.stringify(allHistory));
-            localStorage.removeItem(`qw_wallet_history_${user.phoneNumber}`);
-          }
-        }
-
+        const allHistory = await db.getWalletHistory(user.uid);
         setHistory(allHistory.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()));
       };
       initWallet();
@@ -52,8 +40,6 @@ export default function WalletPage() {
     }
 
     setIsProcessing(true);
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
     const amount = Number(fundAmount);
     if (!user?.uid) return;
 
@@ -64,7 +50,6 @@ export default function WalletPage() {
         await db.updateUser(user.uid, { walletBalance: newBalance });
         setBalance(newBalance);
 
-        // Unified Record History via DB Service
         await db.recordTransaction(user.uid, {
           type: 'deposit',
           amount,
@@ -72,8 +57,7 @@ export default function WalletPage() {
           method: paymentMethod
         });
 
-        // Refresh History
-        const updatedHistory = JSON.parse(localStorage.getItem(`qw_wallet_history_${user.uid}`) || '[]');
+        const updatedHistory = await db.getWalletHistory(user.uid);
         setHistory(updatedHistory.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()));
       }
     } catch (e) {
@@ -377,12 +361,11 @@ export default function WalletPage() {
               </button>
 
               <button 
-                onClick={() => {
+                onClick={async () => {
                   const issue = prompt('Please describe the issue with this transaction:');
                   if (issue && user?.uid) {
-                    const allHist = JSON.parse(localStorage.getItem(`qw_wallet_history_${user.uid}`) || '[]');
-                    const updated = allHist.map((h: any) => h.id === selectedTransaction.id ? { ...h, status: 'disputed', issueDescription: issue } : h);
-                    localStorage.setItem(`qw_wallet_history_${user.uid}`, JSON.stringify(updated));
+                    await db.disputeTransaction(user.uid, selectedTransaction.id, issue);
+                    const updated = await db.getWalletHistory(user.uid);
                     setHistory(updated.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()));
                     setSelectedTransaction(null);
                     alert('Issue raised successfully. Our support team will review it.');
