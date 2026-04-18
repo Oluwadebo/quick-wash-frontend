@@ -6,24 +6,42 @@ import { Wallet, ArrowUpRight, ArrowDownLeft, Plus, History, CreditCard, Landmar
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
+import { db } from '@/lib/DatabaseService';
 
 export default function WalletPage() {
   const { user } = useAuth();
   const [balance, setBalance] = React.useState(0);
   const [history, setHistory] = React.useState<any[]>([]);
+  const [selectedTransaction, setSelectedTransaction] = React.useState<any>(null);
+  const [timeRange, setTimeRange] = React.useState<'7d' | '14d' | '30d' | '2m' | 'today' | 'custom'>('30d');
+  const [customRange, setCustomRange] = React.useState({ start: '', end: '' });
   const [isFunding, setIsFunding] = React.useState(false);
   const [paymentMethod, setPaymentMethod] = React.useState<'wallet' | 'transfer' | 'card'>('wallet');
   const [fundAmount, setFundAmount] = React.useState('');
   const [isProcessing, setIsProcessing] = React.useState(false);
 
   React.useEffect(() => {
-    if (user?.phoneNumber) {
-      const allUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
-      const found = allUsers.find((u: any) => u.phoneNumber === user.phoneNumber);
-      setBalance(found?.walletBalance || 0);
-      
-      const allHistory = JSON.parse(localStorage.getItem(`qw_wallet_history_${user.phoneNumber}`) || '[]');
-      setHistory(allHistory.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+    if (user?.uid) {
+      const initWallet = async () => {
+        const found = await db.getUser(user.uid);
+        setBalance(found?.walletBalance || 0);
+        
+        // Unified lookup: Use UID
+        let allHistory = JSON.parse(localStorage.getItem(`qw_wallet_history_${user.uid}`) || '[]');
+        
+        // MIGRATION / FALLBACK: If no history for UID but exists for phoneNumber, merge them
+        if (allHistory.length === 0 && user.phoneNumber) {
+          const oldHistory = JSON.parse(localStorage.getItem(`qw_wallet_history_${user.phoneNumber}`) || '[]');
+          if (oldHistory.length > 0) {
+            allHistory = oldHistory;
+            localStorage.setItem(`qw_wallet_history_${user.uid}`, JSON.stringify(allHistory));
+            localStorage.removeItem(`qw_wallet_history_${user.phoneNumber}`);
+          }
+        }
+
+        setHistory(allHistory.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+      };
+      initWallet();
     }
   }, [user]);
 
@@ -37,37 +55,70 @@ export default function WalletPage() {
     await new Promise(resolve => setTimeout(resolve, 2000));
 
     const amount = Number(fundAmount);
-    const allUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
-    const updatedUsers = allUsers.map((u: any) => {
-      if (u.phoneNumber === user?.phoneNumber) {
-        const newBalance = (u.walletBalance || 0) + amount;
-        const updated = { ...u, walletBalance: newBalance };
-        localStorage.setItem('qw_user', JSON.stringify(updated));
-        setBalance(newBalance);
-        return updated;
-      }
-      return u;
-    });
-    localStorage.setItem('qw_all_users', JSON.stringify(updatedUsers));
+    if (!user?.uid) return;
 
-    // Record History
-    const newHistory = {
-      id: `fund_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-      type: 'deposit',
-      amount,
-      date: new Date().toISOString(),
-      desc: 'Wallet Funding'
-    };
-    const currentHistory = JSON.parse(localStorage.getItem(`qw_wallet_history_${user?.phoneNumber}`) || '[]');
-    const updatedHistory = [newHistory, ...currentHistory];
-    localStorage.setItem(`qw_wallet_history_${user?.phoneNumber}`, JSON.stringify(updatedHistory));
-    setHistory(updatedHistory);
+    try {
+      const u = await db.getUser(user.uid);
+      if (u) {
+        const newBalance = (u.walletBalance || 0) + amount;
+        await db.updateUser(user.uid, { walletBalance: newBalance });
+        setBalance(newBalance);
+
+        // Unified Record History via DB Service
+        await db.recordTransaction(user.uid, {
+          type: 'deposit',
+          amount,
+          desc: 'Wallet Funding',
+          method: paymentMethod
+        });
+
+        // Refresh History
+        const updatedHistory = JSON.parse(localStorage.getItem(`qw_wallet_history_${user.uid}`) || '[]');
+        setHistory(updatedHistory.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+      }
+    } catch (e) {
+      console.error(e);
+    }
 
     setIsProcessing(false);
     setIsFunding(false);
     setFundAmount('');
     alert(`₦${amount.toLocaleString()} added to your wallet!`);
-  }, [user, fundAmount]);
+  }, [user, fundAmount, paymentMethod]);
+
+  const filteredHistory = React.useMemo(() => {
+    const now = new Date();
+    return history.filter(item => {
+      const itemDate = new Date(item.date);
+      
+      if (timeRange === 'custom') {
+        if (!customRange.start || !customRange.end) return true;
+        const start = new Date(customRange.start);
+        const end = new Date(customRange.end);
+        end.setHours(23, 59, 59, 999);
+        return itemDate >= start && itemDate <= end;
+      }
+
+      const diffInDays = (now.getTime() - itemDate.getTime()) / (1000 * 60 * 60 * 24);
+      
+      if (timeRange === 'today') return itemDate.toDateString() === now.toDateString();
+      if (timeRange === '7d') return diffInDays <= 7;
+      if (timeRange === '14d') return diffInDays <= 14;
+      if (timeRange === '30d') return diffInDays <= 30;
+      if (timeRange === '2m') return diffInDays <= 60;
+      
+      return true;
+    });
+  }, [history, timeRange, customRange]);
+
+  const timeRangeLabel = {
+    'today': 'Today',
+    '7d': 'Last 7 Days',
+    '14d': 'Last 14 Days',
+    '30d': 'Last 30 Days',
+    '2m': 'Last 2 Months',
+    'custom': 'Custom Range'
+  }[timeRange];
 
   return (
     <div className="pb-32">
@@ -140,41 +191,116 @@ export default function WalletPage() {
 
         {/* History */}
         <section className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xl font-headline font-black flex items-center gap-3">
-              <History className="w-6 h-6 text-primary" />
-              Transaction History
-            </h3>
-            <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Last 30 days</span>
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-headline font-black flex items-center gap-3">
+                <History className="w-6 h-6 text-primary" />
+                Transaction History
+              </h3>
+              <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">{timeRangeLabel}</span>
+            </div>
+
+            <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+              {[
+                { id: 'today', label: 'Today' },
+                { id: '7d', label: '7 Days' },
+                { id: '14d', label: '14 Days' },
+                { id: '30d', label: '30 Days' },
+                { id: '2m', label: '2 Months' },
+                { id: 'custom', label: 'Customize' }
+              ].map(opt => (
+                <button
+                  key={opt.id}
+                  onClick={() => setTimeRange(opt.id as any)}
+                  className={cn(
+                    "whitespace-nowrap px-4 py-2 rounded-xl font-headline font-black text-[10px] uppercase tracking-widest transition-all",
+                    timeRange === opt.id 
+                      ? "bg-primary text-white shadow-lg shadow-primary/20 scale-105" 
+                      : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container-highest"
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
+            <AnimatePresence>
+              {timeRange === 'custom' && (
+                <motion.div 
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="grid grid-cols-2 gap-3 p-4 bg-primary/5 rounded-2xl border border-primary/10 overflow-hidden"
+                >
+                  <div className="space-y-1">
+                    <label className="text-[8px] font-black uppercase tracking-widest text-primary">Start Date</label>
+                    <input 
+                      type="date"
+                      value={customRange.start}
+                      onChange={(e) => setCustomRange(prev => ({ ...prev, start: e.target.value }))}
+                      className="w-full bg-white rounded-lg p-2 text-xs font-bold outline-none border border-primary/10"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[8px] font-black uppercase tracking-widest text-primary">End Date</label>
+                    <input 
+                      type="date"
+                      value={customRange.end}
+                      onChange={(e) => setCustomRange(prev => ({ ...prev, end: e.target.value }))}
+                      className="w-full bg-white rounded-lg p-2 text-xs font-bold outline-none border border-primary/10"
+                    />
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           <div className="space-y-3">
-            {history.map((item) => (
-              <div 
+            {filteredHistory.map((item) => (
+              <motion.div 
                 key={item.id}
-                className="bg-surface-container-low p-5 rounded-3xl border border-primary/5 flex items-center gap-5"
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setSelectedTransaction(item)}
+                className="bg-surface-container-low p-5 rounded-3xl border border-primary/5 flex items-center gap-5 cursor-pointer hover:bg-white transition-colors group"
               >
                 <div className={cn(
-                  "w-14 h-14 rounded-2xl flex items-center justify-center shrink-0",
-                  item.type === 'deposit' ? "bg-success/10 text-success" : "bg-error/10 text-error"
+                  "w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 transition-colors",
+                  item.type === 'deposit' || item.type === 'refund' ? "bg-success/10 text-success group-hover:bg-success group-hover:text-white" : "bg-error/10 text-error group-hover:bg-error group-hover:text-white"
                 )}>
-                  {item.type === 'deposit' ? <ArrowDownLeft className="w-7 h-7" /> : <ArrowUpRight className="w-7 h-7" />}
+                  {item.type === 'deposit' || item.type === 'refund' ? <ArrowDownLeft className="w-7 h-7" /> : <ArrowUpRight className="w-7 h-7" />}
                 </div>
                 <div className="flex-1">
-                  <h4 className="font-headline font-black text-sm">{item.desc}</h4>
-                  <p className="text-[10px] font-bold text-on-surface-variant">{new Date(item.date).toLocaleDateString()} • {new Date(item.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-headline font-black text-sm">{item.desc}</h4>
+                    {item.status === 'disputed' && (
+                      <span className="bg-error/10 text-error text-[8px] font-black uppercase px-2 py-0.5 rounded-full">Disputed</span>
+                    )}
+                  </div>
+                  <p className="text-[10px] font-bold text-on-surface-variant">
+                    {new Date(item.date).toLocaleDateString()} • {new Date(item.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </p>
                 </div>
-                <div className="text-right">
+                <div className="text-right flex flex-col items-end">
                   <p className={cn(
                     "font-headline font-black text-lg",
-                    item.type === 'deposit' ? "text-success" : "text-error"
+                    item.type === 'deposit' || item.type === 'refund' ? "text-success" : "text-error"
                   )}>
-                    {item.type === 'deposit' ? '+' : '-'}₦{item.amount.toLocaleString()}
+                    {item.type === 'deposit' || item.type === 'refund' ? '+' : '-'}₦{item.amount.toLocaleString()}
                   </p>
-                  <span className="text-[8px] font-black uppercase tracking-widest text-on-surface-variant opacity-60">Successful</span>
+                  <ChevronRight className="w-4 h-4 text-on-surface-variant opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
-              </div>
+              </motion.div>
             ))}
+            {filteredHistory.length === 0 && history.length > 0 && (
+              <div className="text-center py-20 bg-surface-container-lowest rounded-[3rem] border-2 border-dashed border-primary/10">
+                <div className="w-20 h-20 bg-primary/5 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <History className="w-10 h-10 text-primary/20" />
+                </div>
+                <h4 className="font-headline font-black text-on-surface">No results found</h4>
+                <p className="text-xs font-medium text-on-surface-variant mt-1">Try adjusting your filters to see more transactions.</p>
+              </div>
+            )}
             {history.length === 0 && (
               <div className="text-center py-20 bg-surface-container-lowest rounded-[3rem] border-2 border-dashed border-primary/10">
                 <div className="w-20 h-20 bg-primary/5 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -186,6 +312,90 @@ export default function WalletPage() {
           </div>
         </section>
       </main>
+
+      {/* Transaction Details Modal */}
+      <AnimatePresence>
+        {selectedTransaction && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedTransaction(null)}
+              className="absolute inset-0 bg-on-surface/40 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="relative w-full max-w-sm bg-surface rounded-[3rem] p-10 shadow-2xl overflow-hidden"
+            >
+              <div className={cn(
+                "w-20 h-20 rounded-[2.5rem] mx-auto mb-6 flex items-center justify-center",
+                selectedTransaction.type === 'deposit' || selectedTransaction.type === 'refund' ? "bg-success text-white" : "bg-error text-white"
+              )}>
+                {selectedTransaction.type === 'deposit' || selectedTransaction.type === 'refund' ? <ArrowDownLeft className="w-10 h-10" /> : <ArrowUpRight className="w-10 h-10" />}
+              </div>
+
+              <h3 className="text-center font-headline font-black text-2xl text-on-surface mb-1">
+                {selectedTransaction.type === 'deposit' || selectedTransaction.type === 'refund' ? '+' : '-'}₦{selectedTransaction.amount.toLocaleString()}
+              </h3>
+              <p className="text-center font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-8">
+                Transaction {selectedTransaction.type}
+              </p>
+
+              <div className="space-y-4 pt-8 border-t border-primary/5">
+                <div className="flex justify-between items-center">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Description</span>
+                  <span className="text-sm font-headline font-black text-on-surface">{selectedTransaction.desc}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Date</span>
+                  <span className="text-sm font-headline font-black text-on-surface">{new Date(selectedTransaction.date).toLocaleDateString()}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Time</span>
+                  <span className="text-sm font-headline font-black text-on-surface">{new Date(selectedTransaction.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Reference</span>
+                  <span className="text-[10px] font-mono font-bold text-on-surface-variant">{selectedTransaction.id}</span>
+                </div>
+                {selectedTransaction.method && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Method</span>
+                    <span className="text-sm font-headline font-black text-on-surface uppercase">{selectedTransaction.method}</span>
+                  </div>
+                )}
+              </div>
+
+              <button 
+                onClick={() => setSelectedTransaction(null)}
+                className="w-full h-16 bg-surface-container-highest mt-10 rounded-2xl font-headline font-black text-xs uppercase tracking-widest active:scale-95 transition-transform"
+              >
+                Close Details
+              </button>
+
+              <button 
+                onClick={() => {
+                  const issue = prompt('Please describe the issue with this transaction:');
+                  if (issue && user?.uid) {
+                    const allHist = JSON.parse(localStorage.getItem(`qw_wallet_history_${user.uid}`) || '[]');
+                    const updated = allHist.map((h: any) => h.id === selectedTransaction.id ? { ...h, status: 'disputed', issueDescription: issue } : h);
+                    localStorage.setItem(`qw_wallet_history_${user.uid}`, JSON.stringify(updated));
+                    setHistory(updated.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+                    setSelectedTransaction(null);
+                    alert('Issue raised successfully. Our support team will review it.');
+                  }
+                }}
+                className="w-full h-12 bg-error/10 text-error mt-4 rounded-xl font-headline font-black text-[10px] uppercase tracking-widest active:scale-95 transition-transform border border-error/10"
+              >
+                Raise Issue
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Funding Modal */}
       <AnimatePresence>

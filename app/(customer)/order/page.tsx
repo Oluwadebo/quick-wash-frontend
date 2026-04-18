@@ -429,6 +429,49 @@ function OrderPageContent() {
     }
   }, [router, existingOrderId, pickupAddress, pickupLandmark]);
 
+  const handleCancelOrder = async () => {
+    if (!existingOrder || !currentUser?.uid) return;
+    if (!confirm("Are you sure you want to cancel this order? Your payment will be refunded to your wallet.")) return;
+
+    try {
+      setIsPaying(true);
+      // 1. Refund to wallet if it was a wallet payment
+      if (existingOrder.paymentMethod === 'wallet') {
+        const user = await db.getUser(currentUser.uid);
+        if (user) {
+          await db.updateUser(user.uid, {
+            walletBalance: (Number(user.walletBalance) || 0) + existingOrder.totalPrice
+          });
+          await db.recordTransaction(user.uid, {
+            type: 'deposit',
+            amount: existingOrder.totalPrice,
+            desc: `Refund for Cancelled Order #${existingOrder.id}`
+          });
+        }
+      }
+
+      // 2. Delete the order
+      const allOrders = await db.getOrders();
+      const filtered = allOrders.filter((o: Order) => o.id !== existingOrder.id);
+      localStorage.setItem('qw_orders', JSON.stringify(filtered));
+
+      // 3. Reset state
+      setExistingOrderId(null);
+      setExistingOrder(null);
+      setIsPaid(false);
+      localStorage.removeItem('qw_current_order_id');
+      
+      setNotification({ message: "Order cancelled and refunded successfully.", type: 'success' });
+      setIsPaying(false);
+    } catch (error) {
+      console.error("Cancellation failed", error);
+      setIsPaying(false);
+      setNotification({ message: "Failed to cancel order. Please try again.", type: 'error' });
+    }
+  };
+
+  const showActionRequired = existingOrder?.status === 'Action Required' || existingOrder?.status === 'rider_assign_pickup';
+
   if (vendorId && !isInitialized) {
     return (
       <div className="min-h-screen bg-mint flex flex-col items-center justify-center p-8 text-center">
@@ -461,177 +504,226 @@ function OrderPageContent() {
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full mb-4"
+            className={cn(
+              "inline-flex items-center gap-2 px-4 py-2 rounded-full mb-4",
+              isPaid ? "bg-success/10 text-success" : "bg-primary/10 text-primary"
+            )}
           >
-            <Sparkles className="w-4 h-4 fill-current" />
-            <span className="text-[10px] font-black uppercase tracking-widest">Premium Service Selected</span>
+            {isPaid ? <Check className="w-4 h-4" /> : <Sparkles className="w-4 h-4 fill-current" />}
+            <span className="text-[10px] font-black uppercase tracking-widest">
+              {isPaid ? 'Payment Confirmed' : 'Premium Service Selected'}
+            </span>
           </motion.div>
           <h1 className="text-[4rem] leading-[0.9] font-headline font-black text-on-surface mb-4 tracking-tighter">
-            Let&apos;s get started.
+            {isPaid ? 'Order Secured.' : "Let's get started."}
           </h1>
           <p className="text-on-surface-variant font-medium text-xl leading-relaxed max-w-xl">
-            Ordering from <span className="text-primary font-black">{vendor?.shopName || 'Quick-Wash Station'}</span>. What are we cleaning today?
+            {showActionRequired 
+              ? `Your payment to ${vendor?.shopName || 'Quick-Wash'} was successful. Please review your items and request a pickup.`
+              : `Ordering from ${vendor?.shopName || 'Quick-Wash Station'}. What are we cleaning today?`
+            }
           </p>
         </header>
 
-        <section className="bg-surface-container-low rounded-[2.5rem] p-8 mb-12 border border-primary/5 flex items-center justify-between gap-6">
-          <div className="flex items-center gap-6">
-            <div className="bg-white p-4 rounded-3xl shadow-xl text-primary">
-              <Bolt className="w-8 h-8 fill-current" />
-            </div>
-            <div>
-              <h3 className="font-headline font-black text-on-surface text-xl">Express Pickup</h3>
-              <p className="font-medium text-on-surface-variant">Rider arrives in less than 15 mins</p>
-            </div>
-          </div>
-          <div className="bg-primary text-white px-4 py-2 rounded-xl font-headline font-black text-xs">
-            FREE
-          </div>
-        </section>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {cart.map((item, idx) => (
-            <motion.div 
-              key={item.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.1 }}
-              onClick={() => {
-                if (!isPaid && (!item.subItems || item.subItems.length === 0)) {
-                  updateCount(item.id, 1);
-                }
-              }}
-              className={cn(
-                "rounded-[3rem] p-8 border border-primary/5 transition-all hover:shadow-2xl hover:shadow-primary/5 bg-surface-container-low flex flex-col h-full cursor-pointer",
-                item.count > 0 && "ring-4 ring-primary-container"
-              )}
-            >
-              <div className="flex justify-between items-start mb-8">
-                <div className="flex items-center gap-6">
-                  <div className="w-20 h-20 bg-white rounded-[2rem] flex items-center justify-center shadow-xl">
-                    <item.icon className="text-primary w-10 h-10" />
-                  </div>
-                  <div>
-                    <h3 className="text-2xl font-headline font-black">{item.name}</h3>
-                    <p className="font-label text-xs font-bold uppercase tracking-widest text-on-surface-variant mt-1">{item.desc}</p>
-                  </div>
+        {showActionRequired ? (
+          <motion.section 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-12"
+          >
+            <div className="bg-surface-container-low rounded-[3rem] p-8 border-2 border-primary/10 shadow-xl">
+              <div className="flex items-center gap-4 mb-8">
+                <div className="w-14 h-14 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
+                  <ShoppingBag className="w-7 h-7" />
+                </div>
+                <div>
+                  <h3 className="font-headline font-black text-2xl text-on-surface">Order Details</h3>
+                  <p className="font-bold text-xs text-on-surface-variant uppercase tracking-widest">Order ID: #{existingOrderId}</p>
                 </div>
               </div>
 
-              <div className="flex flex-col flex-1">
-                {item.subItems && item.subItems.length > 0 && (
-                  <div className="grid grid-cols-1 gap-3 mb-6">
-                    {item.subItems.map(si => (
-                      <div key={si.id} className="bg-white/50 p-4 rounded-2xl border border-primary/5 flex items-center justify-between">
-                        <div>
-                          <p className="font-headline font-black text-xs">{si.name}</p>
-                          <p className="text-[10px] font-bold text-on-surface-variant">₦{si.price}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); updateSubItemCount(item.id, si.id, -1); }}
-                            className="w-7 h-7 flex items-center justify-center rounded-lg bg-surface-container active:scale-90 transition-transform"
-                          >
-                            <Minus className="w-3 h-3" />
-                          </button>
-                          <span className="font-headline font-black text-sm min-w-[1.5ch] text-center">{si.count}</span>
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); updateSubItemCount(item.id, si.id, 1); }}
-                            className="w-7 h-7 flex items-center justify-center rounded-lg bg-primary text-white active:scale-90 transition-transform"
-                          >
-                            <Plus className="w-3 h-3" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+              <div className="bg-white/40 rounded-[2rem] p-6 mb-8 border border-primary/5">
+                <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-4">Paid Items</p>
+                <div className="space-y-4">
+                  {existingOrder?.items.split(',').map((item, i) => (
+                    <div key={i} className="flex items-center gap-3">
+                      <div className="w-2 h-2 rounded-full bg-primary" />
+                      <p className="font-headline font-black text-on-surface leading-tight">{item.trim()}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
 
-                <div className="mt-auto space-y-4">
-                  {/* Stain Remover Toggle Row */}
-                  {item.count > 0 && (
-                    <div 
-                      onClick={(e) => toggleStainRemover(item.id, e)}
-                      className={cn(
-                        "flex items-center justify-between p-4 rounded-2xl border cursor-pointer transition-all",
-                        item.hasStainRemover 
-                          ? "bg-tertiary/10 border-tertiary/30" 
-                          : "bg-white/40 border-primary/5 opacity-60"
+              <div className="flex items-center gap-3 text-warning-dark bg-warning/10 p-4 rounded-2xl border border-warning/20">
+                <AlertTriangle className="w-5 h-5 shrink-0" />
+                <p className="text-xs font-bold leading-relaxed">
+                  Important: Your order is confirmed but <strong>Riders have not been notified yet</strong>. Click &quot;I am Ready&quot; below to request a pickup.
+                </p>
+              </div>
+            </div>
+          </motion.section>
+        ) : (
+          <>
+            <section className="bg-surface-container-low rounded-[2.5rem] p-8 mb-12 border border-primary/5 flex items-center justify-between gap-6">
+              <div className="flex items-center gap-6">
+                <div className="bg-white p-4 rounded-3xl shadow-xl text-primary">
+                  <Bolt className="w-8 h-8 fill-current" />
+                </div>
+                <div>
+                  <h3 className="font-headline font-black text-on-surface text-xl">Express Pickup</h3>
+                  <p className="font-medium text-on-surface-variant">Rider arrives in less than 15 mins</p>
+                </div>
+              </div>
+              <div className="bg-primary text-white px-4 py-2 rounded-xl font-headline font-black text-xs">
+                FREE
+              </div>
+            </section>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {cart.map((item, idx) => (
+                <motion.div 
+                  key={item.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: idx * 0.1 }}
+                  onClick={() => {
+                    if (!isPaid && (!item.subItems || item.subItems.length === 0)) {
+                      updateCount(item.id, 1);
+                    }
+                  }}
+                  className={cn(
+                    "rounded-[3rem] p-8 border border-primary/5 transition-all hover:shadow-2xl hover:shadow-primary/5 bg-surface-container-low flex flex-col h-full cursor-pointer",
+                    item.count > 0 && "ring-4 ring-primary-container"
+                  )}
+                >
+                  <div className="flex justify-between items-start mb-8">
+                    <div className="flex items-center gap-6">
+                      <div className="w-20 h-20 bg-white rounded-[2rem] flex items-center justify-center shadow-xl">
+                        <item.icon className="text-primary w-10 h-10" />
+                      </div>
+                      <div>
+                        <h3 className="text-2xl font-headline font-black">{item.name}</h3>
+                        <p className="font-label text-xs font-bold uppercase tracking-widest text-on-surface-variant mt-1">{item.desc}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col flex-1">
+                    {item.subItems && item.subItems.length > 0 && (
+                      <div className="grid grid-cols-1 gap-3 mb-6">
+                        {item.subItems.map(si => (
+                          <div key={si.id} className="bg-white/50 p-4 rounded-2xl border border-primary/5 flex items-center justify-between">
+                            <div>
+                              <p className="font-headline font-black text-xs">{si.name}</p>
+                              <p className="text-[10px] font-bold text-on-surface-variant">₦{si.price}</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); updateSubItemCount(item.id, si.id, -1); }}
+                                className="w-7 h-7 flex items-center justify-center rounded-lg bg-surface-container active:scale-90 transition-transform"
+                              >
+                                <Minus className="w-3 h-3" />
+                              </button>
+                              <span className="font-headline font-black text-sm min-w-[1.5ch] text-center">{si.count}</span>
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); updateSubItemCount(item.id, si.id, 1); }}
+                                className="w-7 h-7 flex items-center justify-center rounded-lg bg-primary text-white active:scale-90 transition-transform"
+                              >
+                                <Plus className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="mt-auto space-y-4">
+                      {/* Stain Remover Toggle Row */}
+                      {item.count > 0 && (
+                        <div 
+                          onClick={(e) => toggleStainRemover(item.id, e)}
+                          className={cn(
+                            "flex items-center justify-between p-4 rounded-2xl border cursor-pointer transition-all",
+                            item.hasStainRemover 
+                              ? "bg-tertiary/10 border-tertiary/30" 
+                              : "bg-white/40 border-primary/5 opacity-60"
+                          )}
+                        >
+                          <div className="flex items-center gap-3">
+                            <Sparkles className={cn("w-4 h-4", item.hasStainRemover ? "text-tertiary fill-current" : "text-on-surface-variant")} />
+                            <span className="font-headline font-black text-[10px] uppercase tracking-wider">Stain Remover</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold text-on-surface-variant">+₦{item.stainRemoverPrice}</span>
+                            <div className={cn(
+                              "w-8 h-4 rounded-full relative transition-colors",
+                              item.hasStainRemover ? "bg-tertiary" : "bg-outline/20"
+                            )}>
+                              <motion.div 
+                                animate={{ x: item.hasStainRemover ? 16 : 2 }}
+                                className="absolute top-1 w-2 h-2 bg-white rounded-full"
+                              />
+                            </div>
+                          </div>
+                        </div>
                       )}
-                    >
-                      <div className="flex items-center gap-3">
-                        <Sparkles className={cn("w-4 h-4", item.hasStainRemover ? "text-tertiary fill-current" : "text-on-surface-variant")} />
-                        <span className="font-headline font-black text-[10px] uppercase tracking-wider">Stain Remover</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-bold text-on-surface-variant">+₦{item.stainRemoverPrice}</span>
-                        <div className={cn(
-                          "w-8 h-4 rounded-full relative transition-colors",
-                          item.hasStainRemover ? "bg-tertiary" : "bg-outline/20"
-                        )}>
-                          <motion.div 
-                            animate={{ x: item.hasStainRemover ? 16 : 2 }}
-                            className="absolute top-1 w-2 h-2 bg-white rounded-full"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
 
-                  {/* Service Grid */}
-                  <div className="grid grid-cols-2 gap-2">
-                    {item.services.map(service => (
-                      <button 
-                        key={service.name}
-                        onClick={(e) => updateService(item.id, service.name, e)}
-                        className={cn(
-                          "px-3 py-3 rounded-xl font-headline font-black text-[10px] uppercase tracking-wider transition-all active:scale-95 text-center",
-                          item.selectedService === service.name 
-                            ? "signature-gradient text-white shadow-md" 
-                            : "bg-white text-on-surface-variant hover:bg-surface-container-highest border border-primary/5"
-                        )}
-                      >
-                        {service.name}
-                        <span className="block text-[8px] opacity-60 mt-0.5">₦{service.price}</span>
-                      </button>
-                    ))}
+                      {/* Service Grid */}
+                      <div className="grid grid-cols-2 gap-2">
+                        {item.services.map(service => (
+                          <button 
+                            key={service.name}
+                            onClick={(e) => updateService(item.id, service.name, e)}
+                            className={cn(
+                              "px-3 py-3 rounded-xl font-headline font-black text-[10px] uppercase tracking-wider transition-all active:scale-95 text-center",
+                              item.selectedService === service.name 
+                                ? "signature-gradient text-white shadow-md" 
+                                : "bg-white text-on-surface-variant hover:bg-surface-container-highest border border-primary/5"
+                            )}
+                          >
+                            {service.name}
+                            <span className="block text-[8px] opacity-60 mt-0.5">₦{service.price}</span>
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Quantity Selector - Moved inside card below services */}
+                      {(!item.subItems || item.subItems.length === 0) && (
+                        <div className="flex items-center justify-between bg-white p-3 rounded-[2rem] shadow-xl border border-primary/5">
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); updateCount(item.id, -1); }}
+                            className="w-12 h-12 flex items-center justify-center rounded-2xl bg-surface-container hover:bg-primary-container/30 transition-colors active:scale-90"
+                          >
+                            <Minus className="w-5 h-5" />
+                          </button>
+                          <span className="font-headline font-black text-2xl px-2 min-w-[2ch] text-center">{item.count}</span>
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); updateCount(item.id, 1); }}
+                            className="w-12 h-12 flex items-center justify-center rounded-2xl bg-primary text-white hover:opacity-90 active:scale-90 transition-all shadow-lg shadow-primary/20"
+                          >
+                            <Plus className="w-5 h-5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
-                  {/* Quantity Selector - Moved inside card below services */}
-                  {(!item.subItems || item.subItems.length === 0) && (
-                    <div className="flex items-center justify-between bg-white p-3 rounded-[2rem] shadow-xl border border-primary/5">
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); updateCount(item.id, -1); }}
-                        className="w-12 h-12 flex items-center justify-center rounded-2xl bg-surface-container hover:bg-primary-container/30 transition-colors active:scale-90"
-                      >
-                        <Minus className="w-5 h-5" />
-                      </button>
-                      <span className="font-headline font-black text-2xl px-2 min-w-[2ch] text-center">{item.count}</span>
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); updateCount(item.id, 1); }}
-                        className="w-12 h-12 flex items-center justify-center rounded-2xl bg-primary text-white hover:opacity-90 active:scale-90 transition-all shadow-lg shadow-primary/20"
-                      >
-                        <Plus className="w-5 h-5" />
-                      </button>
+                  <div className="flex items-center justify-between pt-6 mt-6 border-t border-primary/5">
+                    <div className="flex items-center gap-2 text-on-surface-variant opacity-60">
+                      <CreditCard className="w-5 h-5" />
+                      <span className="text-[10px] font-label font-bold uppercase tracking-widest">
+                        {(item.subItems && item.subItems.length > 0) ? 'Custom' : `₦${item.basePrice}/${item.unit}`}
+                      </span>
                     </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between pt-6 mt-6 border-t border-primary/5">
-                <div className="flex items-center gap-2 text-on-surface-variant opacity-60">
-                  <CreditCard className="w-5 h-5" />
-                  <span className="text-[10px] font-label font-bold uppercase tracking-widest">
-                    {(item.subItems && item.subItems.length > 0) ? 'Custom' : `₦${item.basePrice}/${item.unit}`}
-                  </span>
-                </div>
-                <div className="text-right">
-                  <span className="font-headline font-black text-2xl text-primary">₦{(getItemPrice(item) || 0).toLocaleString()}</span>
-                </div>
-              </div>
-            </motion.div>
-          ))}
-        </div>
+                    <div className="text-right">
+                      <span className="font-headline font-black text-2xl text-primary">₦{(getItemPrice(item) || 0).toLocaleString()}</span>
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </>
+        )}
       </main>
 
       <footer className="mt-12">
@@ -640,24 +732,24 @@ function OrderPageContent() {
             <div className="flex justify-between items-end mb-6">
               <div>
                 <p className="font-label text-xs uppercase tracking-[0.3em] text-on-surface-variant font-black mb-2">
-                  {isPaid ? 'Order Paid' : 'Cart Summary'}
+                  {showActionRequired ? 'Order Paid' : 'Cart Summary'}
                 </p>
                 <h3 className="font-headline font-black text-3xl text-on-surface">
-                  {isPaid ? `Order #${existingOrder?.id || '...'}` : `${totalItems.toString().padStart(2, '0')} Items Selected`}
+                  {showActionRequired ? `Order #${existingOrder?.id || '...'}` : `${totalItems.toString().padStart(2, '0')} Items Selected`}
                 </h3>
               </div>
               <div className="text-right">
                 <p className="font-label text-xs uppercase tracking-[0.3em] text-on-surface-variant font-black mb-2">
-                  {isPaid ? 'Total Paid' : 'Estimated Total'}
+                  {showActionRequired ? 'Total Paid' : 'Estimated Total'}
                 </p>
                 <h3 className="font-headline font-black text-5xl text-primary tracking-tighter">
-                  ₦{(isPaid ? (existingOrder?.totalPrice || 0) : (totalPrice || 0)).toLocaleString()}
+                  ₦{(showActionRequired ? (existingOrder?.totalPrice || 0) : (totalPrice || 0)).toLocaleString()}
                 </h3>
               </div>
             </div>
 
             {/* Detailed Breakdown */}
-            {!isPaid && totalItems > 0 && (
+            {!showActionRequired && totalItems > 0 && (
               <div className="mb-8 p-6 bg-surface-container rounded-[2rem] border border-primary/5 space-y-3">
                 <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Detailed Breakdown</p>
                 {cart.filter(item => item.count > 0).map(item => (
@@ -680,7 +772,7 @@ function OrderPageContent() {
               </div>
             )}
             
-            {!isPaid ? (
+            {!showActionRequired ? (
               <div className="space-y-6">
                 {/* Location Preview */}
                 <div 
@@ -730,7 +822,16 @@ function OrderPageContent() {
                 )}
               </div>
             ) : (
-              <ReadyForPickupButton onClick={handlePickupRequest} />
+              <div className="space-y-4">
+                <ReadyForPickupButton onClick={handlePickupRequest} />
+                <button 
+                  onClick={handleCancelOrder}
+                  disabled={isPaying}
+                  className="w-full h-16 bg-error/10 text-error rounded-3xl font-headline font-black text-xs uppercase tracking-widest border border-error/20 hover:bg-error/20 transition-all active:scale-[0.98] disabled:opacity-50"
+                >
+                  Cancel Order & Refund
+                </button>
+              </div>
             )}
 
             <div className="flex justify-center mt-6">

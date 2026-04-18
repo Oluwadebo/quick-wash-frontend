@@ -39,6 +39,8 @@ export default function RiderDashboard() {
   const [isReturnModalOpen, setIsReturnModalOpen] = React.useState(false);
   const [returnReason, setReturnReason] = React.useState('');
   const [selectedOrderId, setSelectedOrderId] = React.useState<string | null>(null);
+  const [timeRange, setTimeRange] = React.useState<'today' | '7d' | '14d' | '30d' | '2m' | 'custom'>('30d');
+  const [customRange, setCustomRange] = React.useState({ start: '', end: '' });
 
   React.useEffect(() => {
     const refreshData = async () => {
@@ -53,8 +55,8 @@ export default function RiderDashboard() {
 
         // Tasks assigned to this rider - Sorted by claimedAt (latest first)
         const myTasks = myAll
-          .filter((o: Order) => !['Delivered', 'Cancelled', 'Completed'].includes(o.status))
-          .sort((a, b) => new Date(b.claimedAt || 0).getTime() - new Date(a.claimedAt || 0).getTime());
+          .filter((o: Order) => !['delivered', 'cancelled', 'completed'].includes((o.status || '').toLowerCase()))
+          .sort((a, b) => new Date(b.claimedAt || 0).getTime() - new Date(a.time || 0).getTime());
         setTasks(myTasks);
 
         // Orders available for pickup (not yet assigned) - Latest first
@@ -127,7 +129,7 @@ export default function RiderDashboard() {
       setOrderToReject(null);
       setNotification({ message: 'Order rejected and returned to pool.', type: 'info' });
       const allOrders = await db.getOrders();
-      setTasks(allOrders.filter((o: Order) => o.riderUid === currentUser.uid && !['Delivered', 'Cancelled'].includes(o.status)));
+      setTasks(allOrders.filter((o: Order) => o.riderUid === currentUser.uid && !['delivered', 'cancelled', 'completed'].includes((o.status || '').toLowerCase())));
       window.dispatchEvent(new Event('storage'));
     }
   };
@@ -144,7 +146,7 @@ export default function RiderDashboard() {
       
       // Refresh data
       const allOrders = await db.getOrders();
-      setTasks(allOrders.filter((o: Order) => o.riderUid === currentUser.uid && !['Delivered', 'Cancelled'].includes(o.status)));
+      setTasks(allOrders.filter((o: Order) => o.riderUid === currentUser.uid && !['delivered', 'cancelled', 'completed'].includes((o.status || '').toLowerCase())));
       const me = await db.getUser(currentUser.uid);
       if (me) {
         setStats(prev => ({
@@ -162,7 +164,7 @@ export default function RiderDashboard() {
   const handleStatusUpdate = async (orderId: string, newStatus: string, color: string) => {
     await db.updateOrderStatus(orderId, newStatus, color);
     const allOrders = await db.getOrders();
-    setTasks(allOrders.filter((o: Order) => o.riderUid === currentUser?.uid && !['Delivered', 'Cancelled'].includes(o.status)));
+    setTasks(allOrders.filter((o: Order) => o.riderUid === currentUser?.uid && !['delivered', 'cancelled', 'completed'].includes((o.status || '').toLowerCase())));
   };
 
   const handleVerifyPickup = React.useCallback(async (order: Order) => {
@@ -578,12 +580,86 @@ export default function RiderDashboard() {
                 key="history"
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
-                className="space-y-4"
+                className="space-y-6"
               >
+                <div className="flex flex-col gap-4">
+                  <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+                    {[
+                      { id: 'today', label: 'Today' },
+                      { id: '7d', label: '7 Days' },
+                      { id: '14d', label: '14 Days' },
+                      { id: '30d', label: '30 Days' },
+                      { id: '2m', label: '2 Months' },
+                      { id: 'custom', label: 'Customize' }
+                    ].map(opt => (
+                      <button
+                        key={opt.id}
+                        onClick={() => setTimeRange(opt.id as any)}
+                        className={cn(
+                          "whitespace-nowrap px-4 py-2 rounded-xl font-headline font-black text-[10px] uppercase tracking-widest transition-all",
+                          timeRange === opt.id 
+                            ? "bg-primary text-white shadow-lg shadow-primary/20 scale-105" 
+                            : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container-highest"
+                        )}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <AnimatePresence>
+                    {timeRange === 'custom' && (
+                      <motion.div 
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="grid grid-cols-2 gap-3 p-4 bg-primary/5 rounded-2xl border border-primary/10 overflow-hidden"
+                      >
+                        <div className="space-y-1">
+                          <label className="text-[8px] font-black uppercase tracking-widest text-primary">Start Date</label>
+                          <input 
+                            type="date"
+                            value={customRange.start}
+                            onChange={(e) => setCustomRange(prev => ({ ...prev, start: e.target.value }))}
+                            className="w-full bg-white rounded-lg p-2 text-xs font-bold outline-none border border-primary/10"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[8px] font-black uppercase tracking-widest text-primary">End Date</label>
+                          <input 
+                            type="date"
+                            value={customRange.end}
+                            onChange={(e) => setCustomRange(prev => ({ ...prev, end: e.target.value }))}
+                            className="w-full bg-white rounded-lg p-2 text-xs font-bold outline-none border border-primary/10"
+                          />
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
                 {(() => {
-                  const historical = allMyOrders.filter((o: any) => 
-                    ['delivered', 'completed', 'cancelled'].includes(o.status.toLowerCase())
-                  );
+                  const now = new Date();
+                  const historical = allMyOrders.filter((o: any) => {
+                    if (!['delivered', 'completed', 'cancelled'].includes(o.status.toLowerCase())) return false;
+                    
+                    const itemDate = new Date(o.deliveredAt || o.time);
+                    if (timeRange === 'today') return itemDate.toDateString() === now.toDateString();
+                    if (timeRange === 'custom') {
+                      if (!customRange.start || !customRange.end) return true;
+                      const start = new Date(customRange.start);
+                      const end = new Date(customRange.end);
+                      end.setHours(23, 59, 59, 999);
+                      return itemDate >= start && itemDate <= end;
+                    }
+
+                    const diffInDays = (now.getTime() - itemDate.getTime()) / (1000 * 60 * 60 * 24);
+                    if (timeRange === '7d') return diffInDays <= 7;
+                    if (timeRange === '14d') return diffInDays <= 14;
+                    if (timeRange === '30d') return diffInDays <= 30;
+                    if (timeRange === '2m') return diffInDays <= 60;
+                    return true;
+                  });
 
                   if (historical.length > 0) {
                     return historical.sort((a: any, b: any) => new Date(b.deliveredAt || b.time).getTime() - new Date(a.deliveredAt || a.time).getTime()).map((order: any) => (
@@ -608,12 +684,12 @@ export default function RiderDashboard() {
                   }
                   
                   return (
-                    <div className="py-20 text-center border-2 border-dashed border-primary/10 rounded-[3rem]">
-                      <div className="w-16 h-16 bg-primary/5 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <History className="w-8 h-8 text-primary/20" />
+                    <div className="text-center py-20 bg-surface-container-lowest rounded-[3rem] border-2 border-dashed border-primary/10">
+                      <div className="w-20 h-20 bg-primary/5 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <History className="w-10 h-10 text-primary/20" />
                       </div>
-                      <p className="text-on-surface-variant font-headline font-bold text-xl">No delivery history yet.</p>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant opacity-60">Complete tasks to see them here</p>
+                      <h4 className="font-headline font-black text-on-surface">No history found</h4>
+                      <p className="text-xs font-medium text-on-surface-variant mt-1">Try adjusting your filters to see more tasks.</p>
                     </div>
                   );
                 })()}

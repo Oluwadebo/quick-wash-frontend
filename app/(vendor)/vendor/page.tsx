@@ -38,6 +38,8 @@ export default function VendorDashboard() {
   const [editingService, setEditingService] = React.useState<any>(null);
   const [services, setServices] = React.useState<any[]>([]);
   const [notification, setNotification] = React.useState<{ message: string; type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
+  const [timeRange, setTimeRange] = React.useState<'today' | '7d' | '14d' | '30d' | '2m' | 'custom'>('30d');
+  const [customRange, setCustomRange] = React.useState({ start: '', end: '' });
 
   const [stats, setStats] = React.useState({
     totalEarnings: 0,
@@ -573,15 +575,90 @@ export default function VendorDashboard() {
                 key="history"
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
-                className="space-y-4"
+                className="space-y-6"
               >
+                <div className="flex flex-col gap-4">
+                  <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+                    {[
+                      { id: 'today', label: 'Today' },
+                      { id: '7d', label: '7 Days' },
+                      { id: '14d', label: '14 Days' },
+                      { id: '30d', label: '30 Days' },
+                      { id: '2m', label: '2 Months' },
+                      { id: 'custom', label: 'Customize' }
+                    ].map(opt => (
+                      <button
+                        key={opt.id}
+                        onClick={() => setTimeRange(opt.id as any)}
+                        className={cn(
+                          "whitespace-nowrap px-4 py-2 rounded-xl font-headline font-black text-[10px] uppercase tracking-widest transition-all",
+                          timeRange === opt.id 
+                            ? "bg-primary text-white shadow-lg shadow-primary/20 scale-105" 
+                            : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container-highest"
+                        )}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <AnimatePresence>
+                    {timeRange === 'custom' && (
+                      <motion.div 
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="grid grid-cols-2 gap-3 p-4 bg-primary/5 rounded-2xl border border-primary/10 overflow-hidden"
+                      >
+                        <div className="space-y-1">
+                          <label className="text-[8px] font-black uppercase tracking-widest text-primary">Start Date</label>
+                          <input 
+                            type="date"
+                            value={customRange.start}
+                            onChange={(e) => setCustomRange(prev => ({ ...prev, start: e.target.value }))}
+                            className="w-full bg-white rounded-lg p-2 text-xs font-bold outline-none border border-primary/10"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[8px] font-black uppercase tracking-widest text-primary">End Date</label>
+                          <input 
+                            type="date"
+                            value={customRange.end}
+                            onChange={(e) => setCustomRange(prev => ({ ...prev, end: e.target.value }))}
+                            className="w-full bg-white rounded-lg p-2 text-xs font-bold outline-none border border-primary/10"
+                          />
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
                 {(() => {
-                  const historical = orders.filter((o: any) => 
-                    ['delivered', 'completed', 'cancelled'].includes(o.status.toLowerCase())
-                  );
+                  const now = new Date();
+                  const historical = orders.filter((o: any) => {
+                    const status = (o.status || '').toLowerCase();
+                    if (!['delivered', 'completed', 'cancelled'].includes(status)) return false;
+                    
+                    const itemDate = new Date(o.time || o.createdAt);
+                    if (timeRange === 'today') return itemDate.toDateString() === now.toDateString();
+                    if (timeRange === 'custom') {
+                      if (!customRange.start || !customRange.end) return true;
+                      const start = new Date(customRange.start);
+                      const end = new Date(customRange.end);
+                      end.setHours(23, 59, 59, 999);
+                      return itemDate >= start && itemDate <= end;
+                    }
+
+                    const diffInDays = (now.getTime() - itemDate.getTime()) / (1000 * 60 * 60 * 24);
+                    if (timeRange === '7d') return diffInDays <= 7;
+                    if (timeRange === '14d') return diffInDays <= 14;
+                    if (timeRange === '30d') return diffInDays <= 30;
+                    if (timeRange === '2m') return diffInDays <= 60;
+                    return true;
+                  });
 
                   if (historical.length > 0) {
-                    return historical.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()).map((order) => (
+                    return historical.sort((a, b) => new Date(b.time || b.createdAt).getTime() - new Date(a.time || a.createdAt).getTime()).map((order) => (
                       <div key={order.id} className="bg-surface-container-low p-6 rounded-3xl border border-primary/5 flex justify-between items-center group hover:bg-white transition-colors">
                         <div className="flex items-center gap-4">
                           <div className="w-12 h-12 rounded-xl bg-surface-container-highest flex items-center justify-center">
@@ -589,7 +666,7 @@ export default function VendorDashboard() {
                           </div>
                           <div>
                             <h4 className="font-headline font-black text-on-surface">Order #{order.id}</h4>
-                            <p className="text-[10px] font-bold text-on-surface-variant">{formatRelativeTime(order.time)} • ₦{(order.totalPrice || 0).toLocaleString()}</p>
+                            <p className="text-[10px] font-bold text-on-surface-variant">{formatRelativeTime(order.time || order.createdAt)} • ₦{(order.totalPrice || 0).toLocaleString()}</p>
                           </div>
                         </div>
                         <span className={cn(
