@@ -1,6 +1,50 @@
-import mongoose from 'mongoose';
+import mongoose, { Schema, Document } from 'mongoose';
 
-const OrderSchema = new mongoose.Schema({
+export interface IOrder extends Document {
+  id: string; // Friendly ID
+  customerUid: string;
+  customerName: string;
+  customerPhone: string;
+  vendorId: string;
+  vendorName: string;
+  vendorPhone?: string;
+  customerAddress?: string;
+  customerLandmark?: string;
+  vendorLandmark?: string;
+  vendorAddress?: string;
+  items: string;
+  itemsPrice: number;
+  riderFee: number;
+  totalPrice: number;
+  status: string;
+  color: string;
+  time: Date;
+  riderUid?: string;
+  riderName?: string;
+  riderPhone?: string;
+  pickupAddress?: string;
+  code1?: string;
+  code2?: string;
+  code3?: string;
+  code4?: string;
+  handoverCode?: string;
+  readyForDeliveryAt?: Date;
+  washingAt?: Date;
+  readyAt?: Date;
+  pickedUpAt?: Date;
+  pickedUpDeliveryAt?: Date;
+  paidAt?: Date;
+  deliveredAt?: Date;
+  completedAt?: Date;
+  disputed?: boolean;
+  issueDescription?: string;
+  disputedAt?: Date;
+  paymentMethod: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const OrderSchema: Schema = new Schema({
   id: { type: String, required: true, unique: true },
   customerUid: { type: String, required: true },
   customerName: { type: String, required: true },
@@ -19,7 +63,6 @@ const OrderSchema = new mongoose.Schema({
   status: { type: String, required: true },
   color: { type: String, required: true },
   time: { type: Date, default: Date.now },
-  createdAt: { type: Date, default: Date.now },
   riderUid: { type: String },
   riderName: { type: String },
   riderPhone: { type: String },
@@ -37,15 +80,10 @@ const OrderSchema = new mongoose.Schema({
   paidAt: { type: Date },
   deliveredAt: { type: Date },
   completedAt: { type: Date },
-  penaltyApplied: { type: Boolean, default: false },
-  payoutReleased: { type: Boolean, default: false },
   disputed: { type: Boolean, default: false },
-  isLocked: { type: Boolean, default: false },
-  lockedBy: { type: String },
-  lockExpires: { type: Number },
-  returnReason: { type: String },
-  consecutiveReturns: { type: Number, default: 0 },
-  paymentMethod: { type: String, enum: ['wallet', 'transfer', 'card'], default: 'wallet' }
-});
+  issueDescription: { type: String },
+  disputedAt: { type: Date },
+  paymentMethod: { type: String, default: 'wallet' },
+}, { timestamps: true });
 
-export default mongoose.models.Order || mongoose.model('Order', OrderSchema);
+export default mongoose.model<IOrder>('Order', OrderSchema);

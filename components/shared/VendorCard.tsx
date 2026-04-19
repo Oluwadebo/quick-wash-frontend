@@ -120,7 +120,7 @@ export default function VendorCard({
             WhatsApp
           </a>
           <Link
-            href={isRaining ? '#' : `/order?vendor=${id}`}
+            href={isRaining ? '#' : `/order?vendor=${id}&new=true`}
             onClick={(e) => isRaining && e.preventDefault()}
             className={cn(
               "signature-gradient text-white py-5 rounded-2xl font-headline font-black text-sm flex items-center justify-center gap-3 shadow-lg shadow-primary/20 active:scale-[0.98] transition-all",

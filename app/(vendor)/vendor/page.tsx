@@ -48,8 +48,6 @@ export default function VendorDashboard() {
     trustScore: 100
   });
 
-  const [payoutHistory, setPayoutHistory] = React.useState<any[]>([]);
-
   React.useEffect(() => {
     const init = async () => {
       if (currentUser?.uid) {
@@ -63,15 +61,19 @@ export default function VendorDashboard() {
         // Check for 3-day delay penalty
         const now = new Date().getTime();
         const threeDays = 3 * 24 * 60 * 60 * 1000;
+        let penaltyApplied = false;
 
         const checkedOrders = await Promise.all(vendorOrders.map(async (o: Order) => {
           if (o.status.toLowerCase() === 'washing' && o.time) {
             const startTime = new Date(o.time).getTime();
             if (now - startTime > threeDays && !o.penaltyApplied) {
-              const updated = { ...o, penaltyApplied: true };
-              await db.adjustTrustPoints(currentUser.uid, 'vendor_delay');
-              await db.saveOrder(updated);
-              return updated;
+              o.penaltyApplied = true;
+              penaltyApplied = true;
+              
+              if (currentUser?.uid) {
+                await db.adjustTrustPoints(currentUser.uid, 'vendor_delay');
+              }
+              await db.saveOrder(o);
             }
           }
           return o;
@@ -83,7 +85,7 @@ export default function VendorDashboard() {
         const vendorPrices = await db.getVendorPriceList(currentUser.uid);
         setServices(vendorPrices);
         
-        const gServices = await db.getGlobalServices();
+        const gServices = JSON.parse(localStorage.getItem('qw_global_services') || '["Shirt", "Jeans", "Native", "Suit", "Duvet", "Bedsheet"]');
         setGlobalServices(gServices);
 
         const me = await db.getUser(currentUser.uid);
@@ -95,9 +97,6 @@ export default function VendorDashboard() {
             trustScore: me.trustPoints || 100
           });
         }
-
-        const history = await db.getWalletHistory(currentUser.uid);
-        setPayoutHistory(history);
       }
     };
     init();
@@ -193,10 +192,11 @@ export default function VendorDashboard() {
     await db.saveVendorPriceList(currentUser.uid, updated);
     setServices(updated);
 
-    const gServices = await db.getGlobalServices();
+    // Update global services if new
+    const gServices = JSON.parse(localStorage.getItem('qw_global_services') || '[]');
     if (!gServices.includes(editingService.name)) {
       const newGServices = [...gServices, editingService.name];
-      await db.saveGlobalServices(newGServices);
+      localStorage.setItem('qw_global_services', JSON.stringify(newGServices));
       setGlobalServices(newGServices);
     }
 
@@ -218,8 +218,8 @@ export default function VendorDashboard() {
     }
   };
 
-  const handleReportRain = async () => {
-    const alerts = await db.getAlerts();
+  const handleReportRain = () => {
+    const alerts = JSON.parse(localStorage.getItem('qw_alerts') || '[]');
     const newAlert = {
       id: Date.now(),
       type: 'WEATHER ALERT',
@@ -228,7 +228,8 @@ export default function VendorDashboard() {
       vendorId: currentUser?.uid,
       time: new Date().toISOString()
     };
-    await db.saveAlerts([...alerts, newAlert]);
+    alerts.push(newAlert);
+    localStorage.setItem('qw_alerts', JSON.stringify(alerts));
     setNotification({ message: "Rain reported! Customers and riders notified.", type: 'warning' as any });
     setTimeout(() => setNotification(null), 2000);
   };
@@ -284,14 +285,15 @@ export default function VendorDashboard() {
                         type: newRainState ? 'info' : 'success' 
                       });
                       
-                      const alerts = await db.getAlerts();
-                      await db.saveAlerts([...alerts, {
+                      const alerts = JSON.parse(localStorage.getItem('qw_alerts') || '[]');
+                      alerts.push({
                         id: Date.now(),
                         type: 'WEATHER',
                         msg: `Heavy rain reported at ${currentUser?.shopName || 'a vendor shop'}.`,
                         time: new Date().toISOString(),
                         vendorId: currentUser.uid
-                      }]);
+                      });
+                      localStorage.setItem('qw_alerts', JSON.stringify(alerts));
                       
                       setTimeout(() => setNotification(null), 3000);
                       if (newRainState) window.dispatchEvent(new Event('qw_audio_rain'));
@@ -709,122 +711,38 @@ export default function VendorDashboard() {
                   </button>
                 </div>
                 
-                <div className="space-y-6">
-                  <div className="flex flex-col gap-4">
-                    <h3 className="font-headline font-black text-xl px-2">Recent Transactions</h3>
-                    <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar px-2">
-                      {[
-                        { id: 'today', label: 'Today' },
-                        { id: '7d', label: '7 Days' },
-                        { id: '14d', label: '14 Days' },
-                        { id: '30d', label: '30 Days' },
-                        { id: '2m', label: '2 Months' },
-                        { id: 'custom', label: 'Customize' }
-                      ].map(opt => (
-                        <button
-                          key={opt.id}
-                          onClick={() => setTimeRange(opt.id as any)}
-                          className={cn(
-                            "whitespace-nowrap px-4 py-2 rounded-xl font-headline font-black text-[10px] uppercase tracking-widest transition-all",
-                            timeRange === opt.id 
-                              ? "bg-primary text-white shadow-lg shadow-primary/20 scale-105" 
-                              : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container-highest"
-                          )}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
-
-                    <AnimatePresence>
-                      {timeRange === 'custom' && (
-                        <motion.div 
-                          initial={{ opacity: 0, height: 0 }}
-                          animate={{ opacity: 1, height: 'auto' }}
-                          exit={{ opacity: 0, height: 0 }}
-                          className="grid grid-cols-2 gap-3 p-4 bg-primary/5 rounded-2xl border border-primary/10 overflow-hidden mx-2"
-                        >
-                          <div className="space-y-1">
-                            <label className="text-[8px] font-black uppercase tracking-widest text-primary">Start Date</label>
-                            <input 
-                              type="date"
-                              value={customRange.start}
-                              onChange={(e) => setCustomRange(prev => ({ ...prev, start: e.target.value }))}
-                              className="w-full bg-white rounded-lg p-2 text-xs font-bold outline-none border border-primary/10"
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-[8px] font-black uppercase tracking-widest text-primary">End Date</label>
-                            <input 
-                              type="date"
-                              value={customRange.end}
-                              onChange={(e) => setCustomRange(prev => ({ ...prev, end: e.target.value }))}
-                              className="w-full bg-white rounded-lg p-2 text-xs font-bold outline-none border border-primary/10"
-                            />
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-
+                <div>
+                  <h3 className="font-headline font-black text-xl mb-6">Recent Transactions</h3>
                   <div className="space-y-4">
                     {(() => {
-                      const now = new Date();
-                      const filteredTransactions = payoutHistory.filter((tx: any) => {
-                        const itemDate = new Date(tx.date || tx.time);
-                        if (timeRange === 'today') return itemDate.toDateString() === now.toDateString();
-                        if (timeRange === 'custom') {
-                          if (!customRange.start || !customRange.end) return true;
-                          const start = new Date(customRange.start);
-                          const end = new Date(customRange.end);
-                          end.setHours(23, 59, 59, 999);
-                          return itemDate >= start && itemDate <= end;
-                        }
-
-                        const diffInDays = (now.getTime() - itemDate.getTime()) / (1000 * 60 * 60 * 24);
-                        if (timeRange === '7d') return diffInDays <= 7;
-                        if (timeRange === '14d') return diffInDays <= 14;
-                        if (timeRange === '30d') return diffInDays <= 30;
-                        if (timeRange === '2m') return diffInDays <= 60;
-                        return true;
-                      });
-
-                      if (filteredTransactions.length > 0) {
-                        return filteredTransactions.map((tx: any) => (
+                      const transactions = JSON.parse(localStorage.getItem(`qw_transactions_${currentUser?.uid}`) || '[]');
+                      if (transactions.length > 0) {
+                        return transactions.sort((a: any, b: any) => new Date(b.time).getTime() - new Date(a.time).getTime()).map((tx: any) => (
                           <div key={tx.id} className="bg-surface-container-low p-6 rounded-3xl border border-primary/5 flex justify-between items-center group hover:bg-white transition-colors">
                             <div className="flex items-center gap-4">
                               <div className={cn(
                                 "w-12 h-12 rounded-xl flex items-center justify-center",
-                                tx.type === 'deposit' || tx.type === 'payout' || tx.type === 'earning' ? "bg-success/10 text-success" : "bg-error/10 text-error"
+                                tx.type === 'deposit' ? "bg-success/10 text-success" : "bg-error/10 text-error"
                               )}>
-                                {tx.type === 'deposit' || tx.type === 'payout' || tx.type === 'earning' ? <ArrowDownLeft className="w-6 h-6" /> : <ArrowUpRight className="w-6 h-6" />}
+                                {tx.type === 'deposit' ? <ArrowDownLeft className="w-6 h-6" /> : <ArrowUpRight className="w-6 h-6" />}
                               </div>
                               <div>
                                 <h4 className="font-headline font-black text-on-surface">{tx.desc}</h4>
-                                <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">
-                                  {formatRelativeTime(tx.date || tx.time)} • {tx.type}
-                                </p>
+                                <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">{formatRelativeTime(tx.time)} • {tx.type}</p>
                               </div>
                             </div>
                             <span className={cn(
                               "text-lg font-headline font-black",
-                              tx.type === 'deposit' || tx.type === 'payout' || tx.type === 'earning' ? "text-success" : "text-error"
+                              tx.type === 'deposit' ? "text-success" : "text-error"
                             )}>
-                              {tx.type === 'deposit' || tx.type === 'payout' || tx.type === 'earning' ? '+' : '-'}₦{(tx.amount || 0).toLocaleString()}
+                              {tx.type === 'deposit' ? '+' : '-'}₦{tx.amount.toLocaleString()}
                             </span>
                           </div>
                         ));
                       }
-
                       return (
-                        <div className="py-20 text-center bg-surface-container-low rounded-[3rem] border border-dashed border-primary/20">
-                          <div className="w-20 h-20 bg-primary/5 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <History className="w-10 h-10 text-primary/20" />
-                          </div>
-                          <h4 className="font-headline font-black text-on-surface">{history.length > 0 ? 'No results found' : 'No transactions yet'}</h4>
-                          <p className="text-xs font-medium text-on-surface-variant mt-1">
-                            {history.length > 0 ? 'Try adjusting your filters to see more.' : 'Your financial history will appear here.'}
-                          </p>
+                        <div className="py-20 text-center border-2 border-dashed border-primary/10 rounded-[2.5rem]">
+                          <p className="text-on-surface-variant font-medium">No transactions yet.</p>
                         </div>
                       );
                     })()}

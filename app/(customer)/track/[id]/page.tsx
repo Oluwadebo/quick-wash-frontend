@@ -113,34 +113,8 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
   const progress = ((currentStepIdx + 1) / steps.length) * 100;
 
   const handleVerifyDelivery = async (inputCode: string) => {
-    if (inputCode === order?.code4) {
-      const updatedOrder = { 
-        ...order, 
-        status: 'delivered', 
-        color: 'bg-success text-on-success',
-        deliveredAt: new Date().toISOString()
-      };
-      await db.saveOrder(updatedOrder);
-      
-      // Rider gets second half of rider fee
-      const riderFee = order.riderFee || 1000;
-      const secondHalf = riderFee * 0.5;
-      
-      if (order.riderUid) {
-        const riderUser = await db.getUser(order.riderUid);
-        if (riderUser) {
-          await db.adjustTrustPoints(riderUser.uid, 'completed_order');
-          await db.updateUser(riderUser.uid, { 
-            walletBalance: (riderUser.walletBalance || 0) + secondHalf 
-          });
-          await db.recordTransaction(riderUser.uid, {
-            type: 'deposit',
-            amount: secondHalf,
-            desc: `Delivery Fee (2nd Half) - Order #${order.id}`
-          });
-        }
-      }
-
+    try {
+      const updatedOrder = await db.updateOrderStatus(order.id, 'delivered', 'bg-success text-on-success', inputCode);
       setOrder(updatedOrder);
       setNotification({ message: 'Delivery verified! Thank you.', type: 'success' });
       setHandoverInput('');
@@ -150,8 +124,8 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
 
       setTimeout(() => setNotification(null), 3000);
       window.dispatchEvent(new Event('storage'));
-    } else {
-      setNotification({ message: 'Incorrect delivery code! Please check with the rider.', type: 'error' });
+    } catch (error: any) {
+      setNotification({ message: error.message || 'Incorrect delivery code!', type: 'error' });
       setTimeout(() => setNotification(null), 3000);
     }
   };

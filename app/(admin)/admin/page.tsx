@@ -57,54 +57,44 @@ export default function AdminDashboard() {
 
   const isSuperAdmin = currentUser?.phoneNumber === '09012345678' || currentUser?.email === 'ogunwedebo21@gmail.com';
 
-  const handleRestrictUser = async (uid: string, status: 'active' | 'restricted' | 'suspended') => {
+  const handleRestrictUser = (phone: string, status: 'active' | 'restricted' | 'suspended') => {
     if (!isSuperAdmin) {
       alert('Only Super Admin can restrict or ban users.');
       return;
     }
-    const user = await db.updateUser(uid, { status });
-    const users = await db.getUsers();
-    setAllUsers(users);
+    const users = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
+    const updated = users.map((u: any) => u.phoneNumber === phone ? { ...u, status } : u);
+    localStorage.setItem('qw_all_users', JSON.stringify(updated));
+    setAllUsers(updated);
     alert(`User status updated to ${status}.`);
-    
-    // Log it
-    await db.addAuditLog({
-      action: 'User Restricted',
-      target: uid,
-      admin: currentUser?.phoneNumber,
-      time: new Date().toISOString(),
-      details: `Admin restricted user UID ${uid} to ${status}`
-    });
   };
 
-  const handleAddUser = async (e: React.FormEvent) => {
+  const handleAddUser = (e: React.FormEvent) => {
     e.preventDefault();
-    const users = await db.getUsers();
+    const users = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
     if (users.find((u: any) => u.phoneNumber === newUser.phoneNumber)) {
       alert('User with this phone number already exists!');
       return;
     }
-    const createdUser = await db.createUser({ 
-      ...newUser, 
-      uid: `u_${Math.random().toString(36).substr(2, 9)}`,
-      trustPoints: 50, 
-      trustScore: 100, 
-      walletBalance: 0, 
-      pendingBalance: 0 
-    });
-    setAllUsers([...users, createdUser]);
+    const updated = [...users, { ...newUser, trustPoints: 50, trustScore: 100, walletBalance: 0, pendingBalance: 0 }];
+    localStorage.setItem('qw_all_users', JSON.stringify(updated));
+    setAllUsers(updated);
     setIsAddUserModalOpen(false);
     setNewUser({ fullName: '', phoneNumber: '', password: '', role: 'customer', status: 'active', isApproved: true });
     
-    await db.addAuditLog({
+    // Add audit log
+    const logs = JSON.parse(localStorage.getItem('qw_audit_logs') || '[]');
+    logs.push({
+      id: Date.now(),
       action: 'User Created',
       target: newUser.phoneNumber,
       admin: currentUser?.phoneNumber,
       time: new Date().toISOString(),
-      details: `Admin created a new ${newUser.role}: ${newUser.fullName}`
+      details: `Admin ${currentUser?.fullName} created a new ${newUser.role}: ${newUser.fullName}`
     });
+    localStorage.setItem('qw_audit_logs', JSON.stringify(logs));
     
-    alert(`User ${newUser.fullName} created successfully!`);
+    alert(`User ${newUser.fullName} created successfully! Details: Phone: ${newUser.phoneNumber}, Role: ${newUser.role}`);
   };
   const [isVerificationModalOpen, setIsVerificationModalOpen] = React.useState(false);
   const [verifyingUser, setVerifyingUser] = React.useState<any>(null);
@@ -113,17 +103,8 @@ export default function AdminDashboard() {
   const [showNewUserPassword, setShowNewUserPassword] = React.useState(false);
   const [broadcastMessage, setBroadcastMessage] = React.useState('');
   const [broadcastAudience, setBroadcastAudience] = React.useState('All Users');
-  const [auditLogs, setAuditLogs] = React.useState<any[]>([]);
   const [isOverriding, setIsOverriding] = React.useState(false);
   const [overrideData, setOverrideData] = React.useState({ action: '', reason: '' });
-
-  React.useEffect(() => {
-    const fetchLogs = async () => {
-      const logs = await db.getAuditLogs();
-      setAuditLogs(logs);
-    };
-    if (activeTab === 'audit') fetchLogs();
-  }, [activeTab]);
 
   const [campaigns, setCampaigns] = React.useState<any[]>([]);
   const [isCampaignModalOpen, setIsCampaignModalOpen] = React.useState(false);
@@ -137,43 +118,51 @@ export default function AdminDashboard() {
     color: 'bg-primary'
   });
 
-  const handleAddCampaign = React.useCallback(async (e: React.FormEvent) => {
+  const handleAddCampaign = React.useCallback((e: React.FormEvent) => {
     e.preventDefault();
     const updated = editingCampaign 
       ? campaigns.map(c => c.id === editingCampaign.id ? { ...campaignForm, id: c.id } : c)
       : [...campaigns, { ...campaignForm, id: Date.now() }];
     
-    await db.saveCampaigns(updated);
+    localStorage.setItem('qw_campaigns', JSON.stringify(updated));
     setCampaigns(updated);
     setIsCampaignModalOpen(false);
     setEditingCampaign(null);
     setCampaignForm({ name: '', status: 'Active', reach: '0', conversion: '0%', color: 'bg-primary' });
     
-    await db.addAuditLog({
+    // Audit Log
+    const logs = JSON.parse(localStorage.getItem('qw_audit_logs') || '[]');
+    logs.push({
+      id: Date.now(),
       action: editingCampaign ? 'Campaign Updated' : 'Campaign Created',
       target: campaignForm.name,
       admin: currentUser?.phoneNumber,
       time: new Date().toISOString(),
-      details: `Admin ${editingCampaign ? 'updated' : 'created'} campaign: ${campaignForm.name}`
+      details: `Admin ${currentUser?.fullName} ${editingCampaign ? 'updated' : 'created'} campaign: ${campaignForm.name}`
     });
+    localStorage.setItem('qw_audit_logs', JSON.stringify(logs));
   }, [campaigns, editingCampaign, campaignForm, currentUser]);
 
-  const handleDeleteCampaign = React.useCallback(async (id: number) => {
+  const handleDeleteCampaign = React.useCallback((id: number) => {
     const updated = campaigns.filter(c => c.id !== id);
-    await db.saveCampaigns(updated);
+    localStorage.setItem('qw_campaigns', JSON.stringify(updated));
     setCampaigns(updated);
     
-    await db.addAuditLog({
+    // Audit Log
+    const logs = JSON.parse(localStorage.getItem('qw_audit_logs') || '[]');
+    logs.push({
+      id: Date.now(),
       action: 'Campaign Deleted',
       target: id.toString(),
       admin: currentUser?.phoneNumber,
       time: new Date().toISOString()
     });
+    localStorage.setItem('qw_audit_logs', JSON.stringify(logs));
     setCampaignToDelete(null);
   }, [campaigns, currentUser]);
 
-  const clearAlerts = async () => {
-    await db.saveAlerts([]);
+  const clearAlerts = () => {
+    localStorage.setItem('qw_alerts', JSON.stringify([]));
     setAlerts([]);
     alert('System alerts cleared.');
   };
@@ -211,80 +200,112 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleSaveUser = async (e: React.FormEvent) => {
+  const handleSaveUser = (e: React.FormEvent) => {
     e.preventDefault();
-    await db.updateUser(editingUser.uid, editingUser);
-    const users = await db.getUsers();
-    setAllUsers(users);
+    const users = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
+    const updated = users.map((u: any) => u.phoneNumber === editingUser.phoneNumber ? editingUser : u);
+    localStorage.setItem('qw_all_users', JSON.stringify(updated));
+    setAllUsers(updated);
     setIsUserModalOpen(false);
     alert('User updated successfully!');
   };
   const [riders, setRiders] = React.useState<any[]>([]);
 
   React.useEffect(() => {
-    const loadData = async () => {
-      const users = await db.getUsers();
-      const orders = await db.getOrders();
-      const alerts = await db.getAlerts();
-      const campaigns = await db.getCampaigns();
+    const users = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
+    setAllUsers(users);
+    setPendingUsers(users.filter((u: any) => !u.isApproved));
+    setRiders(users.filter((u: any) => u.role === 'rider' && u.isApproved));
 
-      setAllUsers(users);
-      setPendingUsers(users.filter((u: any) => !u.isApproved));
-      setRiders(users.filter((u: any) => u.role === 'rider' && u.isApproved));
-      setAlerts(alerts.sort((a: any, b: any) => b.id - a.id));
-      setOrders(orders);
-      setCampaigns(campaigns);
+    const storedAlerts = JSON.parse(localStorage.getItem('qw_alerts') || '[]');
+    setAlerts(storedAlerts.sort((a: any, b: any) => b.id - a.id));
 
-      const totalRevenue = orders.reduce((acc: number, o: any) => acc + (Number(o.totalPrice) || 0), 0);
-      const activeOrders = orders.filter((o: any) => o.status !== 'delivered' && o.status !== 'completed' && !o.status.includes('Cancelled')).length;
-      
-      setStats([
-        { label: 'Total Revenue', value: `₦${(totalRevenue || 0).toLocaleString()}`, trend: '+18.2%', icon: TrendingUp, color: 'text-primary' },
-        { label: 'Active Orders', value: activeOrders.toString(), trend: '+5.4%', icon: ShoppingBag, color: 'text-tertiary' },
-        { label: 'Total Users', value: users.length.toString(), trend: '+12.1%', icon: Users, color: 'text-on-surface' },
-        { label: 'System Health', value: '99.9%', trend: 'Stable', icon: Activity, color: 'text-primary' }
-      ]);
-    };
+    const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
+    setOrders(allOrders);
 
-    loadData();
+    const totalRevenue = allOrders.reduce((acc: number, o: any) => acc + (Number(o.totalPrice) || 0), 0);
+    const activeOrders = allOrders.filter((o: any) => o.status !== 'delivered' && o.status !== 'completed' && !o.status.includes('Cancelled')).length;
+    
+    setStats([
+      { label: 'Total Revenue', value: `₦${(totalRevenue || 0).toLocaleString()}`, trend: '+18.2%', icon: TrendingUp, color: 'text-primary' },
+      { label: 'Active Orders', value: activeOrders.toString(), trend: '+5.4%', icon: ShoppingBag, color: 'text-tertiary' },
+      { label: 'Total Users', value: users.length.toString(), trend: '+12.1%', icon: Users, color: 'text-on-surface' },
+      { label: 'System Health', value: '99.9%', trend: 'Stable', icon: Activity, color: 'text-primary' }
+    ]);
 
-    // Auto-cancel logic on backend
-    const interval = setInterval(async () => {
-      await db.runAutoCancel();
-      const updatedOrders = await db.getOrders();
-      setOrders(updatedOrders);
-    }, 60000); // Check every minute
+    // Auto-cancel logic
+    const interval = setInterval(() => {
+      const currentOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
+      const now = new Date().getTime();
+      const twentyMinutes = 20 * 60 * 1000;
+      let changed = false;
+
+      const updatedOrders = currentOrders.map((o: any) => {
+        if ((o.status === 'rider_assign_pickup' || o.status === 'rider_assign_delivery') && !o.riderPhone) {
+          const startTime = new Date(o.updatedAt || o.createdAt).getTime();
+          if (now - startTime > twentyMinutes) {
+            changed = true;
+            // Refund customer
+            const allUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
+            const updatedUsers = allUsers.map((u: any) => {
+              if (u.phoneNumber === o.customerPhone) {
+                return { ...u, walletBalance: (u.walletBalance || 0) + (o.totalPrice || 0) };
+              }
+              return u;
+            });
+            localStorage.setItem('qw_all_users', JSON.stringify(updatedUsers));
+
+            return { 
+              ...o, 
+              status: 'Cancelled (Auto)', 
+              color: 'bg-error/10 text-error',
+              cancelledAt: new Date().toISOString(),
+              refunded: true
+            };
+          }
+        }
+        return o;
+      });
+
+      if (changed) {
+        localStorage.setItem('qw_orders', JSON.stringify(updatedOrders));
+        setOrders(updatedOrders);
+        window.dispatchEvent(new Event('storage'));
+      }
+    }, 30000); // Check every 30 seconds
 
     return () => clearInterval(interval);
   }, []);
 
-  const assignRider = async (orderId: string, riderPhone: string) => {
-    const rider = allUsers.find(u => u.phoneNumber === riderPhone);
-    if (!rider) return;
-
-    const success = await db.claimOrder(orderId, rider.uid, rider.fullName, rider.phoneNumber);
-    if (success) {
-      const updated = await db.getOrders();
-      setOrders(updated);
-      alert('Rider assigned successfully!');
-    } else {
-      alert('Failed to assign rider.');
-    }
+  const assignRider = (orderId: string, riderPhone: string) => {
+    const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
+    const updated = allOrders.map((o: any) => {
+      if (o.id === orderId) {
+        return { ...o, riderPhone, status: o.status === 'Pending Pickup' ? 'Pending Pickup' : o.status };
+      }
+      return o;
+    });
+    localStorage.setItem('qw_orders', JSON.stringify(updated));
+    setOrders(updated);
+    alert('Rider assigned successfully!');
   };
 
-  const handleApprove = React.useCallback(async (phone: string) => {
-    await approveUser(phone);
-    const users = await db.getUsers();
-    setAllUsers(users);
-    setPendingUsers(users.filter((u: any) => !u.isApproved));
+  const handleApprove = React.useCallback((phone: string) => {
+    const updated = approveUser(phone);
+    setAllUsers(updated);
+    setPendingUsers(updated.filter((u: any) => !u.isApproved));
     
-    await db.addAuditLog({
+    // Add audit log
+    const logs = JSON.parse(localStorage.getItem('qw_audit_logs') || '[]');
+    const newLog = {
       id: Date.now(),
       action: 'User Approved',
       target: phone,
       admin: currentUser?.phoneNumber,
       time: new Date().toISOString()
-    });
+    };
+    logs.push(newLog);
+    localStorage.setItem('qw_audit_logs', JSON.stringify(logs));
     
     alert('User approved successfully!');
   }, [approveUser, currentUser]);
@@ -701,7 +722,7 @@ export default function AdminDashboard() {
                 >
                   <h2 className="text-2xl font-headline font-black text-on-surface mb-8">System Audit Log</h2>
                   <div className="space-y-4">
-                    {auditLogs.slice().reverse().map((log: any) => (
+                    {(JSON.parse(localStorage.getItem('qw_audit_logs') || '[]')).reverse().map((log: any) => (
                       <div 
                         key={log.id} 
                         onClick={() => {
@@ -722,7 +743,7 @@ export default function AdminDashboard() {
                         <span className="text-[10px] font-bold text-on-surface-variant">{new Date(log.time).toLocaleString()}</span>
                       </div>
                     ))}
-                    {auditLogs.length === 0 && (
+                    {(JSON.parse(localStorage.getItem('qw_audit_logs') || '[]')).length === 0 && (
                       <div className="py-20 text-center border-2 border-dashed border-primary/10 rounded-3xl">
                         <p className="text-on-surface-variant font-medium">No audit logs found.</p>
                       </div>
@@ -1521,28 +1542,14 @@ export default function AdminDashboard() {
                               Cancel
                             </button>
                             <button 
-                              onClick={async () => {
+                              onClick={() => {
                                 if (!overrideData.reason) return alert('Please provide a reason.');
-                                
-                                try {
-                                  // For now, since we don't have a dedicated update log endpoint,
-                                  // we can just add a new log entry describing the override
-                                  await db.addAuditLog({
-                                    action: 'Log Override',
-                                    target: selectedDetail.id,
-                                    admin: currentUser?.phoneNumber,
-                                    time: new Date().toISOString(),
-                                    details: `Override: ${overrideData.action}. Reason: ${overrideData.reason}. Original: ${selectedDetail.action}`
-                                  });
-                                  
-                                  const logs = await db.getAuditLogs();
-                                  setAuditLogs(logs);
-                                  alert('Audit log override recorded successfully.');
-                                  setIsOverriding(false);
-                                  setIsDetailModalOpen(false);
-                                } catch (err) {
-                                  alert('Failed to record override.');
-                                }
+                                const logs = JSON.parse(localStorage.getItem('qw_audit_logs') || '[]');
+                                const updated = logs.map((l: any) => l.id === selectedDetail.id ? { ...l, action: overrideData.action, overrideReason: overrideData.reason, overridenBy: currentUser?.phoneNumber } : l);
+                                localStorage.setItem('qw_audit_logs', JSON.stringify(updated));
+                                alert('Audit log updated successfully.');
+                                setIsOverriding(false);
+                                setIsDetailModalOpen(false);
                               }}
                               className="flex-1 h-12 bg-primary text-on-primary rounded-xl font-bold text-xs"
                             >

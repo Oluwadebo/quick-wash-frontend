@@ -110,20 +110,22 @@ function OrderPageContent() {
     const initPage = async () => {
       if (!vendorId) return;
 
+      const isNew = searchParams.get('new') === 'true';
+
       // 1. Load Auth & Existing Order
       const storedUser = localStorage.getItem('qw_user');
-      let user: UserData | null = null;
+      let user = null;
       if (storedUser) {
         user = JSON.parse(storedUser);
         setCurrentUser(user);
         
         const orders = await db.getOrders();
         const existing = orders.find((o: Order) => 
-          o.customerUid === user!.uid && 
+          o.customerUid === user.uid && 
           o.status === 'confirm' &&
           o.vendorId === vendorId
         );
-        if (existing) {
+        if (existing && !isNew) {
           setExistingOrderId(existing.id);
           setIsPaid(true);
         }
@@ -135,7 +137,7 @@ function OrderPageContent() {
 
       // 3. Load Price List base structure
       const myServices = await db.getVendorPriceList(vendorId);
-      let initialCart: any[] = [];
+      let initialCart = [];
       
       if (myServices && myServices.length > 0) {
         initialCart = myServices.map((vs: any) => {
@@ -165,13 +167,13 @@ function OrderPageContent() {
         initialCart = defaultItems.map(item => ({ ...item, count: 0 }));
       }
 
-      // 4. Restore Saved Count Data
-      if (user?.uid) {
+      // 4. Restore Saved Count Data (Skip if isNew)
+      if (user?.uid && !isNew) {
         const savedCartStr = localStorage.getItem(`qw_pending_cart_${user.uid}_${vendorId}`);
         if (savedCartStr) {
           try {
             const savedCart = JSON.parse(savedCartStr);
-            initialCart = initialCart.map((item: any) => {
+            initialCart = initialCart.map(item => {
               const savedItem = savedCart.find((p: any) => p.id === item.id);
               if (savedItem) {
                 return { 
@@ -179,7 +181,7 @@ function OrderPageContent() {
                   count: savedItem.count || 0,
                   selectedService: savedItem.selectedService || item.selectedService,
                   hasStainRemover: !!savedItem.hasStainRemover,
-                  subItems: item.subItems ? item.subItems.map((si: any) => {
+                  subItems: item.subItems ? item.subItems.map(si => {
                     const savedSi = savedItem.subItems?.find((ssi: any) => ssi.id === si.id);
                     return savedSi ? { ...si, count: savedSi.count || 0 } : si;
                   }) : undefined
@@ -191,6 +193,8 @@ function OrderPageContent() {
             console.error('Failed to parse saved cart', e);
           }
         }
+      } else if (user?.uid && isNew) {
+        localStorage.removeItem(`qw_pending_cart_${user.uid}_${vendorId}`);
       }
 
       setCart(initialCart);
@@ -209,19 +213,19 @@ function OrderPageContent() {
 
   const updateCount = (id: string, delta: number) => {
     if (isPaid) return;
-    setCart(prev => prev.map((item: any) => 
+    setCart(prev => prev.map(item => 
       item.id === id ? { ...item, count: Math.max(0, item.count + delta) } : item
     ));
   };
 
   const updateSubItemCount = (itemId: string, subItemId: string, delta: number) => {
     if (isPaid) return;
-    setCart(prev => prev.map((item: any) => {
+    setCart(prev => prev.map(item => {
       if (item.id === itemId && item.subItems) {
-        const newSubItems = item.subItems.map((si: any) => 
+        const newSubItems = item.subItems.map(si => 
           si.id === subItemId ? { ...si, count: Math.max(0, si.count + delta) } : si
         );
-        const newTotalCount = newSubItems.reduce((acc: number, si: any) => acc + si.count, 0);
+        const newTotalCount = newSubItems.reduce((acc, si) => acc + si.count, 0);
         return { ...item, subItems: newSubItems, count: newTotalCount };
       }
       return item;
@@ -231,7 +235,7 @@ function OrderPageContent() {
   const updateService = (id: string, serviceName: string, e?: React.MouseEvent) => {
     if (isPaid) return;
     if (e) e.stopPropagation(); // Prevent card onClick from firing
-    setCart(prev => prev.map((item: any) => 
+    setCart(prev => prev.map(item => 
       item.id === id ? { ...item, selectedService: serviceName } : item
     ));
   };
@@ -239,7 +243,7 @@ function OrderPageContent() {
   const toggleStainRemover = (id: string, e?: React.MouseEvent) => {
     if (isPaid) return;
     if (e) e.stopPropagation(); // Prevent card onClick from firing
-    setCart(prev => prev.map((item: any) => 
+    setCart(prev => prev.map(item => 
       item.id === id ? { ...item, hasStainRemover: !item.hasStainRemover } : item
     ));
   };
@@ -262,8 +266,8 @@ function OrderPageContent() {
     return (count * (Number(sPrice) || 0)) + (count > 0 ? stainPrice : 0);
   };
 
-  const totalItems = cart.reduce((acc: number, item: any) => acc + (Number(item.count) || 0), 0);
-  const itemsPrice = cart.reduce((acc: number, item: any) => acc + (Number(getItemPrice(item)) || 0), 0);
+  const totalItems = cart.reduce((acc, item) => acc + (Number(item.count) || 0), 0);
+  const itemsPrice = cart.reduce((acc, item) => acc + (Number(getItemPrice(item)) || 0), 0);
   const [riderFee] = React.useState(() => calculateRiderFee());
   const totalPrice = totalItems > 0 ? (Number(itemsPrice) || 0) + (Number(riderFee) || 0) : 0;
 
@@ -312,9 +316,9 @@ function OrderPageContent() {
     const delay = paymentMethod === 'wallet' ? 2000 : 4000;
     await new Promise(resolve => setTimeout(resolve, delay));
     
-    const itemsDescription = cart.filter((i: any) => i.count > 0).map((i: any) => {
+    const itemsDescription = cart.filter(i => i.count > 0).map(i => {
       if (i.subItems) {
-        const subDesc = i.subItems.filter((si: any) => si.count > 0).map((si: any) => `${si.count}x ${si.name}`).join(', ');
+        const subDesc = i.subItems.filter(si => si.count > 0).map(si => `${si.count}x ${si.name}`).join(', ');
         return `${subDesc} (${i.selectedService})`;
       }
       return `${i.count}x ${i.name} (${i.selectedService})`;
@@ -470,7 +474,28 @@ function OrderPageContent() {
     }
   };
 
-  const showActionRequired = existingOrder?.status === 'Action Required' || existingOrder?.status === 'rider_assign_pickup';
+  const showActionRequired = existingOrder?.status === 'Action Required' || existingOrder?.status === 'rider_assign_pickup' || existingOrder?.status === 'confirm';
+
+  // AUTO-READY TIMER: 30 Minutes after payment
+  React.useEffect(() => {
+    if (existingOrder && existingOrder.status === 'confirm' && existingOrder.paidAt) {
+      const paidAt = new Date(existingOrder.paidAt).getTime();
+      const now = new Date().getTime();
+      const thirtyMins = 30 * 60 * 1000;
+      const timeLeft = thirtyMins - (now - paidAt);
+
+      if (timeLeft <= 0) {
+        // Automatically trigger pickup request
+        handlePickupRequest();
+      } else {
+        // Set a timer for the remaining time
+        const timer = setTimeout(() => {
+          handlePickupRequest();
+        }, timeLeft);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [existingOrder, handlePickupRequest]);
 
   if (vendorId && !isInitialized) {
     return (
@@ -545,7 +570,7 @@ function OrderPageContent() {
               <div className="bg-white/40 rounded-[2rem] p-6 mb-8 border border-primary/5">
                 <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-4">Paid Items</p>
                 <div className="space-y-4">
-                  {existingOrder?.items.split(',').map((item: string, i: number) => (
+                  {existingOrder?.items.split(',').map((item, i) => (
                     <div key={i} className="flex items-center gap-3">
                       <div className="w-2 h-2 rounded-full bg-primary" />
                       <p className="font-headline font-black text-on-surface leading-tight">{item.trim()}</p>
@@ -580,7 +605,7 @@ function OrderPageContent() {
             </section>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {cart.map((item: any, idx: number) => (
+              {cart.map((item, idx) => (
                 <motion.div 
                   key={item.id}
                   initial={{ opacity: 0, y: 20 }}
@@ -611,7 +636,7 @@ function OrderPageContent() {
                   <div className="flex flex-col flex-1">
                     {item.subItems && item.subItems.length > 0 && (
                       <div className="grid grid-cols-1 gap-3 mb-6">
-                        {item.subItems.map((si: any) => (
+                        {item.subItems.map(si => (
                           <div key={si.id} className="bg-white/50 p-4 rounded-2xl border border-primary/5 flex items-center justify-between">
                             <div>
                               <p className="font-headline font-black text-xs">{si.name}</p>
@@ -670,7 +695,7 @@ function OrderPageContent() {
 
                       {/* Service Grid */}
                       <div className="grid grid-cols-2 gap-2">
-                        {item.services.map((service: any) => (
+                        {item.services.map(service => (
                           <button 
                             key={service.name}
                             onClick={(e) => updateService(item.id, service.name, e)}
@@ -752,7 +777,7 @@ function OrderPageContent() {
             {!showActionRequired && totalItems > 0 && (
               <div className="mb-8 p-6 bg-surface-container rounded-[2rem] border border-primary/5 space-y-3">
                 <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Detailed Breakdown</p>
-                {cart.filter((item: any) => item.count > 0).map((item: any) => (
+                {cart.filter(item => item.count > 0).map(item => (
                   <div key={item.id} className="flex justify-between text-sm">
                     <div className="flex flex-col">
                       <span className="font-headline font-black text-on-surface">
@@ -968,7 +993,7 @@ function OrderPageContent() {
                 <div>
                   <label className="block font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-3">Select Landmark</label>
                   <div className="grid grid-cols-2 gap-3">
-                    {['Under-G', 'Adenike', 'Isale-General', 'Stadium', 'Bovina', 'LAUTECH Gate'].map((l: string) => (
+                    {['Under-G', 'Adenike', 'Isale-General', 'Stadium', 'Bovina', 'LAUTECH Gate'].map((l) => (
                       <button
                         key={l}
                         onClick={() => setPickupLandmark(l)}

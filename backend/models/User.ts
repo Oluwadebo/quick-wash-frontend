@@ -1,18 +1,50 @@
-import mongoose from 'mongoose';
+import mongoose, { Schema, Document } from 'mongoose';
 
-const UserSchema = new mongoose.Schema({
+export interface IUser extends Document {
+  uid: string;
+  fullName: string;
+  phoneNumber: string;
+  password?: string;
+  role: 'customer' | 'vendor' | 'rider' | 'admin';
+  isApproved: boolean;
+  walletBalance: number;
+  pendingBalance: number;
+  withdrawalRequested: boolean;
+  trustPoints: number;
+  trustScore: number;
+  status: 'active' | 'restricted' | 'suspended';
+  restrictionExpires?: Date;
+  lastPenaltyAt?: Date;
+  lastRecoveryAt?: Date;
+  shopName?: string;
+  vehicleType?: string;
+  nin?: string;
+  whatsappNumber?: string;
+  bankAccountName?: string;
+  bankAccountNumber?: string;
+  bankName?: string;
+  turnaroundTime?: string;
+  capacity?: number;
+  address?: string;
+  shopAddress?: string;
+  landmark?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const UserSchema: Schema = new Schema({
   uid: { type: String, required: true, unique: true },
   fullName: { type: String, required: true },
   phoneNumber: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
+  password: { type: String },
   role: { type: String, enum: ['customer', 'vendor', 'rider', 'admin'], default: 'customer' },
   isApproved: { type: Boolean, default: false },
   walletBalance: { type: Number, default: 0 },
   pendingBalance: { type: Number, default: 0 },
+  withdrawalRequested: { type: Boolean, default: false },
   trustPoints: { type: Number, default: 100 },
   trustScore: { type: Number, default: 100 },
   status: { type: String, enum: ['active', 'restricted', 'suspended'], default: 'active' },
-  withdrawalRequested: { type: Boolean, default: false },
   restrictionExpires: { type: Date },
   lastPenaltyAt: { type: Date },
   lastRecoveryAt: { type: Date },
@@ -28,7 +60,6 @@ const UserSchema = new mongoose.Schema({
   address: { type: String },
   shopAddress: { type: String },
   landmark: { type: String },
-  createdAt: { type: Date, default: Date.now }
-});
+}, { timestamps: true });
 
-export default mongoose.models.User || mongoose.model('User', UserSchema);
+export default mongoose.model<IUser>('User', UserSchema);

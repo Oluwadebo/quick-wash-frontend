@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 
 interface ToastProps {
   message: string;
-  type: 'success' | 'error' | 'info' | 'warning';
+  type: 'success' | 'error' | 'info';
   onClose: () => void;
 }
 
@@ -25,13 +25,11 @@ export function Toast({ message, type, onClose }: ToastProps) {
       className={cn(
         "fixed bottom-24 left-1/2 px-6 py-4 rounded-2xl shadow-2xl z-[300] flex items-center gap-3 font-headline font-black text-sm min-w-[300px]",
         type === 'success' ? "bg-success text-on-success" : 
-        type === 'error' ? "bg-error text-on-error" : 
-        type === 'warning' ? "bg-warning text-on-warning" : "bg-primary text-on-primary"
+        type === 'error' ? "bg-error text-on-error" : "bg-primary text-on-primary"
       )}
     >
       {type === 'success' && <CheckCircle className="w-5 h-5" />}
       {type === 'error' && <AlertTriangle className="w-5 h-5" />}
-      {type === 'warning' && <AlertTriangle className="w-5 h-5" />}
       {type === 'info' && <Info className="w-5 h-5" />}
       
       <span className="flex-1">{message}</span>
