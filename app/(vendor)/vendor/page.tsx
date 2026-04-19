@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
 import { formatRelativeTime } from '@/lib/time';
-import { X, History, Wallet, ShoppingBag, Volume2, TrendingUp, Star, ShieldCheck, Clock, Package, ArrowRight, Play, AlertTriangle, Edit3, Trash2, Plus, Shirt, ArrowUpRight, ArrowDownLeft, Eye, EyeOff, CheckCircle2, CloudRain, Droplets } from 'lucide-react';
+import { X, History, Wallet, ShoppingBag, Volume2, TrendingUp, Star, ShieldCheck, Clock, Package, ArrowRight, Play, AlertTriangle, Edit3, Trash2, Plus, Shirt, ArrowUpRight, ArrowDownLeft, Eye, EyeOff, CheckCircle2, CloudRain, Droplets, Camera, Info } from 'lucide-react';
 import { db, Order, UserData } from '@/lib/DatabaseService';
 import { Toast } from '@/components/shared/Toast';
 
@@ -21,11 +21,11 @@ export default function VendorDashboard() {
   const { user: currentUser } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const [activeTab, setActiveTab] = React.useState<'orders' | 'history' | 'payout' | 'prices' | 'settings'>('orders');
+  const [activeTab, setActiveTab] = React.useState<'orders' | 'history' | 'payout' | 'prices' | 'settings' | 'disputes'>('orders');
 
   React.useEffect(() => {
     const tab = searchParams.get('tab');
-    if (tab && ['orders', 'history', 'payout', 'prices', 'settings'].includes(tab)) {
+    if (tab && ['orders', 'history', 'payout', 'prices', 'settings', 'disputes'].includes(tab)) {
       setActiveTab(tab as any);
     }
   }, [searchParams]);
@@ -234,6 +234,36 @@ export default function VendorDashboard() {
     setTimeout(() => setNotification(null), 2000);
   };
 
+  const handleVendorEvidenceUpload = async (orderId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64String = reader.result as string;
+        try {
+          const allOrders = await db.getOrders();
+          const order = allOrders.find(o => o.id === orderId);
+          if (order) {
+            await db.saveOrder({
+              ...order,
+              vendorEvidenceImage: base64String
+            });
+            const updatedOrders = await db.getOrders();
+            setOrders(updatedOrders.filter((o: Order) => o.vendorId === currentUser?.uid));
+            setNotification({ message: 'Evidence uploaded successfully!', type: 'success' });
+            setTimeout(() => setNotification(null), 3000);
+            window.dispatchEvent(new Event('storage'));
+          }
+        } catch (err) {
+          console.error(err);
+          setNotification({ message: 'Upload failed.', type: 'error' });
+          setTimeout(() => setNotification(null), 3000);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleWithdrawal = async () => {
     if (stats.totalEarnings < 8000) return;
     
@@ -350,16 +380,19 @@ export default function VendorDashboard() {
 
           {/* Tabs */}
           <div className="flex gap-4 mb-8 overflow-x-auto pb-2 hide-scrollbar">
-            {['orders', 'prices', 'history', 'payout', 'settings'].map((tab) => (
+            {['orders', 'prices', 'history', 'disputes', 'payout', 'settings'].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab as any)}
                 className={cn(
                   "px-8 py-4 rounded-2xl font-headline font-black text-sm capitalize transition-all",
-                  activeTab === tab ? "signature-gradient text-white shadow-lg" : "bg-surface-container-low text-on-surface-variant"
+                  activeTab === tab ? "signature-gradient text-white shadow-lg" : "bg-surface-container-low text-on-surface-variant flex items-center gap-2"
                 )}
               >
                 {tab}
+                {tab === 'disputes' && orders.filter(o => o.status === 'disputed').length > 0 && (
+                  <span className="w-2 h-2 rounded-full bg-error animate-pulse" />
+                )}
               </button>
             ))}
           </div>
@@ -567,6 +600,105 @@ export default function VendorDashboard() {
                     <p className="text-on-surface-variant font-headline font-bold text-xl">No active orders.</p>
                   </div>
                 )}
+              </motion.section>
+            )}
+
+            {activeTab === 'disputes' && (
+              <motion.section 
+                key="disputes"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="space-y-6"
+              >
+                <div className="bg-error/5 p-8 rounded-[2.5rem] border border-error/10">
+                  <div className="flex items-center gap-4 mb-8">
+                    <div className="w-12 h-12 rounded-2xl bg-error/10 flex items-center justify-center text-error">
+                      <AlertTriangle className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-headline font-black text-on-surface">Active Disputes</h2>
+                      <p className="text-on-surface-variant font-medium text-sm">Action required: Provide proof to avoid automatic refund.</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-6">
+                    {orders.filter(o => o.status === 'disputed').map(order => (
+                      <div key={order.id} className="bg-white p-8 rounded-[2rem] border border-error/20 shadow-sm space-y-6">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h4 className="font-headline font-black text-xl text-on-surface">Order #{order.id}</h4>
+                            <p className="text-xs font-bold text-on-surface-variant">Customer: {order.customerName}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-lg font-headline font-black text-error">₦{order.totalPrice.toLocaleString()}</p>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Held Amount</p>
+                          </div>
+                        </div>
+
+                        <div className="bg-surface-container p-4 rounded-xl space-y-2">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-error">Customer Complaint:</p>
+                          <p className="text-sm italic text-on-surface-variant">&quot;{order.issueDescription || 'No description provided.'}&quot;</p>
+                        </div>
+
+                        {order.evidenceImage && (
+                          <div className="space-y-2">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Customer Proof:</p>
+                            <div className="relative aspect-video w-full rounded-xl overflow-hidden grayscale opacity-50">
+                              <Image src={order.evidenceImage} alt="Customer Proof" fill className="object-cover" referrerPolicy="no-referrer" />
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="space-y-4">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-primary">Your Counter-Evidence:</p>
+                          {order.vendorEvidenceImage ? (
+                            <div className="relative aspect-video w-full rounded-xl overflow-hidden border-2 border-primary">
+                              <Image src={order.vendorEvidenceImage} alt="Vendor Proof" fill className="object-cover" referrerPolicy="no-referrer" />
+                              <button 
+                                onClick={() => {
+                                  const input = document.createElement('input');
+                                  input.type = 'file';
+                                  input.accept = 'image/*';
+                                  input.onchange = (e: any) => handleVendorEvidenceUpload(order.id, e);
+                                  input.click();
+                                }}
+                                className="absolute bottom-4 right-4 bg-white/90 backdrop-blur px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest text-primary shadow-lg"
+                              >
+                                Change Photo
+                              </button>
+                            </div>
+                          ) : (
+                            <div 
+                              onClick={() => {
+                                const input = document.createElement('input');
+                                input.type = 'file';
+                                input.accept = 'image/*';
+                                input.onchange = (e: any) => handleVendorEvidenceUpload(order.id, e);
+                                input.click();
+                              }}
+                              className="aspect-video rounded-xl border-2 border-dashed border-primary/20 flex flex-col items-center justify-center cursor-pointer hover:bg-primary/5 transition-colors"
+                            >
+                              <Camera className="w-8 h-8 text-primary/40 mb-2" />
+                              <p className="text-xs font-black uppercase tracking-widest text-primary/60">Upload Photo of Laundry</p>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex gap-4">
+                          <div className="flex-1 p-4 bg-surface-container-highest rounded-xl text-[10px] font-bold text-on-surface-variant leading-relaxed">
+                            Adding a clear photo of the clean items before they were bagged helps the admin resolve disputes in your favor.
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {orders.filter(o => o.status === 'disputed').length === 0 && (
+                      <div className="py-20 text-center bg-white rounded-[2rem] border border-primary/5">
+                        <CheckCircle2 className="w-12 h-12 text-success/20 mx-auto mb-4" />
+                        <p className="text-on-surface-variant font-headline font-bold">No active disputes. Your services are excellent!</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </motion.section>
             )}
 

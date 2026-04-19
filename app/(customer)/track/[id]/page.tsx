@@ -23,6 +23,8 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
 
   const [notification, setNotification] = React.useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
   const [handoverInput, setHandoverInput] = React.useState('');
+  const [showIssueInput, setShowIssueInput] = React.useState(false);
+  const [issueDescription, setIssueDescription] = React.useState('');
 
   React.useEffect(() => {
     const refresh = async () => {
@@ -165,20 +167,22 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
   };
 
   const handleRaiseIssue = async () => {
-    const issue = prompt('Please describe the issue with your order:');
-    if (issue && order) {
-      const updatedOrder = { 
-        ...order, 
-        status: 'disputed', 
-        color: 'bg-error text-on-error',
-        issueDescription: issue,
-        disputedAt: new Date().toISOString()
-      };
-      await db.saveOrder(updatedOrder);
-      setOrder(updatedOrder);
-      setNotification({ message: 'Your issue has been reported. Our support team will contact you shortly.', type: 'info' });
-      setTimeout(() => setNotification(null), 3000);
-    }
+    if (!issueDescription.trim() || !order) return;
+    
+    const updatedOrder = { 
+      ...order, 
+      status: 'disputed', 
+      color: 'bg-error text-on-error',
+      issueDescription: issueDescription,
+      disputedAt: new Date().toISOString()
+    } as Order;
+
+    await db.saveOrder(updatedOrder);
+    setOrder(updatedOrder);
+    setShowIssueInput(false);
+    setNotification({ message: 'Your issue has been reported. Our support team will contact you shortly.', type: 'info' });
+    setTimeout(() => setNotification(null), 3000);
+    window.dispatchEvent(new Event('storage'));
   };
 
   return (
@@ -308,7 +312,14 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
 
         {/* Sealed Bag Uploader - Only at pickup stage */}
         {(order.status === 'confirm' || order.status === 'rider_assign_pickup') && (
-          <SealedBagUploader />
+          <SealedBagUploader 
+            orderId={order.id} 
+            onUploaded={async () => {
+              const all = await db.getOrders();
+              const fresh = all.find((o: Order) => o.id === order.id);
+              if (fresh) setOrder(fresh);
+            }} 
+          />
         )}
 
         {/* Rider Info */}
@@ -366,19 +377,52 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
           </p>
           
           {order.status === 'delivered' && (
-            <div className="mt-8 grid grid-cols-2 gap-4">
-              <button 
-                onClick={handleRaiseIssue}
-                className="h-16 rounded-2xl bg-error/10 text-error font-headline font-black text-xs active:scale-95 transition-transform"
-              >
-                RAISE ISSUE
-              </button>
-              <button 
-                onClick={handleNoIssue}
-                className="h-16 rounded-2xl bg-success text-white font-headline font-black text-xs shadow-lg active:scale-95 transition-transform"
-              >
-                NO ISSUE
-              </button>
+            <div className="mt-8 space-y-4">
+              {showIssueInput ? (
+                <motion.div 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="space-y-4 bg-white p-6 rounded-3xl border-2 border-error/20"
+                >
+                  <label className="text-[10px] font-black uppercase tracking-widest text-error">Describe the issue</label>
+                  <textarea 
+                    value={issueDescription}
+                    onChange={(e) => setIssueDescription(e.target.value)}
+                    placeholder="e.g. Missing items, damaged clothes, etc."
+                    className="w-full h-32 bg-surface-container-low rounded-2xl p-4 text-sm font-medium outline-none focus:ring-2 ring-error/20"
+                  />
+                  <div className="flex gap-3">
+                    <button 
+                      onClick={() => setShowIssueInput(false)}
+                      className="flex-1 h-14 rounded-xl bg-surface-container-highest font-headline font-black text-xs"
+                    >
+                      CANCEL
+                    </button>
+                    <button 
+                      onClick={handleRaiseIssue}
+                      disabled={!issueDescription.trim()}
+                      className="flex-[2] h-14 rounded-xl bg-error text-white font-headline font-black text-xs shadow-lg shadow-error/20 disabled:opacity-50"
+                    >
+                      SUBMIT REPORT
+                    </button>
+                  </div>
+                </motion.div>
+              ) : (
+                <div className="grid grid-cols-2 gap-4">
+                  <button 
+                    onClick={() => setShowIssueInput(true)}
+                    className="h-16 rounded-2xl bg-error/10 text-error font-headline font-black text-xs active:scale-95 transition-transform"
+                  >
+                    RAISE ISSUE
+                  </button>
+                  <button 
+                    onClick={handleNoIssue}
+                    className="h-16 rounded-2xl bg-success text-white font-headline font-black text-xs shadow-lg active:scale-95 transition-transform"
+                  >
+                    NO ISSUE
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </section>

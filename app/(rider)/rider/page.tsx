@@ -451,11 +451,11 @@ export default function RiderDashboard() {
                     {tasks.map((order) => {
                       const isPickup = order.status === 'rider_assign_pickup';
                       const isDelivery = order.status === 'rider_assign_delivery' || order.status === 'picked_up_delivery';
-                      const isPickedUp = order.status === 'picked_up';
+                      const isGoingToCustomer = order.status === 'rider_assign_pickup' || order.status === 'picked_up_delivery';
                       
-                      const destinationLandmark = (isPickup || order.status === 'picked_up') ? order.customerLandmark : order.vendorLandmark;
-                      const destinationName = (isPickup || order.status === 'picked_up') ? order.customerName : order.vendorName;
-                      const destinationPhone = (isPickup || order.status === 'picked_up') ? order.customerPhone : order.vendorPhone;
+                      const destinationLandmark = isGoingToCustomer ? order.customerLandmark : order.vendorLandmark;
+                      const destinationName = isGoingToCustomer ? order.customerName : order.vendorName;
+                      const destinationPhone = isGoingToCustomer ? order.customerPhone : order.vendorPhone;
                       
                       return (
                         <div key={order.id} className="bg-surface-container-low p-8 rounded-[2.5rem] border border-primary/5 shadow-sm">
@@ -489,13 +489,20 @@ export default function RiderDashboard() {
                           </div>
 
                           <div className="flex flex-col gap-4 mt-8 pt-8 border-t border-primary/5">
-                            <div className="flex gap-4">
+                            <div className="flex gap-3">
                               <button 
-                                onClick={() => handleStartNavigation((isPickup || order.status === 'picked_up') ? order.customerLandmark || '' : order.vendorLandmark || '')}
-                                className="flex-1 h-16 bg-surface-container-highest text-on-surface rounded-2xl font-headline font-black text-sm flex items-center justify-center gap-3 active:scale-95 transition-transform shadow-sm"
+                                onClick={() => handleStartNavigation(destinationLandmark || '')}
+                                className="flex-1 h-16 bg-surface-container-highest text-on-surface rounded-2xl font-headline font-black text-[10px] flex items-center justify-center gap-2 active:scale-95 transition-transform shadow-sm px-2"
                               >
-                                <Navigation className="w-5 h-5 text-primary" /> NAVIGATE
+                                <Navigation className="w-4 h-4 text-primary" /> NAV
                               </button>
+
+                              <a 
+                                href={`tel:${destinationPhone}`}
+                                className="flex-1 h-16 bg-surface-container-highest text-on-surface rounded-2xl font-headline font-black text-[10px] flex items-center justify-center gap-2 active:scale-95 transition-transform shadow-sm px-2"
+                              >
+                                <Phone className="w-4 h-4 text-primary" /> CALL
+                              </a>
 
                               {order.status === 'rider_assign_pickup' && (
                                 <div className="flex-[2] flex gap-3">

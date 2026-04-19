@@ -7,7 +7,7 @@ import {
   Map, Activity, ArrowUpRight, Check, X as XIcon, 
   Wallet, BarChart3, Megaphone, History, MessageSquare, 
   Search, Filter, MoreHorizontal, UserPlus, Trash2, ExternalLink,
-  Edit3, Bike, Package, Navigation
+  Edit3, Bike, Package, Navigation, Info
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
@@ -288,6 +288,91 @@ export default function AdminDashboard() {
     localStorage.setItem('qw_orders', JSON.stringify(updated));
     setOrders(updated);
     alert('Rider assigned successfully!');
+  };
+
+  const [isRefundModalOpen, setIsRefundModalOpen] = React.useState(false);
+  const [resolvingOrder, setResolvingOrder] = React.useState<any>(null);
+  const [refundAmount, setRefundAmount] = React.useState<number>(0);
+
+  const handleResolveDispute = async (orderId: string, resolution: 'refund' | 'reject' | 'partial', customAmount?: number) => {
+    const allOrders = await db.getOrders();
+    const order = allOrders.find((o: any) => o.id === orderId);
+    if (!order) return;
+
+    let updatedOrder;
+    if (resolution === 'refund' || resolution === 'partial') {
+      const amountToRefund = resolution === 'refund' ? order.totalPrice : (customAmount || 0);
+      
+      updatedOrder = { 
+        ...order, 
+        status: resolution === 'refund' ? 'Refunded (Full)' : `Refunded (Partial: ₦${amountToRefund})`, 
+        color: 'bg-error/10 text-error',
+        refundedAt: new Date().toISOString(),
+        refundAmount: amountToRefund
+      };
+      
+      // Credit customer wallet
+      const customer = await db.getUser(order.customerUid);
+      if (customer) {
+        await db.updateUser(customer.uid, { 
+          walletBalance: (customer.walletBalance || 0) + amountToRefund 
+        });
+        await db.recordTransaction(customer.uid, {
+          type: 'deposit',
+          amount: amountToRefund,
+          desc: `Dispute Refund (${resolution}) - Order #${orderId}`
+        });
+      }
+
+      // If partial, release the rest to the vendor if applicable
+      if (resolution === 'partial') {
+        const remainingForVendor = Math.max(0, (order.itemsPrice || 0) - amountToRefund);
+        if (remainingForVendor > 0) {
+          const vendorUser = await db.getUser(order.vendorId);
+          if (vendorUser) {
+            await db.updateUser(vendorUser.uid, {
+              walletBalance: (vendorUser.walletBalance || 0) + remainingForVendor,
+              pendingBalance: Math.max(0, (vendorUser.pendingBalance || 0) - (order.itemsPrice * 0.2)) // Adjust pending balance
+            });
+            await db.recordTransaction(vendorUser.uid, {
+              type: 'deposit',
+              amount: remainingForVendor,
+              desc: `Partial Funds Release (Dispute Partial Refund) - Order #${order.id}`
+            });
+          }
+        }
+      }
+    } else {
+      updatedOrder = { 
+        ...order, 
+        status: 'completed', 
+        color: 'bg-success text-on-success',
+        disputeRejectedAt: new Date().toISOString()
+      };
+
+      // Vendor gets the held 20%
+      const itemsPrice = order.itemsPrice || 0;
+      const remaining20 = itemsPrice * 0.2;
+      const vendorUser = await db.getUser(order.vendorId);
+      if (vendorUser) {
+        await db.updateUser(vendorUser.uid, { 
+          walletBalance: (vendorUser.walletBalance || 0) + remaining20,
+          pendingBalance: Math.max(0, (vendorUser.pendingBalance || 0) - remaining20)
+        });
+        await db.recordTransaction(vendorUser.uid, {
+          type: 'deposit',
+          amount: remaining20,
+          desc: `Released Held Funds (Dispute Rejected) - Order #${order.id}`
+        });
+      }
+    }
+
+    await db.saveOrder(updatedOrder);
+    setOrders(prev => prev.map(o => o.id === orderId ? updatedOrder : o));
+    window.dispatchEvent(new Event('storage'));
+    setIsRefundModalOpen(false);
+    setResolvingOrder(null);
+    alert(`Dispute ${resolution}ed successfully.`);
   };
 
   const handleApprove = React.useCallback((phone: string) => {
@@ -819,7 +904,7 @@ export default function AdminDashboard() {
                   <div className="bg-surface-container-low rounded-[2.5rem] p-8 border border-primary/5">
                     <h2 className="text-2xl font-headline font-black text-on-surface mb-8">Active Disputes</h2>
                     <div className="space-y-4">
-                      {orders.filter(o => o.disputed).map(o => (
+                      {orders.filter(o => o.status === 'disputed').map(o => (
                         <div key={o.id} className="p-6 bg-surface-container-lowest rounded-3xl border border-error/20">
                           <div className="flex justify-between items-start mb-4">
                             <div className="flex items-center gap-4">
@@ -833,20 +918,73 @@ export default function AdminDashboard() {
                             </div>
                             <span className="bg-error text-on-error px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">High Priority</span>
                           </div>
-                          <p className="text-sm text-on-surface-variant mb-6 bg-surface-container p-4 rounded-xl italic">
-                            &quot;{o.disputeReason || 'Customer reported items missing from bag.'}&quot;
-                          </p>
+                          <div className="space-y-4 mb-6">
+                            <div className="space-y-2">
+                              <p className="text-[10px] font-black uppercase tracking-widest text-primary">Customer Complaint:</p>
+                              <p className="text-sm text-on-surface-variant bg-surface-container p-4 rounded-xl italic">
+                                &quot;{o.issueDescription || 'No description provided.'}&quot;
+                              </p>
+                            </div>
+                            
+                            {o.evidenceImage && (
+                              <div className="space-y-2">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-primary">Customer Evidence:</p>
+                                <div className="relative aspect-video w-full rounded-2xl overflow-hidden border-2 border-primary/10">
+                                  <Image 
+                                    src={o.evidenceImage} 
+                                    alt="Dispute Evidence" 
+                                    fill 
+                                    className="object-cover"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                </div>
+                              </div>
+                            )}
+
+                            {o.vendorEvidenceImage && (
+                              <div className="space-y-2">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-success">Vendor Counter-Evidence:</p>
+                                <div className="relative aspect-video w-full rounded-2xl overflow-hidden border-2 border-success/10">
+                                  <Image 
+                                    src={o.vendorEvidenceImage} 
+                                    alt="Vendor Evidence" 
+                                    fill 
+                                    className="object-cover"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                </div>
+                              </div>
+                            )}
+
+                            {!o.evidenceImage && !o.vendorEvidenceImage && (
+                              <div className="p-4 bg-surface-container rounded-xl flex items-center gap-3">
+                                <Info className="w-4 h-4 text-on-surface-variant" />
+                                <p className="text-xs text-on-surface-variant font-medium">No visual evidence uploaded for this dispute.</p>
+                              </div>
+                            )}
+                          </div>
+
                           <div className="flex gap-3">
-                            <button className="flex-1 h-12 bg-primary text-on-primary rounded-xl font-headline font-bold text-xs active:scale-95 transition-transform">
-                              Refund Customer
+                            <button 
+                              onClick={() => {
+                                setResolvingOrder(o);
+                                setRefundAmount(o.totalPrice);
+                                setIsRefundModalOpen(true);
+                              }}
+                              className="flex-1 h-12 bg-primary text-on-primary rounded-xl font-headline font-bold text-xs active:scale-95 transition-transform"
+                            >
+                              Resolve/Refund
                             </button>
-                            <button className="flex-1 h-12 bg-surface-container-highest text-on-surface rounded-xl font-headline font-bold text-xs active:scale-95 transition-transform">
+                            <button 
+                              onClick={() => handleResolveDispute(o.id, 'reject')}
+                              className="flex-1 h-12 bg-surface-container-highest text-on-surface rounded-xl font-headline font-bold text-xs active:scale-95 transition-transform"
+                            >
                               Reject Dispute
                             </button>
                           </div>
                         </div>
                       ))}
-                      {orders.filter(o => o.disputed).length === 0 && (
+                      {orders.filter(o => o.status === 'disputed').length === 0 && (
                         <div className="py-20 text-center border-2 border-dashed border-primary/10 rounded-3xl">
                           <p className="text-on-surface-variant font-medium">No active disputes. Great job!</p>
                         </div>
@@ -1559,6 +1697,70 @@ export default function AdminDashboard() {
                         </div>
                       </motion.div>
                     )}
+                  </motion.div>
+                </div>
+              )}
+              {/* Dispute Refund Modal */}
+              {isRefundModalOpen && resolvingOrder && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center p-6">
+                  <motion.div 
+                    initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                    className="absolute inset-0 bg-surface/80 backdrop-blur-xl"
+                    onClick={() => setIsRefundModalOpen(false)}
+                  />
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    className="relative w-full max-w-md bg-surface-container-low rounded-[3rem] p-10 border border-primary/10 shadow-2xl"
+                  >
+                    <h2 className="text-2xl font-headline font-black text-on-surface mb-2">Resolve Dispute</h2>
+                    <p className="text-on-surface-variant text-sm font-medium mb-8">Order #{resolvingOrder.id} • Total: ₦{resolvingOrder.totalPrice.toLocaleString()}</p>
+                    
+                    <div className="space-y-6">
+                      <div className="grid grid-cols-1 gap-3">
+                        <button 
+                          onClick={() => handleResolveDispute(resolvingOrder.id, 'refund')}
+                          className="w-full h-16 bg-primary text-on-primary rounded-2xl font-headline font-black text-xs shadow-lg active:scale-95 transition-transform flex items-center justify-between px-6"
+                        >
+                          FULL REFUND
+                          <span>₦{resolvingOrder.totalPrice.toLocaleString()}</span>
+                        </button>
+                        
+                        <div className="space-y-3 p-6 bg-surface-container-lowest rounded-2xl border border-primary/10">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">PARTIAL REFUND</p>
+                          <div className="flex items-center gap-3">
+                            <span className="text-2xl font-headline font-black">₦</span>
+                            <input 
+                              type="number"
+                              value={refundAmount}
+                              onChange={(e) => setRefundAmount(Math.min(resolvingOrder.totalPrice, Number(e.target.value)))}
+                              className="w-full h-12 bg-surface-container p-4 rounded-xl font-headline font-black text-xl outline-none focus:ring-2 ring-primary"
+                            />
+                          </div>
+                          <button 
+                            onClick={() => handleResolveDispute(resolvingOrder.id, 'partial', refundAmount)}
+                            disabled={refundAmount <= 0 || refundAmount >= resolvingOrder.totalPrice}
+                            className="w-full h-12 bg-surface-container-highest text-on-surface rounded-xl font-headline font-bold text-xs disabled:opacity-50"
+                          >
+                            CONFIRM PARTIAL
+                          </button>
+                        </div>
+
+                        <button 
+                          onClick={() => handleResolveDispute(resolvingOrder.id, 'reject')}
+                          className="w-full h-14 bg-error text-on-error rounded-2xl font-headline font-black text-xs active:scale-95 transition-transform"
+                        >
+                          NO REFUND (REJECT)
+                        </button>
+                      </div>
+
+                      <button 
+                        onClick={() => setIsRefundModalOpen(false)}
+                        className="w-full h-12 text-on-surface-variant font-headline font-bold text-xs"
+                      >
+                        CLOSE
+                      </button>
+                    </div>
                   </motion.div>
                 </div>
               )}

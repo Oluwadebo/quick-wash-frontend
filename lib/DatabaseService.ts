@@ -86,6 +86,9 @@ export interface Order {
   penaltyApplied?: boolean;
   payoutReleased?: boolean;
   disputed?: boolean;
+  evidenceImage?: string | null;
+  vendorEvidenceImage?: string | null;
+  refundAmount?: number;
   isLocked?: boolean;
   lockedBy?: string;
   lockExpires?: number;

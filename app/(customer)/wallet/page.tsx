@@ -2,7 +2,7 @@
 
 import React from 'react';
 import TopAppBar from '@/components/shared/TopAppBar';
-import { Wallet, ArrowUpRight, ArrowDownLeft, Plus, History, CreditCard, Landmark, ShieldCheck, ChevronRight, Bolt } from 'lucide-react';
+import { Wallet, ArrowUpRight, ArrowDownLeft, Plus, History, CreditCard, Landmark, ShieldCheck, ChevronRight, Bolt, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
@@ -16,9 +16,11 @@ export default function WalletPage() {
   const [timeRange, setTimeRange] = React.useState<'7d' | '14d' | '30d' | '2m' | 'today' | 'custom'>('30d');
   const [customRange, setCustomRange] = React.useState({ start: '', end: '' });
   const [isFunding, setIsFunding] = React.useState(false);
-  const [paymentMethod, setPaymentMethod] = React.useState<'wallet' | 'transfer' | 'card'>('wallet');
+  const [paymentMethod, setPaymentMethod] = React.useState<'transfer' | 'card' | null>(null);
   const [fundAmount, setFundAmount] = React.useState('');
   const [isProcessing, setIsProcessing] = React.useState(false);
+  const [showSuccessView, setShowSuccessView] = React.useState(false);
+  const [lastFundedAmount, setLastFundedAmount] = React.useState(0);
 
   React.useEffect(() => {
     if (user?.uid) {
@@ -69,7 +71,7 @@ export default function WalletPage() {
           type: 'deposit',
           amount,
           desc: 'Wallet Funding',
-          method: paymentMethod
+          method: paymentMethod || 'unknown'
         });
 
         // Refresh History
@@ -82,8 +84,10 @@ export default function WalletPage() {
 
     setIsProcessing(false);
     setIsFunding(false);
+    setPaymentMethod(null);
+    setLastFundedAmount(amount);
     setFundAmount('');
-    alert(`₦${amount.toLocaleString()} added to your wallet!`);
+    setShowSuccessView(true);
   }, [user, fundAmount, paymentMethod]);
 
   const filteredHistory = React.useMemo(() => {
@@ -397,6 +401,63 @@ export default function WalletPage() {
         )}
       </AnimatePresence>
 
+      {/* Success Modal */}
+      <AnimatePresence>
+        {showSuccessView && (
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-primary/20 backdrop-blur-xl"
+            />
+            <motion.div 
+              initial={{ scale: 0.8, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.8, opacity: 0, y: 20 }}
+              className="relative w-full max-w-sm bg-white rounded-[3.5rem] p-10 shadow-2xl flex flex-col items-center text-center overflow-hidden"
+            >
+              <div className="absolute top-0 left-0 w-full h-2 signature-gradient" />
+              
+              <motion.div 
+                initial={{ rotate: -45, scale: 0 }}
+                animate={{ rotate: 0, scale: 1 }}
+                transition={{ type: 'spring', delay: 0.2 }}
+                className="w-24 h-24 rounded-full bg-success/10 flex items-center justify-center text-success mb-8"
+              >
+                <div className="w-16 h-16 rounded-full bg-success flex items-center justify-center shadow-lg shadow-success/20">
+                  <CheckCircle2 className="w-10 h-10 text-white" />
+                </div>
+              </motion.div>
+
+              <h3 className="text-3xl font-headline font-black text-on-surface mb-2">Success!</h3>
+              <p className="text-sm font-medium text-on-surface-variant mb-6">
+                Your wallet has been credited successfully.
+              </p>
+
+              <div className="w-full bg-surface-container-highest/20 rounded-3xl p-6 mb-8 border border-primary/5">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-on-surface-variant mb-1">Amount Funded</p>
+                <p className="text-3xl font-headline font-black text-primary">₦{lastFundedAmount.toLocaleString()}</p>
+              </div>
+
+              <div className="flex flex-col gap-3 w-full">
+                <button 
+                  onClick={() => setShowSuccessView(false)}
+                  className="w-full h-16 signature-gradient text-white rounded-2xl font-headline font-black text-sm shadow-xl active:scale-95 transition-transform"
+                >
+                  CONTINUED TO WALLET
+                </button>
+              </div>
+
+              <div className="mt-8 flex items-center gap-2 px-6 py-2 bg-success/5 rounded-full">
+                <ShieldCheck className="w-4 h-4 text-success" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-success">Secure Transaction</span>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Funding Modal */}
       <AnimatePresence>
         {isFunding && (
@@ -405,7 +466,10 @@ export default function WalletPage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setIsFunding(false)}
+              onClick={() => {
+                setIsFunding(false);
+                setPaymentMethod(null);
+              }}
               className="absolute inset-0 bg-on-surface/40 backdrop-blur-sm"
             />
             <motion.div 
@@ -499,7 +563,7 @@ export default function WalletPage() {
 
                 <button 
                   onClick={handleFundWallet}
-                  disabled={isProcessing || !fundAmount}
+                  disabled={isProcessing || !fundAmount || !paymentMethod}
                   className="w-full h-20 bg-primary text-on-primary rounded-[2rem] font-headline font-black text-xl shadow-2xl shadow-primary/30 flex items-center justify-center gap-3 active:scale-[0.98] transition-all disabled:opacity-50"
                 >
                   {isProcessing ? (

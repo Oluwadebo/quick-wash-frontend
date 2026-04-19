@@ -4,15 +4,41 @@ import React from 'react';
 import { Camera, Upload, CheckCircle2, ShieldCheck, Info } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
+import { db } from '@/lib/DatabaseService';
 
-export default function SealedBagUploader() {
+export default function SealedBagUploader({ orderId, onUploaded }: { orderId: string, onUploaded?: () => void }) {
   const [status, setStatus] = React.useState<'idle' | 'uploading' | 'success'>('idle');
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0] && orderId) {
+      const file = e.target.files[0];
       setStatus('uploading');
-      setTimeout(() => setStatus('success'), 2000);
+
+      // Convert to Base64 to store in localStorage
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64String = reader.result as string;
+        
+        try {
+          const allOrders = await db.getOrders();
+          const order = allOrders.find(o => o.id === orderId);
+          if (order) {
+            await db.saveOrder({
+              ...order,
+              evidenceImage: base64String
+            });
+            setStatus('success');
+            if (onUploaded) onUploaded();
+            window.dispatchEvent(new Event('storage'));
+          }
+        } catch (error) {
+          console.error('Failed to save evidence image:', error);
+          setStatus('idle');
+          alert('Failed to upload image. Please try again.');
+        }
+      };
+      reader.readAsDataURL(file);
     }
   };
 
