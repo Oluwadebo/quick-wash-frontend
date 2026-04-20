@@ -1,4 +1,4 @@
-import mongoose, { Document, Schema } from "mongoose";
+import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IVendorPriceList extends Document {
   vendorUid: string;
@@ -22,36 +22,26 @@ export interface IVendorPriceList extends Document {
   }>;
 }
 
-const VendorPriceListSchema: Schema = new Schema(
-  {
-    vendorUid: { type: String, required: true, unique: true },
-    items: [
-      {
-        id: String,
-        name: String,
-        category: String,
-        icon: String,
-        washPrice: Number,
-        washDisabled: Boolean,
-        ironPrice: Number,
-        ironDisabled: Boolean,
-        washIronPrice: Number,
-        washIronDisabled: Boolean,
-        whitePremium: Number,
-        subItems: [
-          {
-            id: String,
-            name: String,
-            price: Number,
-          },
-        ],
-      },
-    ],
-  },
-  { timestamps: true },
-);
+const VendorPriceListSchema: Schema = new Schema({
+  vendorUid: { type: String, required: true, unique: true },
+  items: [{
+    id: String,
+    name: String,
+    category: String,
+    icon: String,
+    washPrice: Number,
+    washDisabled: Boolean,
+    ironPrice: Number,
+    ironDisabled: Boolean,
+    washIronPrice: Number,
+    washIronDisabled: Boolean,
+    whitePremium: Number,
+    subItems: [{
+      id: String,
+      name: String,
+      price: Number
+    }]
+  }]
+}, { timestamps: true });
 
-export default mongoose.model<IVendorPriceList>(
-  "VendorPriceList",
-  VendorPriceListSchema,
-);
+export default mongoose.model<IVendorPriceList>('VendorPriceList', VendorPriceListSchema);

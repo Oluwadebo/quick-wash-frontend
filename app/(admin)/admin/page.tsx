@@ -55,7 +55,7 @@ export default function AdminDashboard() {
     isApproved: true
   });
 
-  const isSuperAdmin = currentUser?.phoneNumber === '09012345678' || currentUser?.email === 'ogunwedebo21@gmail.com';
+  const isSuperAdmin = currentUser?.role === 'admin' && (currentUser?.phoneNumber === '09012345678' || currentUser?.email === 'ogunwedebo21@gmail.com');
 
   const handleRestrictUser = (phone: string, status: 'active' | 'restricted' | 'suspended') => {
     if (!isSuperAdmin) {
@@ -212,69 +212,37 @@ export default function AdminDashboard() {
   const [riders, setRiders] = React.useState<any[]>([]);
 
   React.useEffect(() => {
-    const users = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
-    setAllUsers(users);
-    setPendingUsers(users.filter((u: any) => !u.isApproved));
-    setRiders(users.filter((u: any) => u.role === 'rider' && u.isApproved));
+    const fetchData = async () => {
+      try {
+        const token = localStorage.getItem('qw_token');
+        const [usersRes, ordersRes] = await Promise.all([
+          fetch('/api/admin/users', { headers: { 'Authorization': `Bearer ${token}` } }),
+          fetch('/api/orders', { headers: { 'Authorization': `Bearer ${token}` } })
+        ]);
 
-    const storedAlerts = JSON.parse(localStorage.getItem('qw_alerts') || '[]');
-    setAlerts(storedAlerts.sort((a: any, b: any) => b.id - a.id));
+        if (usersRes.ok && ordersRes.ok) {
+          const usersData = await usersRes.json();
+          const ordersData = await ordersRes.json();
+          setAllUsers(usersData);
+          setPendingUsers(usersData.filter((u: any) => !u.isApproved));
+          setRiders(usersData.filter((u: any) => u.role === 'rider' && u.isApproved));
+          setOrders(ordersData);
 
-    const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-    setOrders(allOrders);
-
-    const totalRevenue = allOrders.reduce((acc: number, o: any) => acc + (Number(o.totalPrice) || 0), 0);
-    const activeOrders = allOrders.filter((o: any) => o.status !== 'delivered' && o.status !== 'completed' && !o.status.includes('Cancelled')).length;
-    
-    setStats([
-      { label: 'Total Revenue', value: `₦${(totalRevenue || 0).toLocaleString()}`, trend: '+18.2%', icon: TrendingUp, color: 'text-primary' },
-      { label: 'Active Orders', value: activeOrders.toString(), trend: '+5.4%', icon: ShoppingBag, color: 'text-tertiary' },
-      { label: 'Total Users', value: users.length.toString(), trend: '+12.1%', icon: Users, color: 'text-on-surface' },
-      { label: 'System Health', value: '99.9%', trend: 'Stable', icon: Activity, color: 'text-primary' }
-    ]);
-
-    // Auto-cancel logic
-    const interval = setInterval(() => {
-      const currentOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-      const now = new Date().getTime();
-      const twentyMinutes = 20 * 60 * 1000;
-      let changed = false;
-
-      const updatedOrders = currentOrders.map((o: any) => {
-        if ((o.status === 'rider_assign_pickup' || o.status === 'rider_assign_delivery') && !o.riderPhone) {
-          const startTime = new Date(o.updatedAt || o.createdAt).getTime();
-          if (now - startTime > twentyMinutes) {
-            changed = true;
-            // Refund customer
-            const allUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
-            const updatedUsers = allUsers.map((u: any) => {
-              if (u.phoneNumber === o.customerPhone) {
-                return { ...u, walletBalance: (u.walletBalance || 0) + (o.totalPrice || 0) };
-              }
-              return u;
-            });
-            localStorage.setItem('qw_all_users', JSON.stringify(updatedUsers));
-
-            return { 
-              ...o, 
-              status: 'Cancelled (Auto)', 
-              color: 'bg-error/10 text-error',
-              cancelledAt: new Date().toISOString(),
-              refunded: true
-            };
-          }
+          const totalRevenue = ordersData.reduce((acc: number, o: any) => acc + (Number(o.totalPrice) || 0), 0);
+          const activeOrders = ordersData.filter((o: any) => o.status !== 'delivered' && o.status !== 'completed' && !o.status.includes('Cancelled')).length;
+          
+          setStats([
+            { label: 'Total Revenue', value: `₦${(totalRevenue || 0).toLocaleString()}`, trend: '+18.2%', icon: TrendingUp, color: 'text-primary' },
+            { label: 'Active Orders', value: activeOrders.toString(), trend: '+5.4%', icon: ShoppingBag, color: 'text-tertiary' },
+            { label: 'Total Users', value: usersData.length.toString(), trend: '+12.1%', icon: Users, color: 'text-on-surface' },
+            { label: 'System Health', value: '99.9%', trend: 'Stable', icon: Activity, color: 'text-primary' }
+          ]);
         }
-        return o;
-      });
-
-      if (changed) {
-        localStorage.setItem('qw_orders', JSON.stringify(updatedOrders));
-        setOrders(updatedOrders);
-        window.dispatchEvent(new Event('storage'));
+      } catch (error) {
+        console.error('Failed to fetch admin data:', error);
       }
-    }, 30000); // Check every 30 seconds
-
-    return () => clearInterval(interval);
+    };
+    fetchData();
   }, []);
 
   const assignRider = (orderId: string, riderPhone: string) => {
@@ -295,105 +263,57 @@ export default function AdminDashboard() {
   const [refundAmount, setRefundAmount] = React.useState<number>(0);
 
   const handleResolveDispute = async (orderId: string, resolution: 'refund' | 'reject' | 'partial', customAmount?: number) => {
-    const allOrders = await db.getOrders();
-    const order = allOrders.find((o: any) => o.id === orderId);
-    if (!order) return;
+    try {
+      const response = await fetch('/api/orders/dispute', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('qw_token')}`
+        },
+        body: JSON.stringify({ orderId, resolution, customAmount })
+      });
 
-    let updatedOrder;
-    if (resolution === 'refund' || resolution === 'partial') {
-      const amountToRefund = resolution === 'refund' ? order.totalPrice : (customAmount || 0);
-      
-      updatedOrder = { 
-        ...order, 
-        status: resolution === 'refund' ? 'Refunded (Full)' : `Refunded (Partial: ₦${amountToRefund})`, 
-        color: 'bg-error/10 text-error',
-        refundedAt: new Date().toISOString(),
-        refundAmount: amountToRefund
-      };
-      
-      // Credit customer wallet
-      const customer = await db.getUser(order.customerUid);
-      if (customer) {
-        await db.updateUser(customer.uid, { 
-          walletBalance: (customer.walletBalance || 0) + amountToRefund 
-        });
-        await db.recordTransaction(customer.uid, {
-          type: 'deposit',
-          amount: amountToRefund,
-          desc: `Dispute Refund (${resolution}) - Order #${orderId}`
-        });
+      if (response.ok) {
+        const updatedOrder = await response.json();
+        setOrders(prev => prev.map(o => o.id === orderId ? updatedOrder : o));
+        setIsRefundModalOpen(false);
+        setResolvingOrder(null);
+        alert(`Dispute ${resolution}ed successfully.`);
+      } else {
+        const error = await response.json();
+        alert(error.message || 'Failed to resolve dispute');
       }
-
-      // If partial, release the rest to the vendor if applicable
-      if (resolution === 'partial') {
-        const remainingForVendor = Math.max(0, (order.itemsPrice || 0) - amountToRefund);
-        if (remainingForVendor > 0) {
-          const vendorUser = await db.getUser(order.vendorId);
-          if (vendorUser) {
-            await db.updateUser(vendorUser.uid, {
-              walletBalance: (vendorUser.walletBalance || 0) + remainingForVendor,
-              pendingBalance: Math.max(0, (vendorUser.pendingBalance || 0) - (order.itemsPrice * 0.2)) // Adjust pending balance
-            });
-            await db.recordTransaction(vendorUser.uid, {
-              type: 'deposit',
-              amount: remainingForVendor,
-              desc: `Partial Funds Release (Dispute Partial Refund) - Order #${order.id}`
-            });
-          }
-        }
-      }
-    } else {
-      updatedOrder = { 
-        ...order, 
-        status: 'completed', 
-        color: 'bg-success text-on-success',
-        disputeRejectedAt: new Date().toISOString()
-      };
-
-      // Vendor gets the held 20%
-      const itemsPrice = order.itemsPrice || 0;
-      const remaining20 = itemsPrice * 0.2;
-      const vendorUser = await db.getUser(order.vendorId);
-      if (vendorUser) {
-        await db.updateUser(vendorUser.uid, { 
-          walletBalance: (vendorUser.walletBalance || 0) + remaining20,
-          pendingBalance: Math.max(0, (vendorUser.pendingBalance || 0) - remaining20)
-        });
-        await db.recordTransaction(vendorUser.uid, {
-          type: 'deposit',
-          amount: remaining20,
-          desc: `Released Held Funds (Dispute Rejected) - Order #${order.id}`
-        });
-      }
+    } catch (error) {
+      console.error('Dispute resolution error:', error);
+      alert('An error occurred. Please try again.');
     }
-
-    await db.saveOrder(updatedOrder);
-    setOrders(prev => prev.map(o => o.id === orderId ? updatedOrder : o));
-    window.dispatchEvent(new Event('storage'));
-    setIsRefundModalOpen(false);
-    setResolvingOrder(null);
-    alert(`Dispute ${resolution}ed successfully.`);
   };
 
-  const handleApprove = React.useCallback((phone: string) => {
-    const updated = approveUser(phone);
-    setAllUsers(updated);
-    setPendingUsers(updated.filter((u: any) => !u.isApproved));
-    
-    // Add audit log
-    const logs = JSON.parse(localStorage.getItem('qw_audit_logs') || '[]');
-    const newLog = {
-      id: Date.now(),
-      action: 'User Approved',
-      target: phone,
-      admin: currentUser?.phoneNumber,
-      time: new Date().toISOString()
-    };
-    logs.push(newLog);
-    localStorage.setItem('qw_audit_logs', JSON.stringify(logs));
-    
-    alert('User approved successfully!');
-  }, [approveUser, currentUser]);
+  const handleApprove = React.useCallback(async (userId: string) => {
+    try {
+      const response = await fetch('/api/admin/approve-user', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('qw_token')}`
+        },
+        body: JSON.stringify({ userId, approve: true })
+      });
+
+      if (response.ok) {
+        const updatedUser = await response.json();
+        setAllUsers(prev => prev.map(u => u.uid === userId ? updatedUser : u));
+        setPendingUsers(prev => prev.filter(u => u.uid !== userId));
+        alert('User approved successfully!');
+      } else {
+        const error = await response.json();
+        alert(error.message || 'Failed to approve user');
+      }
+    } catch (error) {
+      console.error('Approval error:', error);
+      alert('An error occurred. Please try again.');
+    }
+  }, []);
 
   const tabs: { id: AdminTab; label: string; icon: any }[] = [
     { id: 'overview', label: 'Overview', icon: Activity },
@@ -491,7 +411,7 @@ export default function AdminDashboard() {
                                 View Details
                               </button>
                               <button 
-                                onClick={() => handleApprove(u.phoneNumber)}
+                                onClick={() => handleApprove(u.uid)}
                                 className="w-12 h-12 bg-primary text-on-primary rounded-xl flex items-center justify-center active:scale-95 transition-transform"
                               >
                                 <Check className="w-4 h-4" />
@@ -1573,7 +1493,7 @@ export default function AdminDashboard() {
                     <div className="flex gap-4">
                       <button 
                         onClick={() => {
-                          handleApprove(verifyingUser.phoneNumber);
+                          handleApprove(verifyingUser.uid);
                           setIsVerificationModalOpen(false);
                         }}
                         className="flex-1 h-16 signature-gradient text-white rounded-2xl font-headline font-black text-sm shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-3"

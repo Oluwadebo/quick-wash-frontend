@@ -91,6 +91,12 @@ export default function TopAppBar({
                   <span className="hidden md:inline">Logout</span>
                 </button>
               )}
+              {user && (
+                <div className="flex flex-col items-end mr-2">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-primary leading-none mb-1">Welcome</span>
+                  <span className="text-sm font-headline font-black text-on-surface leading-none">{user.fullName || 'User'}</span>
+                </div>
+              )}
               <Link href={profileLink}>
                 <div className="h-12 w-12 rounded-2xl overflow-hidden bg-surface-container-highest relative border-2 border-primary-container shadow-md active:scale-95 transition-transform flex items-center justify-center">
                   <User className="w-8 h-8 text-on-surface-variant" />

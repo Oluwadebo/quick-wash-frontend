@@ -904,52 +904,9 @@ function OrderPageContent() {
                   {paymentMethod === 'wallet' && <Check className="w-5 h-5 text-primary" />}
                 </button>
 
-                <button 
-                  onClick={() => setPaymentMethod('transfer')}
-                  className={cn(
-                    "w-full p-6 rounded-2xl border-2 flex items-center justify-between transition-all",
-                    paymentMethod === 'transfer' ? "bg-primary/5 border-primary" : "bg-surface-container border-primary/5"
-                  )}
-                >
-                  <div className="flex items-center gap-4">
-                    <History className={cn("w-6 h-6", paymentMethod === 'transfer' ? "text-primary" : "text-on-surface-variant")} />
-                    <div className="text-left">
-                      <p className="font-headline font-black text-sm">Bank Transfer</p>
-                      <p className="text-[10px] font-bold text-on-surface-variant">Instant Confirmation</p>
-                    </div>
-                  </div>
-                  {paymentMethod === 'transfer' && <Check className="w-5 h-5 text-primary" />}
-                </button>
-
-                <button 
-                  onClick={() => setPaymentMethod('card')}
-                  className={cn(
-                    "w-full p-6 rounded-2xl border-2 flex items-center justify-between transition-all",
-                    paymentMethod === 'card' ? "bg-primary/5 border-primary" : "bg-surface-container border-primary/5"
-                  )}
-                >
-                  <div className="flex items-center gap-4">
-                    <CreditCard className={cn("w-6 h-6", paymentMethod === 'card' ? "text-primary" : "text-on-surface-variant")} />
-                    <div className="text-left">
-                      <p className="font-headline font-black text-sm">Debit Card</p>
-                      <p className="text-[10px] font-bold text-on-surface-variant">Secure Payment</p>
-                    </div>
-                  </div>
-                  {paymentMethod === 'card' && <Check className="w-5 h-5 text-primary" />}
-                </button>
-
-                {paymentMethod === 'transfer' && (
-                  <motion.div 
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    className="p-6 bg-warning/10 rounded-2xl border border-warning/20"
-                  >
-                    <p className="text-[10px] font-black text-warning-dark uppercase tracking-widest mb-2">Transfer Details</p>
-                    <p className="text-sm font-bold text-on-surface">Bank: Kuda Bank</p>
-                    <p className="text-lg font-headline font-black text-on-surface">Account: 2031194566</p>
-                    <p className="text-xs font-medium text-on-surface-variant">Name: Quick-Wash Laundry</p>
-                  </motion.div>
-                )}
+                <p className="text-center text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mt-4">
+                  Note: Top up your wallet to pay for orders
+                </p>
 
                 <button 
                   onClick={() => {

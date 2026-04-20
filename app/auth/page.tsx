@@ -20,6 +20,7 @@ function AuthContent() {
   const [showPassword, setShowPassword] = useState(false);
   
   const [formData, setFormData] = useState({
+    email: '',
     fullName: '',
     phoneNumber: '',
     password: '',
@@ -28,6 +29,8 @@ function AuthContent() {
     shopAddress: '',
     vehicleType: 'Bicycle',
     nin: '',
+    ninImage: null as string | null,
+    shopImage: null as string | null,
     address: '',
     whatsappNumber: '',
     bankAccountName: '',
@@ -37,12 +40,28 @@ function AuthContent() {
     capacity: 10
   });
 
+  const handleImageUpload = (field: 'ninImage' | 'shopImage') => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('File is too large! Maximum 5MB.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFormData(prev => ({ ...prev, [field]: reader.result as string }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (isLogin) {
       login(formData.phoneNumber, formData.password);
     } else {
       signup({
+        email: formData.email,
         fullName: formData.fullName,
         phoneNumber: formData.phoneNumber,
         password: formData.password,
@@ -52,6 +71,8 @@ function AuthContent() {
         shopAddress: role === 'vendor' ? formData.shopAddress : undefined,
         vehicleType: role === 'rider' ? formData.vehicleType : undefined,
         nin: role === 'rider' ? formData.nin : undefined,
+        ninImage: role === 'rider' ? (formData.ninImage || undefined) : undefined,
+        shopImage: role === 'vendor' ? (formData.shopImage || undefined) : undefined,
         address: role === 'rider' ? formData.address : undefined,
         whatsappNumber: role === 'vendor' ? formData.whatsappNumber : undefined,
         bankAccountName: (role === 'vendor' || role === 'rider') ? formData.bankAccountName : undefined,
@@ -59,7 +80,7 @@ function AuthContent() {
         bankName: (role === 'vendor' || role === 'rider') ? formData.bankName : undefined,
         turnaroundTime: role === 'vendor' ? formData.turnaroundTime : undefined,
         capacity: role === 'vendor' ? Number(formData.capacity) : undefined
-      });
+      } as any);
     }
   };
 
@@ -130,6 +151,18 @@ function AuthContent() {
                   <div className="relative">
                     <User className="absolute left-5 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5" />
                     <input 
+                      type="email" 
+                      placeholder="Email Address (Required)"
+                      required={!isLogin}
+                      value={formData.email}
+                      onChange={(e) => setFormData({...formData, email: e.target.value})}
+                      className="w-full h-16 bg-surface-container-low rounded-2xl pl-14 pr-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"
+                    />
+                  </div>
+
+                  <div className="relative">
+                    <User className="absolute left-5 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5" />
+                    <input 
                       type="text" 
                       placeholder="Full Name"
                       required={!isLogin}
@@ -180,6 +213,29 @@ function AuthContent() {
                           value={formData.address}
                           onChange={(e) => setFormData({...formData, address: e.target.value})}
                           className="w-full h-16 bg-surface-container-low rounded-2xl pl-14 pr-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-2">Upload NIN Document (Photo)</p>
+                        <div 
+                          onClick={() => document.getElementById('nin-upload')?.click()}
+                          className="w-full h-32 bg-surface-container-low rounded-2xl border-2 border-dashed border-primary/20 flex flex-col items-center justify-center cursor-pointer hover:bg-primary/5 transition-all overflow-hidden"
+                        >
+                          {formData.ninImage ? (
+                            <img src={formData.ninImage} alt="NIN" className="w-full h-full object-cover" />
+                          ) : (
+                            <>
+                              <Sparkles className="w-6 h-6 text-primary mb-2" />
+                              <span className="text-xs font-bold text-primary">SELECT NIN PHOTO</span>
+                            </>
+                          )}
+                        </div>
+                        <input 
+                          id="nin-upload"
+                          type="file" 
+                          accept="image/*"
+                          onChange={handleImageUpload('ninImage')}
+                          className="hidden"
                         />
                       </div>
                       <div className="grid grid-cols-1 gap-4">
@@ -249,6 +305,29 @@ function AuthContent() {
                           value={formData.shopAddress}
                           onChange={(e) => setFormData({...formData, shopAddress: e.target.value})}
                           className="w-full h-16 bg-surface-container-low rounded-2xl pl-14 pr-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-2">Upload Shop Storefront/Workspace Photo</p>
+                        <div 
+                          onClick={() => document.getElementById('shop-upload')?.click()}
+                          className="w-full h-32 bg-surface-container-low rounded-2xl border-2 border-dashed border-primary/20 flex flex-col items-center justify-center cursor-pointer hover:bg-primary/5 transition-all overflow-hidden"
+                        >
+                          {formData.shopImage ? (
+                            <img src={formData.shopImage} alt="Shop" className="w-full h-full object-cover" />
+                          ) : (
+                            <>
+                              <Store className="w-6 h-6 text-primary mb-2" />
+                              <span className="text-xs font-bold text-primary">SELECT SHOP PHOTO</span>
+                            </>
+                          )}
+                        </div>
+                        <input 
+                          id="shop-upload"
+                          type="file" 
+                          accept="image/*"
+                          onChange={handleImageUpload('shopImage')}
+                          className="hidden"
                         />
                       </div>
                     <div className="relative">
