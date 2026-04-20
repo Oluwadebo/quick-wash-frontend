@@ -16,6 +16,9 @@ function AuthContent() {
   const initialIsLogin = searchParams.get('login') === 'true';
   const message = searchParams.get('message');
   const [isLogin, setIsLogin] = useState(initialIsLogin);
+  const [authMode, setAuthMode] = useState<'auth' | 'forgot' | 'reset'>('auth');
+  const [resetData, setResetData] = useState({ identifier: '', code: '', newPassword: '' });
+  const [resetMessage, setResetMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   
   const [showPassword, setShowPassword] = useState(false);
   
@@ -52,6 +55,49 @@ function AuthContent() {
         setFormData(prev => ({ ...prev, [field]: reader.result as string }));
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setResetMessage(null);
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: resetData.identifier })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setResetMessage({ type: 'success', text: data.message + (data.demoCode ? ` (Demo Code: ${data.demoCode})` : '') });
+        setAuthMode('reset');
+      } else {
+        setResetMessage({ type: 'error', text: data.message });
+      }
+    } catch (err: any) {
+      setResetMessage({ type: 'error', text: 'Something went wrong.' });
+    }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setResetMessage(null);
+    try {
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(resetData)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setResetMessage({ type: 'success', text: 'Password reset successful! You can now login.' });
+        setAuthMode('auth');
+        setIsLogin(true);
+      } else {
+        setResetMessage({ type: 'error', text: data.message });
+      }
+    } catch (err: any) {
+      setResetMessage({ type: 'error', text: 'Something went wrong.' });
     }
   };
 
@@ -110,36 +156,55 @@ function AuthContent() {
 
           <div className="text-center mb-10">
             <h2 className="text-4xl font-headline font-black mb-2">
-              {isLogin ? 'Welcome Back!' : `Join as ${role.charAt(0).toUpperCase() + role.slice(1)}`}
+              {authMode === 'forgot' ? 'Forgot Password' : 
+               authMode === 'reset' ? 'Reset Password' :
+               isLogin ? 'Welcome Back!' : `Join as ${role.charAt(0).toUpperCase() + role.slice(1)}`}
             </h2>
             <p className="text-on-surface-variant font-medium">
-              {isLogin ? 'Enter your details to continue' : 'Create your account to get started'}
+              {authMode === 'forgot' ? 'Enter your email or phone to receive a reset code' :
+               authMode === 'reset' ? 'Enter the code sent and your new password' :
+               isLogin ? 'Enter your details to continue' : 'Create your account to get started'}
             </p>
           </div>
 
-          {message === 'pending' && (
+          {resetMessage && (
             <motion.div 
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="mb-6 p-6 bg-primary-container text-on-primary-container rounded-[2rem] text-sm font-bold text-center border border-primary/20 shadow-sm"
+              className={cn(
+                "mb-6 p-4 rounded-2xl text-sm font-bold text-center border",
+                resetMessage.type === 'success' ? "bg-primary-container text-on-primary-container border-primary/20" : "bg-error-container text-on-error-container border-error/20"
+              )}
             >
-              <Sparkles className="w-8 h-8 mx-auto mb-2 text-primary" />
-              Registration submitted! <br/>
-              Please wait for admin approval before logging in.
+              {resetMessage.text}
             </motion.div>
           )}
 
-          {error && (
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="mb-6 p-4 bg-error-container text-on-error-container rounded-2xl text-sm font-bold text-center border border-error/20"
-            >
-              {error}
-            </motion.div>
-          )}
+          {authMode === 'auth' ? (
+            <>
+              {message === 'pending' && (
+                <motion.div 
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="mb-6 p-6 bg-primary-container text-on-primary-container rounded-[2rem] text-sm font-bold text-center border border-primary/20 shadow-sm"
+                >
+                  <Sparkles className="w-8 h-8 mx-auto mb-2 text-primary" />
+                  Registration submitted! <br/>
+                  Please wait for admin approval before logging in.
+                </motion.div>
+              )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+              {error && (
+                <motion.div 
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="mb-6 p-4 bg-error-container text-on-error-container rounded-2xl text-sm font-bold text-center border border-error/20"
+                >
+                  {error}
+                </motion.div>
+              )}
+
+              <form onSubmit={handleSubmit} className="space-y-4">
             <AnimatePresence mode="wait">
               {!isLogin && (
                 <motion.div
@@ -431,6 +496,21 @@ function AuthContent() {
               </button>
             </div>
 
+            {isLogin && (
+              <div className="flex justify-end pr-2">
+                <button 
+                  type="button"
+                  onClick={() => {
+                    setAuthMode('forgot');
+                    setResetMessage(null);
+                  }}
+                  className="text-xs font-black uppercase tracking-widest text-primary hover:text-primary-variant transition-colors"
+                >
+                  Forgot Password?
+                </button>
+              </div>
+            )}
+
             <button 
               type="submit"
               disabled={isProcessing}
@@ -449,15 +529,86 @@ function AuthContent() {
               )}
             </button>
           </form>
+          </>
+          ) : authMode === 'forgot' ? (
+            <form onSubmit={handleForgotPassword} className="space-y-4">
+              <div className="relative">
+                <User className="absolute left-5 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5" />
+                <input 
+                  type="text" 
+                  placeholder="Email or Phone Number"
+                  required
+                  value={resetData.identifier}
+                  onChange={(e) => setResetData({...resetData, identifier: e.target.value})}
+                  className="w-full h-16 bg-surface-container-low rounded-2xl pl-14 pr-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"
+                />
+              </div>
+              <button 
+                type="submit"
+                className="w-full h-16 signature-gradient text-white rounded-2xl font-headline font-black text-lg shadow-xl shadow-primary/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2 mt-4"
+              >
+                Send Reset Code
+                <ChevronRight className="w-5 h-5" />
+              </button>
+              <button 
+                type="button"
+                onClick={() => setAuthMode('auth')}
+                className="w-full text-center py-2 text-on-surface-variant font-bold text-sm"
+              >
+                Back to Login
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleResetPassword} className="space-y-4">
+              <div className="relative">
+                <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5" />
+                <input 
+                  type="text" 
+                  placeholder="Verification Code"
+                  required
+                  value={resetData.code}
+                  onChange={(e) => setResetData({...resetData, code: e.target.value})}
+                  className="w-full h-16 bg-surface-container-low rounded-2xl pl-14 pr-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"
+                />
+              </div>
+              <div className="relative">
+                <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5" />
+                <input 
+                  type="password" 
+                  placeholder="New Password"
+                  required
+                  value={resetData.newPassword}
+                  onChange={(e) => setResetData({...resetData, newPassword: e.target.value})}
+                  className="w-full h-16 bg-surface-container-low rounded-2xl pl-14 pr-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"
+                />
+              </div>
+              <button 
+                type="submit"
+                className="w-full h-16 signature-gradient text-white rounded-2xl font-headline font-black text-lg shadow-xl shadow-primary/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2 mt-4"
+              >
+                Reset Password
+                <ChevronRight className="w-5 h-5" />
+              </button>
+              <button 
+                type="button"
+                onClick={() => setAuthMode('forgot')}
+                className="w-full text-center py-2 text-on-surface-variant font-bold text-sm"
+              >
+                Resend Code
+              </button>
+            </form>
+          )}
 
-          <div className="mt-8 text-center">
-            <button 
-              onClick={() => setIsLogin(!isLogin)}
-              className="text-on-surface-variant font-bold hover:text-primary transition-colors"
-            >
-              {isLogin ? "Don't have an account? Sign Up" : "Already have an account? Login"}
-            </button>
-          </div>
+          {authMode === 'auth' && (
+            <div className="mt-8 text-center">
+              <button 
+                onClick={() => setIsLogin(!isLogin)}
+                className="text-on-surface-variant font-bold hover:text-primary transition-colors"
+              >
+                {isLogin ? "Don't have an account? Sign Up" : "Already have an account? Login"}
+              </button>
+            </div>
+          )}
         </motion.div>
       </main>
     </div>

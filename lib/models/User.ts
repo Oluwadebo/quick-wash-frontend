@@ -32,6 +32,8 @@ export interface IUser extends Document {
   shopImage?: string; // New field for vendors
   ninImage?: string;  // New field for riders
   transferReference?: string; // New field for identifying transfers
+  resetPasswordToken?: string;
+  resetPasswordExpires?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -68,6 +70,8 @@ const UserSchema: Schema = new Schema({
   shopImage: { type: String },
   ninImage: { type: String },
   transferReference: { type: String },
+  resetPasswordToken: { type: String },
+  resetPasswordExpires: { type: Date },
 }, { timestamps: true });
 
 // Avoid model re-compilation in development
