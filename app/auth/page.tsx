@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, Suspense } from 'react';
+import Image from 'next/image';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth, UserRole } from '@/hooks/use-auth';
 import { Droplets, ArrowLeft, Phone, Lock, User, MapPin, ChevronRight, Sparkles, Store, Bike } from 'lucide-react';
@@ -17,6 +18,11 @@ function AuthContent() {
   const message = searchParams.get('message');
   const [isLogin, setIsLogin] = useState(initialIsLogin);
   const [authMode, setAuthMode] = useState<'auth' | 'forgot' | 'reset'>('auth');
+
+  // Keep state in sync with URL
+  React.useEffect(() => {
+    setIsLogin(searchParams.get('login') === 'true');
+  }, [searchParams]);
   const [resetData, setResetData] = useState({ identifier: '', code: '', newPassword: '' });
   const [resetMessage, setResetMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   
@@ -189,7 +195,7 @@ function AuthContent() {
                   className="mb-6 p-6 bg-primary-container text-on-primary-container rounded-[2rem] text-sm font-bold text-center border border-primary/20 shadow-sm"
                 >
                   <Sparkles className="w-8 h-8 mx-auto mb-2 text-primary" />
-                  Registration submitted! <br/>
+                  Registration submitted! <br />
                   Please wait for admin approval before logging in.
                 </motion.div>
               )}
@@ -287,7 +293,9 @@ function AuthContent() {
                           className="w-full h-32 bg-surface-container-low rounded-2xl border-2 border-dashed border-primary/20 flex flex-col items-center justify-center cursor-pointer hover:bg-primary/5 transition-all overflow-hidden"
                         >
                           {formData.ninImage ? (
-                            <img src={formData.ninImage} alt="NIN" className="w-full h-full object-cover" />
+                            <div className="relative w-full h-full">
+                              <Image src={formData.ninImage} alt="NIN" fill className="object-cover" unoptimized />
+                            </div>
                           ) : (
                             <>
                               <Sparkles className="w-6 h-6 text-primary mb-2" />
@@ -379,7 +387,9 @@ function AuthContent() {
                           className="w-full h-32 bg-surface-container-low rounded-2xl border-2 border-dashed border-primary/20 flex flex-col items-center justify-center cursor-pointer hover:bg-primary/5 transition-all overflow-hidden"
                         >
                           {formData.shopImage ? (
-                            <img src={formData.shopImage} alt="Shop" className="w-full h-full object-cover" />
+                            <div className="relative w-full h-full">
+                              <Image src={formData.shopImage} alt="Shop" fill className="object-cover" unoptimized />
+                            </div>
                           ) : (
                             <>
                               <Store className="w-6 h-6 text-primary mb-2" />

@@ -202,7 +202,7 @@ function OrderPageContent() {
     };
 
     initPage();
-  }, [vendorId]);
+  }, [vendorId, searchParams]);
 
   // Save to localStorage whenever cart changes AFTER initialization
   React.useEffect(() => {

@@ -17,6 +17,11 @@ async function connectDB() {
     return cached.conn;
   }
 
+  if (!MONGODB_URI) {
+    console.warn('MONGODB_URI is not defined. Database connectivity is disabled.');
+    throw new Error('Database connection string is missing.');
+  }
+
   if (!cached.promise) {
     const opts = {
       bufferCommands: false,
