@@ -68,7 +68,11 @@ export default function LandingPage() {
     // Fetch live stats
     fetch('/api/stats')
       .then(res => res.json())
-      .then(data => setStats(data))
+      .then(data => {
+        if (data && !data.error) {
+          setStats(data);
+        }
+      })
       .catch(() => setStats({ 
         customers: 1250, 
         vendors: 28, 
@@ -201,15 +205,15 @@ export default function LandingPage() {
               <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Completed Washes</p>
             </div>
             <div className="bg-surface-container-low p-8 rounded-[3rem] border border-primary/5 shadow-sm group hover:border-primary/20 transition-all">
-              <h4 className="text-4xl font-headline font-black text-primary mb-1">{stats.metrics.avgDelivery}hrs</h4>
+              <h4 className="text-4xl font-headline font-black text-primary mb-1">{stats.metrics?.avgDelivery || 24}hrs</h4>
               <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Avg. Turnaround</p>
             </div>
             <div className="bg-surface-container-low p-8 rounded-[3rem] border border-primary/5 shadow-sm group hover:border-primary/20 transition-all">
-              <h4 className="text-4xl font-headline font-black text-primary mb-1">{stats.metrics.totalVolume.toLocaleString()}kg</h4>
+              <h4 className="text-4xl font-headline font-black text-primary mb-1">{(stats.metrics?.totalVolume || 12000).toLocaleString()}kg</h4>
               <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Laundry Volume</p>
             </div>
             <div className="bg-surface-container-low p-8 rounded-[3rem] border border-primary/5 shadow-sm group hover:border-primary/20 transition-all">
-              <h4 className="text-4xl font-headline font-black text-primary mb-1">{stats.metrics.uptime}</h4>
+              <h4 className="text-4xl font-headline font-black text-primary mb-1">{stats.metrics?.uptime || '99.9%'}</h4>
               <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">System Uptime</p>
             </div>
           </div>
