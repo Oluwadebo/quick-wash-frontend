@@ -94,6 +94,20 @@ export interface Order {
   lockExpires?: number;
   returnReason?: string;
   consecutiveReturns?: number;
+  rating?: number;
+  review?: string;
+  ratedAt?: string;
+}
+
+export interface SiteSettings {
+  name: string;
+  logo: string;
+  primaryColor: string;
+  contactEmail: string;
+  contactPhone: string;
+  emergencyAlert: string;
+  maintenanceMode: boolean;
+  announcement: string;
 }
 
 const DELAY = 300; // Simulate network latency
@@ -493,6 +507,65 @@ class DatabaseService {
     history.unshift({ ...transaction, id: Math.random().toString(36).substr(2, 9), date: new Date().toISOString() });
     localStorage.setItem(`qw_wallet_history_${uid}`, JSON.stringify(history));
   }
+
+  // --- RATINGS ---
+  async rateOrder(orderId: string, rating: number, review: string): Promise<Order> {
+    const order = await this.getOrder(orderId);
+    if (!order) throw new Error('Order not found');
+
+    const updated: Order = {
+      ...order,
+      rating,
+      review,
+      ratedAt: new Date().toISOString()
+    };
+    await this.saveOrder(updated);
+
+    // Adjust vendor/rider trust points based on rating
+    if (order.vendorId) {
+      if (rating >= 4) await this.adjustTrustPoints(order.vendorId, 'five_star_review');
+      if (rating <= 2) await this.adjustTrustPoints(order.vendorId, 'vendor_delay'); // Negative impact
+    }
+    
+    if (order.riderUid && rating >= 4) {
+      await this.adjustTrustPoints(order.riderUid, 'five_star_review');
+    }
+
+    return updated;
+  }
+
+  // --- ANALYTICS ---
+  async getSystemStats() {
+    const users = await this.getUsers();
+    const orders = await this.getOrders();
+    const now = new Date();
+    const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+    const completed = orders.filter(o => o.status === 'completed' || o.status === 'delivered');
+    const revenue = completed.reduce((acc, o) => acc + (o.totalPrice || 0), 0);
+    const active = orders.filter(o => !['completed', 'cancelled', 'delivered'].includes(o.status.toLowerCase()));
+
+    const hourlyVelocity = Array.from({ length: 12 }, (_, i) => {
+      const h = new Date(now.getTime() - (11 - i) * 60 * 60 * 1000);
+      const hStr = h.getHours() + ':00';
+      const count = orders.filter(o => new Date(o.createdAt).getHours() === h.getHours()).length;
+      return { time: hStr, orders: count };
+    });
+
+    return {
+      totalUsers: users.length,
+      totalOrders: orders.length,
+      totalRevenue: revenue,
+      activeOrders: active.length,
+      hourlyVelocity,
+      userTypeDist: [
+        { name: 'Customer', value: users.filter(u => u.role === 'customer').length },
+        { name: 'Vendor', value: users.filter(u => u.role === 'vendor').length },
+        { name: 'Rider', value: users.filter(u => u.role === 'rider').length },
+      ]
+    };
+  }
+
   // --- PRICE LISTS ---
 
   async getVendorPriceList(vendorUid: string): Promise<any[]> {
@@ -509,6 +582,35 @@ class DatabaseService {
     allLists[vendorUid] = priceList;
     localStorage.setItem('qw_vendor_price_lists', JSON.stringify(allLists));
     window.dispatchEvent(new Event('storage'));
+  }
+
+  // --- SITE SETTINGS ---
+  async getSiteSettings(): Promise<SiteSettings> {
+    await this.delay();
+    const settings = localStorage.getItem('qw_site_settings');
+    if (settings) return JSON.parse(settings);
+    
+    // Default settings
+    const defaults: SiteSettings = {
+      name: 'Quick-Wash',
+      logo: '', // Base64 or URL
+      primaryColor: '#1a56db',
+      contactEmail: 'support@quickwash.app',
+      contactPhone: '+234 812 345 6789',
+      emergencyAlert: '',
+      maintenanceMode: false,
+      announcement: 'Welcome to the new Quick-Wash platform!'
+    };
+    localStorage.setItem('qw_site_settings', JSON.stringify(defaults));
+    return defaults;
+  }
+
+  async updateSiteSettings(data: Partial<SiteSettings>): Promise<SiteSettings> {
+    const current = await this.getSiteSettings();
+    const updated = { ...current, ...data };
+    localStorage.setItem('qw_site_settings', JSON.stringify(updated));
+    window.dispatchEvent(new Event('storage'));
+    return updated;
   }
 }
 

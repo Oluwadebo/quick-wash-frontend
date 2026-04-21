@@ -3,7 +3,7 @@
 import React from 'react';
 import TopAppBar from '@/components/shared/TopAppBar';
 import LandmarkSelector from '@/components/shared/LandmarkSelector';
-import { Search, MapPin, ChevronRight, Plus, HelpCircle, Zap, ShoppingBag, Sun, Leaf, Handshake, Shield, Droplets, Check } from 'lucide-react';
+import { Search, MapPin, ChevronRight, Plus, HelpCircle, Zap, ShoppingBag, Sun, Leaf, Handshake, Shield, Droplets, Check, Wallet, Shirt, History } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion } from 'motion/react';
@@ -284,10 +284,57 @@ export default function LandmarkSelectionPage() {
                 </h3>
               </div>
             </div>
-            <Link href="/profile" className="p-4 rounded-2xl bg-white shadow-sm hover:bg-primary-container transition-colors">
-              <ChevronRight className="text-primary w-6 h-6" />
+            <Link href="/wallet" className="p-4 rounded-2xl bg-white shadow-sm hover:bg-primary-container transition-colors">
+              <Wallet className="text-primary w-6 h-6" />
             </Link>
           </motion.div>
+        </section>
+
+        {/* Express Order Section */}
+        <section className="mb-12">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="font-label text-xs uppercase tracking-[0.2em] font-bold text-outline">Quick Express Wash</h3>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Link href="/vendors?express=shirts" className="bg-primary/5 p-6 rounded-3xl border border-primary/10 hover:bg-primary/10 transition-all flex flex-col items-center text-center group">
+              <Shirt className="w-8 h-8 text-primary mb-3 group-hover:scale-110 transition-transform" />
+              <p className="font-headline font-black text-xs text-on-surface">Weekly Shirts</p>
+              <p className="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">7 Items • ₦1,500</p>
+            </Link>
+            <Link href="/vendors?express=uniforms" className="bg-tertiary/5 p-6 rounded-3xl border border-tertiary/10 hover:bg-tertiary/10 transition-all flex flex-col items-center text-center group">
+              <ShoppingBag className="w-8 h-8 text-tertiary mb-3 group-hover:scale-110 transition-transform" />
+              <p className="font-headline font-black text-xs text-on-surface">Campus Kit</p>
+              <p className="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">5 Items • ₦2,200</p>
+            </Link>
+          </div>
+        </section>
+
+        {/* Price Predictor */}
+        <section className="mb-12">
+          <div className="bg-surface-container-high rounded-[2.5rem] p-8 border border-primary/10 shadow-xl overflow-hidden relative">
+            <div className="relative z-10">
+              <h3 className="text-xl font-headline font-black text-on-surface mb-2">Smart Price Estimator</h3>
+              <p className="text-xs font-medium text-on-surface-variant mb-6">Calculate costs across all campus vendors instantly.</p>
+              
+              <div className="space-y-4">
+                <div className="flex gap-2">
+                  <div className="flex-1 bg-surface-container-lowest h-14 rounded-xl flex items-center px-4 border border-primary/5">
+                    <input 
+                      type="number" 
+                      placeholder="Number of items..." 
+                      className="bg-transparent border-none outline-none w-full text-xs font-bold"
+                    />
+                  </div>
+                  <button className="h-14 px-6 bg-primary text-white rounded-xl font-headline font-bold text-xs">
+                    ESTIMATE
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="absolute -right-10 -bottom-10 opacity-5">
+              <History className="w-48 h-48" />
+            </div>
+          </div>
         </section>
 
         {/* Recent Orders Section */}

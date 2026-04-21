@@ -8,6 +8,7 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import Footer from '@/components/shared/Footer';
+import { db, SiteSettings } from '@/lib/DatabaseService';
 
 const roles = [
   { 
@@ -49,6 +50,7 @@ const features = [
 export default function LandingPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = React.useState<'customer' | 'vendor' | 'rider'>('customer');
+  const [settings, setSettings] = React.useState<SiteSettings | null>(null);
   const [stats, setStats] = React.useState<any>({ 
     customers: 0, 
     vendors: 0, 
@@ -59,6 +61,7 @@ export default function LandingPage() {
   });
 
   React.useEffect(() => {
+    db.getSiteSettings().then(setSettings);
     const storedUser = localStorage.getItem('qw_user');
     if (storedUser) {
       const user = JSON.parse(storedUser);
@@ -172,13 +175,17 @@ export default function LandingPage() {
               onContextMenu={(e) => { e.preventDefault(); router.push('/admin'); }}
               className="w-20 h-20 rounded-[2rem] signature-gradient flex items-center justify-center shadow-2xl shadow-primary/20 cursor-pointer active:scale-95 transition-transform"
             >
-              <Droplets className="text-white w-12 h-12 fill-current" />
+              {settings?.logo ? (
+                <Image src={settings.logo} alt="Logo" width={48} height={48} className="object-contain" unoptimized />
+              ) : (
+                <Droplets className="text-white w-12 h-12 fill-current" />
+              )}
             </div>
             <h1 
               onClick={() => router.push('/')}
               className="text-6xl font-headline font-black tracking-tighter text-on-surface cursor-pointer"
             >
-              Quick-Wash
+              {settings?.name || 'Quick-Wash'}
             </h1>
           </motion.div>
 

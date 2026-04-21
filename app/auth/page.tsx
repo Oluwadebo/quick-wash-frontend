@@ -4,9 +4,10 @@ import React, { useState, Suspense } from 'react';
 import Image from 'next/image';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth, UserRole } from '@/hooks/use-auth';
-import { Droplets, ArrowLeft, Phone, Lock, User, MapPin, ChevronRight, Sparkles, Store, Bike } from 'lucide-react';
+import { Droplets, ArrowLeft, Phone, Lock, User, MapPin, ChevronRight, Sparkles, Store, Bike, Eye, EyeOff, Mail, Github, Globe } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
+import { db, SiteSettings } from '@/lib/DatabaseService';
 
 function AuthContent() {
   const searchParams = useSearchParams();
@@ -18,6 +19,12 @@ function AuthContent() {
   const message = searchParams.get('message');
   const [isLogin, setIsLogin] = useState(initialIsLogin);
   const [authMode, setAuthMode] = useState<'auth' | 'forgot' | 'reset'>('auth');
+  const [settings, setSettings] = useState<SiteSettings | null>(null);
+
+  // Load site settings
+  React.useEffect(() => {
+    db.getSiteSettings().then(setSettings);
+  }, []);
 
   // Keep state in sync with URL
   React.useEffect(() => {
@@ -137,41 +144,85 @@ function AuthContent() {
   };
 
   return (
-    <div className="min-h-screen bg-surface flex flex-col">
-      <header className="p-6">
-        <button 
-          onClick={() => router.push('/')}
-          className="w-12 h-12 rounded-2xl bg-surface-container-low flex items-center justify-center text-on-surface active:scale-95 transition-transform"
-        >
-          <ArrowLeft className="w-6 h-6" />
-        </button>
+    <div className="min-h-screen bg-surface flex flex-col relative overflow-hidden">
+      {/* Dynamic Background */}
+      <div className="absolute inset-0 z-0 opacity-[0.03] pointer-events-none">
+        <div 
+          className="absolute inset-0"
+          style={{ 
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 30c0-16.569 13.431-30 30-30v60c-16.569 0-30-13.431-30-30zM0 30c0 16.569 13.431 30 30 30V0C13.431 0 0 13.431 0 30z' fill='%231a56db' fill-opacity='0.4' fill-rule='evenodd'/%3E%3C/svg%3E")`,
+            backgroundSize: '120px 120px'
+          }}
+        />
+      </div>
+
+      <header className="p-6 relative z-10">
+        <div className="max-w-7xl mx-auto flex justify-between items-center">
+          <button 
+            onClick={() => router.push('/')}
+            className="w-12 h-12 rounded-2xl bg-surface-container-low border border-primary/5 shadow-sm flex items-center justify-center text-on-surface active:scale-95 transition-all hover:bg-surface-container-highest"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+
+          {!isLogin && (
+            <div className="hidden md:flex items-center gap-2 px-6 py-2 bg-primary/5 rounded-full border border-primary/10">
+              <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+              <span className="text-[10px] font-black uppercase tracking-widest text-primary">Secure Enrollment</span>
+            </div>
+          )}
+        </div>
       </header>
 
-      <main className="flex-1 flex flex-col items-center justify-center px-6 pb-12">
+      <main className="flex-1 flex flex-col items-center justify-center px-6 pb-20 relative z-10">
         <motion.div 
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
-          className="w-full max-w-md"
+          transition={{ type: 'spring', damping: 25, stiffness: 120 }}
+          className="w-full max-w-md lg:max-w-xl bg-white/80 backdrop-blur-3xl rounded-[3.5rem] p-8 md:p-14 shadow-2xl shadow-primary/5 border border-primary/5 relative"
         >
-          <div className="flex items-center gap-3 mb-8 justify-center">
-            <div className="w-12 h-12 rounded-2xl signature-gradient flex items-center justify-center shadow-lg">
-              <Droplets className="text-white w-7 h-7 fill-current" />
-            </div>
-            <h1 className="text-3xl font-headline font-black tracking-tighter">Quick-Wash</h1>
+          {/* Logo Section */}
+          <div className="flex flex-col items-center mb-12">
+            <motion.div 
+              whileHover={{ rotate: 5, scale: 1.05 }}
+              className="w-20 h-20 rounded-[2rem] signature-gradient flex items-center justify-center shadow-2xl shadow-primary/30 mb-6 group relative"
+            >
+              <div className="absolute inset-0 bg-white/20 rounded-[2rem] opacity-0 group-hover:opacity-100 transition-opacity" />
+              {settings?.logo ? (
+                <Image src={settings.logo} alt="Logo" width={48} height={48} className="object-contain" unoptimized />
+              ) : (
+                <Droplets className="text-white w-10 h-10 fill-current drop-shadow-md" />
+              )}
+            </motion.div>
+            <h1 className="text-4xl font-headline font-black tracking-tighter text-on-surface">
+              {settings?.name || 'Quick-Wash'}
+            </h1>
+            <div className="h-1 w-12 bg-primary rounded-full mt-3 opacity-20" />
           </div>
 
-          <div className="text-center mb-10">
-            <h2 className="text-4xl font-headline font-black mb-2">
-              {authMode === 'forgot' ? 'Forgot Password' : 
-               authMode === 'reset' ? 'Reset Password' :
-               isLogin ? 'Welcome Back!' : `Join as ${role.charAt(0).toUpperCase() + role.slice(1)}`}
-            </h2>
-            <p className="text-on-surface-variant font-medium">
-              {authMode === 'forgot' ? 'Enter your email or phone to receive a reset code' :
-               authMode === 'reset' ? 'Enter the code sent and your new password' :
-               isLogin ? 'Enter your details to continue' : 'Create your account to get started'}
-            </p>
+          <div className="text-center mb-10 overflow-hidden">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={authMode + (isLogin ? 'true' : 'false')}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+              >
+                <h2 className="text-2xl font-headline font-black mb-2 text-on-surface">
+                  {authMode === 'forgot' ? 'Recover Access' : 
+                   authMode === 'reset' ? 'Finalize Reset' :
+                   isLogin ? 'Hello Again!' : `Start as ${role.toUpperCase()}`}
+                </h2>
+                <p className="text-on-surface-variant text-sm font-medium">
+                  {authMode === 'forgot' ? 'We\'ll send a secure code to your account' :
+                   authMode === 'reset' ? 'One last step to secure your workspace' :
+                   isLogin ? 'Sign in to access your dashboard' : `Fill in your ${role} credentials`}
+                </p>
+              </motion.div>
+            </AnimatePresence>
           </div>
+
+          {/* Form and Other stuff... */}
 
           {resetMessage && (
             <motion.div 
@@ -484,25 +535,21 @@ function AuthContent() {
             </div>
 
             <div className="relative">
-              <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5" />
+              <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5 pointer-events-none" />
               <input 
                 type={showPassword ? "text" : "password"} 
                 placeholder="Password"
                 required
                 value={formData.password}
                 onChange={(e) => setFormData({...formData, password: e.target.value})}
-                className="w-full h-16 bg-surface-container-low rounded-2xl pl-14 pr-14 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"
+                className="w-full h-16 bg-surface-container-low rounded-2xl pl-14 pr-14 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all border border-transparent focus:border-primary/20"
               />
               <button 
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-5 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-primary transition-colors"
+                className="absolute right-5 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-primary transition-colors p-2"
               >
-                {showPassword ? (
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.88 9.88L4.62 4.62"/><path d="M1 1l22 22"/><path d="M10.47 4.38A12.5 12.5 0 0 1 23 12a12.5 12.5 0 0 1-2.47 3.62"/><path d="M13.02 19.44A12.5 12.5 0 0 1 1 12a12.5 12.5 0 0 1 5.02-6.44"/><circle cx="12" cy="12" r="3"/><path d="M14.22 14.22a3 3 0 1 1-4.24-4.24"/></svg>
-                ) : (
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                )}
+                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
               </button>
             </div>
 
@@ -524,20 +571,40 @@ function AuthContent() {
             <button 
               type="submit"
               disabled={isProcessing}
-              className="w-full h-16 signature-gradient text-white rounded-2xl font-headline font-black text-lg shadow-xl shadow-primary/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2 mt-4 disabled:opacity-70 disabled:active:scale-100"
+              className="w-full h-16 signature-gradient text-white rounded-[1.25rem] font-headline font-black text-lg shadow-xl shadow-primary/20 hover:shadow-primary/40 active:scale-[0.98] transition-all flex items-center justify-center gap-2 mt-4 disabled:opacity-70 disabled:active:scale-100"
             >
               {isProcessing ? (
                 <div className="flex items-center gap-2">
                   <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>Processing...</span>
+                  <span>Processing Hub...</span>
                 </div>
               ) : (
                 <>
-                  {isLogin ? 'Login' : 'Create Account'}
+                  {isLogin ? 'Sign In Now' : 'Complete Setup'}
                   <ChevronRight className="w-5 h-5" />
                 </>
               )}
             </button>
+
+            {isLogin && (
+              <div className="pt-8">
+                <div className="relative mb-8">
+                  <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-primary/10"></div></div>
+                  <div className="relative flex justify-center text-[10px] uppercase font-black tracking-widest"><span className="bg-white px-4 text-on-surface-variant">Secure Gateways</span></div>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <button type="button" className="h-14 rounded-2xl bg-surface-container-low border border-primary/5 flex items-center justify-center gap-2 hover:bg-surface-container-highest transition-all group">
+                    <Github className="w-5 h-5 text-on-surface" />
+                    <span className="text-xs font-bold text-on-surface">GitHub</span>
+                  </button>
+                  <button type="button" className="h-14 rounded-2xl bg-surface-container-low border border-primary/5 flex items-center justify-center gap-2 hover:bg-surface-container-highest transition-all group">
+                    <Globe className="w-5 h-5 text-primary" />
+                    <span className="text-xs font-bold text-on-surface">Universal</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </form>
           </>
           ) : authMode === 'forgot' ? (

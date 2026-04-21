@@ -22,8 +22,10 @@ import {
   History
 } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
+import { db, SiteSettings } from '@/lib/DatabaseService';
 
 interface NavItem {
   label: string;
@@ -62,6 +64,7 @@ const adminItems: NavItem[] = [
   { label: 'Analytics', icon: BarChart3, href: '/admin?tab=analytics' },
   { label: 'Marketing', icon: Megaphone, href: '/admin?tab=marketing' },
   { label: 'Audit Log', icon: History, href: '/admin?tab=audit' },
+  { label: 'Settings', icon: Map, href: '/admin?tab=settings' },
 ];
 
 export default function Sidebar() {
@@ -69,6 +72,11 @@ export default function Sidebar() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { user, logout } = useAuth();
+  const [settings, setSettings] = React.useState<SiteSettings | null>(null);
+
+  React.useEffect(() => {
+    db.getSiteSettings().then(setSettings);
+  }, []);
 
   const handleInvite = () => {
     const link = `https://quick-wash.campus/invite?ref=${user?.phoneNumber}`;
@@ -96,11 +104,17 @@ export default function Sidebar() {
     <aside className="w-72 bg-surface-container-low border-r border-primary/5 p-6 hidden lg:flex flex-col gap-2 h-screen sticky top-0">
       <div className="mb-8 px-4 flex items-center gap-3">
         <div className="w-10 h-10 rounded-xl signature-gradient flex items-center justify-center shadow-lg">
-          <Droplets className="text-white w-6 h-6 fill-current" />
+          {settings?.logo ? (
+            <Image src={settings.logo} alt="Logo" width={24} height={24} className="object-contain" unoptimized />
+          ) : (
+            <Droplets className="text-white w-6 h-6 fill-current" />
+          )}
         </div>
         <div>
           <p className="font-label text-[10px] font-black uppercase tracking-[0.2em] text-primary mb-0.5">{roleLabel}</p>
-          <h2 className="text-xl font-headline font-black text-on-surface tracking-tighter">Quick-Wash</h2>
+          <h2 className="text-xl font-headline font-black text-on-surface tracking-tighter">
+            {settings?.name || 'Quick-Wash'}
+          </h2>
         </div>
       </div>
       
