@@ -100,7 +100,7 @@ export default function AdminSignupPage() {
         </motion.div>
 
         <p className="text-center mt-10 text-on-surface-variant text-sm font-medium">
-          Already have an account? <Link href="/auth/login" className="text-primary font-bold">Login here</Link>
+          Already have an account? <Link href="/auth?login=true" className="text-primary font-bold">Login here</Link>
         </p>
       </div>
     </div>

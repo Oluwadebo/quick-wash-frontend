@@ -6,7 +6,7 @@ import Link from 'next/link';
 import YorubaAudioToggle from './YorubaAudioToggle';
 import { useAuth } from '@/hooks/use-auth';
 import Image from 'next/image';
-import { db } from '@/lib/DatabaseService';
+import { db, SiteSettings } from '@/lib/DatabaseService';
 
 interface TopAppBarProps {
   title?: string;
@@ -24,8 +24,10 @@ export default function TopAppBar({
   roleLabel
 }: TopAppBarProps) {
   const { user, logout } = useAuth();
+  const [settings, setSettings] = useState<SiteSettings | null>(null);
   
   useEffect(() => {
+    db.getSiteSettings().then(setSettings);
     // Run auto-cancel every minute
     const interval = setInterval(() => {
       db.runAutoCancel();
@@ -52,9 +54,15 @@ export default function TopAppBar({
         <div className="flex items-center gap-4">
           <Link href={homeLink} className="flex lg:hidden items-center gap-2 group">
             <div className="w-10 h-10 rounded-xl signature-gradient flex items-center justify-center shadow-lg group-active:scale-95 transition-transform">
-              <Droplets className="text-white w-6 h-6 fill-current" />
+              {settings?.logo ? (
+                <Image src={settings.logo} alt="Logo" width={24} height={24} className="object-contain" unoptimized />
+              ) : (
+                <Droplets className="text-white w-6 h-6 fill-current" />
+              )}
             </div>
-            <span className="font-headline font-black text-xl tracking-tighter text-on-surface hidden xs:block">Quick-Wash</span>
+            <span className="font-headline font-black text-xl tracking-tighter text-on-surface hidden xs:block">
+              {settings?.name || 'Quick-Wash'}
+            </span>
           </Link>
           
           {title && (
@@ -90,6 +98,12 @@ export default function TopAppBar({
                   <LogOut className="w-4 h-4 md:hidden" />
                   <span className="hidden md:inline">Logout</span>
                 </button>
+              )}
+              {user && (
+                <div className="flex flex-col items-end mr-2">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-primary leading-none mb-1">Welcome</span>
+                  <span className="text-sm font-headline font-black text-on-surface leading-none">{user.fullName || 'User'}</span>
+                </div>
               )}
               <Link href={profileLink}>
                 <div className="h-12 w-12 rounded-2xl overflow-hidden bg-surface-container-highest relative border-2 border-primary-container shadow-md active:scale-95 transition-transform flex items-center justify-center">

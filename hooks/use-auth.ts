@@ -9,7 +9,7 @@ interface UserData {
   uid: string;
   fullName?: string;
   phoneNumber: string;
-  email?: string;
+  email: string; // Made email mandatory
   password?: string;
   landmark?: string;
   role: UserRole;
@@ -31,6 +31,9 @@ interface UserData {
   pendingBalance?: number;
   badges?: string[];
   status?: 'active' | 'restricted' | 'suspended';
+  shopImage?: string; // New field
+  ninImage?: string;  // New field
+  transferReference?: string; // New field
 }
 
 export function useAuth() {
@@ -47,27 +50,7 @@ export function useAuth() {
   const router = useRouter();
 
   useEffect(() => {
-    // Initialize super-admin if not exists
-    const users = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
-    const superAdminPhone = '09012345678'; // Secret Super Admin Phone
-    if (!users.find((u: any) => u.phoneNumber === superAdminPhone)) {
-      users.push({
-        uid: 'admin_001',
-        fullName: 'Super Admin',
-        phoneNumber: superAdminPhone,
-        password: 'admin_password_123',
-        role: 'admin',
-        isApproved: true,
-        trustPoints: 100,
-        trustScore: 100,
-        walletBalance: 0,
-        pendingBalance: 0,
-        status: 'active',
-        badges: ['👑 Super Admin']
-      });
-      localStorage.setItem('qw_all_users', JSON.stringify(users));
-    }
-
+    // Initial load check
     Promise.resolve().then(() => setLoading(false));
   }, []);
 
@@ -82,6 +65,12 @@ export function useAuth() {
       return;
     }
 
+    if (!data.email || !/^\S+@\S+\.\S+$/.test(data.email)) {
+      setError('Please provide a valid email address.');
+      setIsProcessing(false);
+      return;
+    }
+
     if (data.role === 'rider') {
       if (!data.nin || !/^\d{11}$/.test(data.nin)) {
         setError('NIN must be exactly 11 digits!');
@@ -89,65 +78,65 @@ export function useAuth() {
         return;
       }
     }
-    if (data.role === 'vendor' || data.role === 'rider') {
-      if (data.bankAccountNumber && !/^\d+$/.test(data.bankAccountNumber)) {
-        setError('Bank Account Number must be numbers only!');
-        setIsProcessing(false);
-        return;
+
+    try {
+      const response = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || 'Signup failed');
       }
-    }
 
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    const users = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
-    if (users.find((u: any) => u.phoneNumber === data.phoneNumber)) {
-      setError('This phone number is already registered!');
+      const { user: newUser, token } = result;
+      
+      if (token) localStorage.setItem('qw_token', token);
+
+      if (!newUser.isApproved) {
+        router.push(`/auth?login=true&message=pending&role=${data.role}`);
+      } else {
+        localStorage.setItem('qw_user', JSON.stringify(newUser));
+        setUser(newUser);
+        router.push('/customer');
+      }
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
       setIsProcessing(false);
-      return;
     }
-    
-    // Vendors, Riders, and Moderator Admins need approval
-    const needsApproval = data.role !== 'customer';
-    const newUser: UserData = { 
-      ...data, 
-      uid: `u_${Math.random().toString(36).substr(2, 9)}`,
-      isApproved: !needsApproval,
-      trustPoints: data.role === 'customer' ? 50 : 0,
-      trustScore: 100,
-      walletBalance: 0,
-      pendingBalance: 0,
-      status: 'active',
-      badges: data.role === 'customer' ? ['🌱 Newcomer'] : []
-    };
-
-    users.push(newUser);
-    localStorage.setItem('qw_all_users', JSON.stringify(users));
-    
-    if (needsApproval) {
-      router.push(`/auth?login=true&message=pending&role=${data.role}`);
-    } else {
-      localStorage.setItem('qw_user', JSON.stringify(newUser));
-      setUser(newUser);
-      router.push('/customer');
-    }
-    setIsProcessing(false);
   };
 
   const login = async (phoneNumber: string, password?: string) => {
     setIsProcessing(true);
     setError(null);
-    await new Promise(resolve => setTimeout(resolve, 1500));
     
-    const users = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
-    const foundUser = users.find((u: any) => u.phoneNumber === phoneNumber && u.password === password);
-    
-    if (foundUser) {
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phoneNumber, password }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || 'Login failed');
+      }
+
+      const { user: foundUser, token } = result;
+      
+      if (token) localStorage.setItem('qw_token', token);
+
       if (!foundUser.isApproved) {
         setError('Your account is pending approval. Please contact admin.');
         setIsProcessing(false);
         return;
       }
+
       localStorage.setItem('qw_user', JSON.stringify(foundUser));
       setUser(foundUser);
       
@@ -156,10 +145,11 @@ export function useAuth() {
       else if (foundUser.role === 'vendor') router.push('/vendor');
       else if (foundUser.role === 'rider') router.push('/rider');
       else router.push('/customer');
-    } else {
-      setError('Invalid phone number or password. Please try again.');
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsProcessing(false);
     }
-    setIsProcessing(false);
   };
 
   const logout = useCallback(() => {

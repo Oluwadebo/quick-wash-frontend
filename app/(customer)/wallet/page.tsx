@@ -20,32 +20,27 @@ export default function WalletPage() {
   const [fundAmount, setFundAmount] = React.useState('');
   const [isProcessing, setIsProcessing] = React.useState(false);
   const [showSuccessView, setShowSuccessView] = React.useState(false);
-  const [lastFundedAmount, setLastFundedAmount] = React.useState(0);
-
   React.useEffect(() => {
     if (user?.uid) {
       const initWallet = async () => {
-        const found = await db.getUser(user.uid);
-        setBalance(found?.walletBalance || 0);
-        
-        // Unified lookup: Use UID
-        let allHistory = JSON.parse(localStorage.getItem(`qw_wallet_history_${user.uid}`) || '[]');
-        
-        // MIGRATION / FALLBACK: If no history for UID but exists for phoneNumber, merge them
-        if (allHistory.length === 0 && user.phoneNumber) {
-          const oldHistory = JSON.parse(localStorage.getItem(`qw_wallet_history_${user.phoneNumber}`) || '[]');
-          if (oldHistory.length > 0) {
-            allHistory = oldHistory;
-            localStorage.setItem(`qw_wallet_history_${user.uid}`, JSON.stringify(allHistory));
-            localStorage.removeItem(`qw_wallet_history_${user.phoneNumber}`);
+        try {
+          const response = await fetch(`/api/wallet/history?userId=${user.uid}`, {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('qw_token')}` }
+          });
+          const data = await response.json();
+          if (response.ok) {
+            setHistory(data.transactions || []);
+            setBalance(data.balance || 0);
           }
+        } catch (error) {
+          console.error('Failed to fetch wallet info:', error);
         }
-
-        setHistory(allHistory.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()));
       };
       initWallet();
     }
   }, [user]);
+
+  const [lastFundedAmount, setLastFundedAmount] = React.useState(0);
 
   const handleFundWallet = React.useCallback(async () => {
     if (!fundAmount || isNaN(Number(fundAmount)) || Number(fundAmount) <= 0) {
@@ -54,46 +49,43 @@ export default function WalletPage() {
     }
 
     setIsProcessing(true);
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
     const amount = Number(fundAmount);
-    if (!user?.uid) return;
 
     try {
-      const u = await db.getUser(user.uid);
-      if (u) {
-        const newBalance = (u.walletBalance || 0) + amount;
-        await db.updateUser(user.uid, { walletBalance: newBalance });
-        setBalance(newBalance);
+      const response = await fetch('/api/wallet/fund', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('qw_token')}`
+        },
+        body: JSON.stringify({ amount, method: paymentMethod }),
+      });
 
-        // Unified Record History via DB Service
-        await db.recordTransaction(user.uid, {
-          type: 'deposit',
-          amount,
-          desc: 'Wallet Funding',
-          method: paymentMethod || 'unknown'
-        });
+      const result = await response.json();
 
-        // Refresh History
-        const updatedHistory = JSON.parse(localStorage.getItem(`qw_wallet_history_${user.uid}`) || '[]');
-        setHistory(updatedHistory.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+      if (response.ok) {
+        setBalance(result.balance);
+        setHistory(prev => [result.transaction, ...prev]);
+        setShowSuccessView(true);
+        setLastFundedAmount(amount);
+        setIsFunding(false);
+        setPaymentMethod(null);
+        setFundAmount('');
+      } else {
+        alert(result.message || 'Funding failed');
       }
-    } catch (e) {
-      console.error(e);
+    } catch (error) {
+      console.error('Funding error:', error);
+      alert('An error occurred. Please try again.');
+    } finally {
+      setIsProcessing(false);
     }
-
-    setIsProcessing(false);
-    setIsFunding(false);
-    setPaymentMethod(null);
-    setLastFundedAmount(amount);
-    setFundAmount('');
-    setShowSuccessView(true);
-  }, [user, fundAmount, paymentMethod]);
+  }, [fundAmount, paymentMethod]);
 
   const filteredHistory = React.useMemo(() => {
     const now = new Date();
     return history.filter(item => {
-      const itemDate = new Date(item.date);
+      const itemDate = new Date(item.date || item.createdAt);
       
       if (timeRange === 'custom') {
         if (!customRange.start || !customRange.end) return true;
@@ -519,12 +511,19 @@ export default function WalletPage() {
                         <p className="text-[10px] font-black text-warning-dark uppercase tracking-widest mb-1 text-primary">Transfer to:</p>
                         <p className="text-sm font-bold text-on-surface">Kuda Bank</p>
                         <p className="text-xl font-headline font-black text-on-surface">2031194566</p>
-                        <p className="text-xs font-medium text-on-surface-variant">Name: Quick-Wash Laundry</p>
+                        <p className="text-xs font-medium text-on-surface-variant mb-4">Name: Quick-Wash Laundry</p>
+                        
+                        <div className="bg-primary/5 p-4 rounded-xl border border-primary/10">
+                          <p className="text-[8px] font-black uppercase text-primary mb-1">IMPORTANT: USE THIS NARRATION</p>
+                          <p className="text-sm font-mono font-bold text-on-surface">{user?.transferReference || 'QW-REF-MISSING'}</p>
+                          <p className="text-[7px] font-medium text-on-surface-variant mt-1">This helps us identify your payment instantly.</p>
+                        </div>
                       </div>
                       <button 
                         onClick={() => {
-                          navigator.clipboard.writeText('2031194566');
-                          alert('Account number copied!');
+                          const ref = user?.transferReference || 'QW-REF-MISSING';
+                          navigator.clipboard.writeText(`Acc: 2031194566, Ref: ${ref}`);
+                          alert('Account and Reference copied!');
                         }}
                         className="p-2 bg-white rounded-lg shadow-sm active:scale-90 transition-transform"
                       >
@@ -532,7 +531,7 @@ export default function WalletPage() {
                       </button>
                     </div>
                     <p className="text-[9px] font-medium text-on-surface-variant italic">
-                      Transfer the exact amount and enter it below. Your wallet will be funded once the system detects the payment.
+                      Transfer the exact amount and enter it below. Your wallet will be funded once the system detects the payment with your reference.
                     </p>
                   </motion.div>
                 )}

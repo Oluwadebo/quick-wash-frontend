@@ -7,7 +7,7 @@ import {
   Map, Activity, ArrowUpRight, Check, X as XIcon, 
   Wallet, BarChart3, Megaphone, History, MessageSquare, 
   Search, Filter, MoreHorizontal, UserPlus, Trash2, ExternalLink,
-  Edit3, Bike, Package, Navigation, Info
+  Edit3, Bike, Package, Navigation, Info, Plus, MapPin, X, Globe
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
@@ -15,14 +15,14 @@ import { useAuth } from '@/hooks/use-auth';
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
 import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
-import { db } from '@/lib/DatabaseService';
+import { db, SiteSettings } from '@/lib/DatabaseService';
 
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell
 } from 'recharts';
 
-type AdminTab = 'overview' | 'orders' | 'disputes' | 'users' | 'wallets' | 'analytics' | 'marketing' | 'audit';
+type AdminTab = 'overview' | 'orders' | 'disputes' | 'users' | 'wallets' | 'analytics' | 'marketing' | 'audit' | 'settings';
 type UserSection = 'all' | 'admin' | 'vendor' | 'rider' | 'customer' | 'marketing';
 
 export default function AdminDashboard() {
@@ -55,7 +55,7 @@ export default function AdminDashboard() {
     isApproved: true
   });
 
-  const isSuperAdmin = currentUser?.phoneNumber === '09012345678' || currentUser?.email === 'ogunwedebo21@gmail.com';
+  const isSuperAdmin = currentUser?.role === 'admin' && (currentUser?.phoneNumber === '09012345678' || currentUser?.email === 'ogunwedebo21@gmail.com');
 
   const handleRestrictUser = (phone: string, status: 'active' | 'restricted' | 'suspended') => {
     if (!isSuperAdmin) {
@@ -98,6 +98,54 @@ export default function AdminDashboard() {
   };
   const [isVerificationModalOpen, setIsVerificationModalOpen] = React.useState(false);
   const [verifyingUser, setVerifyingUser] = React.useState<any>(null);
+  const [siteSettings, setSiteSettings] = React.useState<SiteSettings | null>(null);
+  const [isSiteUpdating, setIsSiteUpdating] = React.useState(false);
+  const [systemStats, setSystemStats] = React.useState<any>(null);
+  const [landmarks, setLandmarks] = React.useState<any[]>([]);
+  const [riders, setRiders] = React.useState<any[]>([]);
+
+  React.useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const token = localStorage.getItem('qw_token');
+        const [usersRes, ordersRes, sysStats, site] = await Promise.all([
+          fetch('/api/admin/users', { headers: { 'Authorization': `Bearer ${token}` } }),
+          fetch('/api/orders', { headers: { 'Authorization': `Bearer ${token}` } }),
+          db.getSystemStats(),
+          db.getSiteSettings()
+        ]);
+
+        const lms = JSON.parse(localStorage.getItem('qw_landmarks') || '[]');
+        setLandmarks(lms);
+        setSiteSettings(site);
+
+        if (usersRes.ok && ordersRes.ok) {
+          const usersData = await usersRes.json();
+          const ordersData = await ordersRes.json();
+          setAllUsers(usersData);
+          setPendingUsers(usersData.filter((u: any) => !u.isApproved));
+          setRiders(usersData.filter((u: any) => u.role === 'rider' && u.isApproved));
+          setOrders(ordersData);
+          setSystemStats(sysStats);
+
+          const totalRevenue = ordersData.reduce((acc: number, o: any) => acc + (Number(o.totalPrice) || 0), 0);
+          const activeOrders = ordersData.filter((o: any) => o.status !== 'delivered' && o.status !== 'completed' && !o.status.includes('Cancelled')).length;
+          
+          setStats([
+            { label: 'Total Revenue', value: `₦${(totalRevenue || 0).toLocaleString()}`, trend: '+18.2%', icon: TrendingUp, color: 'text-primary' },
+            { label: 'Active Orders', value: activeOrders.toString(), trend: '+5.4%', icon: ShoppingBag, color: 'text-tertiary' },
+            { label: 'Total Users', value: usersData.length.toString(), trend: '+12.1%', icon: Users, color: 'text-on-surface' },
+            { label: 'System Health', value: '99.9%', trend: 'Stable', icon: Activity, color: 'text-primary' }
+          ]);
+        }
+      } catch (err) {
+        console.error('Fetch error:', err);
+      }
+    };
+    fetchData();
+    window.addEventListener('storage', fetchData);
+    return () => window.removeEventListener('storage', fetchData);
+  }, [currentUser]);
   const [selectedDetail, setSelectedDetail] = React.useState<any>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = React.useState(false);
   const [showNewUserPassword, setShowNewUserPassword] = React.useState(false);
@@ -209,73 +257,6 @@ export default function AdminDashboard() {
     setIsUserModalOpen(false);
     alert('User updated successfully!');
   };
-  const [riders, setRiders] = React.useState<any[]>([]);
-
-  React.useEffect(() => {
-    const users = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
-    setAllUsers(users);
-    setPendingUsers(users.filter((u: any) => !u.isApproved));
-    setRiders(users.filter((u: any) => u.role === 'rider' && u.isApproved));
-
-    const storedAlerts = JSON.parse(localStorage.getItem('qw_alerts') || '[]');
-    setAlerts(storedAlerts.sort((a: any, b: any) => b.id - a.id));
-
-    const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-    setOrders(allOrders);
-
-    const totalRevenue = allOrders.reduce((acc: number, o: any) => acc + (Number(o.totalPrice) || 0), 0);
-    const activeOrders = allOrders.filter((o: any) => o.status !== 'delivered' && o.status !== 'completed' && !o.status.includes('Cancelled')).length;
-    
-    setStats([
-      { label: 'Total Revenue', value: `₦${(totalRevenue || 0).toLocaleString()}`, trend: '+18.2%', icon: TrendingUp, color: 'text-primary' },
-      { label: 'Active Orders', value: activeOrders.toString(), trend: '+5.4%', icon: ShoppingBag, color: 'text-tertiary' },
-      { label: 'Total Users', value: users.length.toString(), trend: '+12.1%', icon: Users, color: 'text-on-surface' },
-      { label: 'System Health', value: '99.9%', trend: 'Stable', icon: Activity, color: 'text-primary' }
-    ]);
-
-    // Auto-cancel logic
-    const interval = setInterval(() => {
-      const currentOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-      const now = new Date().getTime();
-      const twentyMinutes = 20 * 60 * 1000;
-      let changed = false;
-
-      const updatedOrders = currentOrders.map((o: any) => {
-        if ((o.status === 'rider_assign_pickup' || o.status === 'rider_assign_delivery') && !o.riderPhone) {
-          const startTime = new Date(o.updatedAt || o.createdAt).getTime();
-          if (now - startTime > twentyMinutes) {
-            changed = true;
-            // Refund customer
-            const allUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
-            const updatedUsers = allUsers.map((u: any) => {
-              if (u.phoneNumber === o.customerPhone) {
-                return { ...u, walletBalance: (u.walletBalance || 0) + (o.totalPrice || 0) };
-              }
-              return u;
-            });
-            localStorage.setItem('qw_all_users', JSON.stringify(updatedUsers));
-
-            return { 
-              ...o, 
-              status: 'Cancelled (Auto)', 
-              color: 'bg-error/10 text-error',
-              cancelledAt: new Date().toISOString(),
-              refunded: true
-            };
-          }
-        }
-        return o;
-      });
-
-      if (changed) {
-        localStorage.setItem('qw_orders', JSON.stringify(updatedOrders));
-        setOrders(updatedOrders);
-        window.dispatchEvent(new Event('storage'));
-      }
-    }, 30000); // Check every 30 seconds
-
-    return () => clearInterval(interval);
-  }, []);
 
   const assignRider = (orderId: string, riderPhone: string) => {
     const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
@@ -295,105 +276,57 @@ export default function AdminDashboard() {
   const [refundAmount, setRefundAmount] = React.useState<number>(0);
 
   const handleResolveDispute = async (orderId: string, resolution: 'refund' | 'reject' | 'partial', customAmount?: number) => {
-    const allOrders = await db.getOrders();
-    const order = allOrders.find((o: any) => o.id === orderId);
-    if (!order) return;
+    try {
+      const response = await fetch('/api/orders/dispute', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('qw_token')}`
+        },
+        body: JSON.stringify({ orderId, resolution, customAmount })
+      });
 
-    let updatedOrder;
-    if (resolution === 'refund' || resolution === 'partial') {
-      const amountToRefund = resolution === 'refund' ? order.totalPrice : (customAmount || 0);
-      
-      updatedOrder = { 
-        ...order, 
-        status: resolution === 'refund' ? 'Refunded (Full)' : `Refunded (Partial: ₦${amountToRefund})`, 
-        color: 'bg-error/10 text-error',
-        refundedAt: new Date().toISOString(),
-        refundAmount: amountToRefund
-      };
-      
-      // Credit customer wallet
-      const customer = await db.getUser(order.customerUid);
-      if (customer) {
-        await db.updateUser(customer.uid, { 
-          walletBalance: (customer.walletBalance || 0) + amountToRefund 
-        });
-        await db.recordTransaction(customer.uid, {
-          type: 'deposit',
-          amount: amountToRefund,
-          desc: `Dispute Refund (${resolution}) - Order #${orderId}`
-        });
+      if (response.ok) {
+        const updatedOrder = await response.json();
+        setOrders(prev => prev.map(o => o.id === orderId ? updatedOrder : o));
+        setIsRefundModalOpen(false);
+        setResolvingOrder(null);
+        alert(`Dispute ${resolution}ed successfully.`);
+      } else {
+        const error = await response.json();
+        alert(error.message || 'Failed to resolve dispute');
       }
-
-      // If partial, release the rest to the vendor if applicable
-      if (resolution === 'partial') {
-        const remainingForVendor = Math.max(0, (order.itemsPrice || 0) - amountToRefund);
-        if (remainingForVendor > 0) {
-          const vendorUser = await db.getUser(order.vendorId);
-          if (vendorUser) {
-            await db.updateUser(vendorUser.uid, {
-              walletBalance: (vendorUser.walletBalance || 0) + remainingForVendor,
-              pendingBalance: Math.max(0, (vendorUser.pendingBalance || 0) - (order.itemsPrice * 0.2)) // Adjust pending balance
-            });
-            await db.recordTransaction(vendorUser.uid, {
-              type: 'deposit',
-              amount: remainingForVendor,
-              desc: `Partial Funds Release (Dispute Partial Refund) - Order #${order.id}`
-            });
-          }
-        }
-      }
-    } else {
-      updatedOrder = { 
-        ...order, 
-        status: 'completed', 
-        color: 'bg-success text-on-success',
-        disputeRejectedAt: new Date().toISOString()
-      };
-
-      // Vendor gets the held 20%
-      const itemsPrice = order.itemsPrice || 0;
-      const remaining20 = itemsPrice * 0.2;
-      const vendorUser = await db.getUser(order.vendorId);
-      if (vendorUser) {
-        await db.updateUser(vendorUser.uid, { 
-          walletBalance: (vendorUser.walletBalance || 0) + remaining20,
-          pendingBalance: Math.max(0, (vendorUser.pendingBalance || 0) - remaining20)
-        });
-        await db.recordTransaction(vendorUser.uid, {
-          type: 'deposit',
-          amount: remaining20,
-          desc: `Released Held Funds (Dispute Rejected) - Order #${order.id}`
-        });
-      }
+    } catch (error) {
+      console.error('Dispute resolution error:', error);
+      alert('An error occurred. Please try again.');
     }
-
-    await db.saveOrder(updatedOrder);
-    setOrders(prev => prev.map(o => o.id === orderId ? updatedOrder : o));
-    window.dispatchEvent(new Event('storage'));
-    setIsRefundModalOpen(false);
-    setResolvingOrder(null);
-    alert(`Dispute ${resolution}ed successfully.`);
   };
 
-  const handleApprove = React.useCallback((phone: string) => {
-    const updated = approveUser(phone);
-    setAllUsers(updated);
-    setPendingUsers(updated.filter((u: any) => !u.isApproved));
-    
-    // Add audit log
-    const logs = JSON.parse(localStorage.getItem('qw_audit_logs') || '[]');
-    const newLog = {
-      id: Date.now(),
-      action: 'User Approved',
-      target: phone,
-      admin: currentUser?.phoneNumber,
-      time: new Date().toISOString()
-    };
-    logs.push(newLog);
-    localStorage.setItem('qw_audit_logs', JSON.stringify(logs));
-    
-    alert('User approved successfully!');
-  }, [approveUser, currentUser]);
+  const handleApprove = React.useCallback(async (userId: string) => {
+    try {
+      const response = await fetch('/api/admin/approve-user', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('qw_token')}`
+        },
+        body: JSON.stringify({ userId, approve: true })
+      });
+
+      if (response.ok) {
+        const updatedUser = await response.json();
+        setAllUsers(prev => prev.map(u => u.uid === userId ? updatedUser : u));
+        setPendingUsers(prev => prev.filter(u => u.uid !== userId));
+        alert('User approved successfully!');
+      } else {
+        const error = await response.json();
+        alert(error.message || 'Failed to approve user');
+      }
+    } catch (error) {
+      console.error('Approval error:', error);
+      alert('An error occurred. Please try again.');
+    }
+  }, []);
 
   const tabs: { id: AdminTab; label: string; icon: any }[] = [
     { id: 'overview', label: 'Overview', icon: Activity },
@@ -404,6 +337,7 @@ export default function AdminDashboard() {
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
     { id: 'marketing', label: 'Marketing', icon: Megaphone },
     { id: 'audit', label: 'Audit Log', icon: History },
+    { id: 'settings', label: 'Settings', icon: Map },
   ];
 
   return (
@@ -491,7 +425,7 @@ export default function AdminDashboard() {
                                 View Details
                               </button>
                               <button 
-                                onClick={() => handleApprove(u.phoneNumber)}
+                                onClick={() => handleApprove(u.uid)}
                                 className="w-12 h-12 bg-primary text-on-primary rounded-xl flex items-center justify-center active:scale-95 transition-transform"
                               >
                                 <Check className="w-4 h-4" />
@@ -560,29 +494,272 @@ export default function AdminDashboard() {
                     
                     <div className="bg-surface-container-low rounded-[2.5rem] p-8 border border-primary/5">
                       <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-2xl font-headline font-black text-on-surface">System Alerts</h2>
-                        <button 
-                          onClick={clearAlerts}
-                          className="text-[10px] font-black uppercase tracking-widest text-primary hover:underline"
-                        >
-                          Clear All
-                        </button>
+                        <h2 className="text-2xl font-headline font-black text-on-surface">Live Network Pulse</h2>
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 bg-success rounded-full animate-pulse" />
+                          <span className="text-[10px] font-black text-success uppercase tracking-widest">Connected</span>
+                        </div>
                       </div>
-                      <div className="space-y-4">
-                        {alerts.slice(0, 4).map(alert => (
-                          <div key={alert.id} className="flex gap-4 p-4 bg-surface-container-lowest rounded-2xl border border-primary/5">
-                            <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center shrink-0", alert.color)}>
-                              <AlertTriangle className="w-5 h-5" />
-                            </div>
-                            <div>
-                              <p className="text-xs font-black uppercase tracking-widest text-on-surface mb-1">{alert.type}</p>
-                              <p className="text-[10px] font-medium text-on-surface-variant line-clamp-2">{alert.msg}</p>
-                            </div>
-                          </div>
+                      <div className="bg-surface-container-lowest rounded-2xl p-4 font-mono text-[10px] space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar">
+                        <p className="text-success">[OK] System ready. Listening for orders...</p>
+                        <p className="text-on-surface-variant">[{new Date().toLocaleTimeString()}] WebSocket connected to campus nodes.</p>
+                        <p className="text-primary">[{new Date().toLocaleTimeString()}] API Request: GET /api/stats (200ms)</p>
+                        <p className="text-tertiary">[{new Date().toLocaleTimeString()}] Trust Engine: Processed 12 point adjustments.</p>
+                        {orders.slice(0, 5).map(o => (
+                          <p key={o.id} className="text-on-surface-variant">[{new Date(o.createdAt).toLocaleTimeString()}] NEW ORDER: #{o.id} from {o.customerLandmark}</p>
                         ))}
+                        <p className="text-on-surface-variant opacity-50 underline cursor-default italic">End of recent logs.</p>
                       </div>
                     </div>
                   </div>
+                </motion.div>
+              )}
+
+              {activeTab === 'analytics' && (
+                <motion.div 
+                  key="analytics"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="space-y-10"
+                >
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div className="bg-surface-container-low rounded-[2.5rem] p-8 border border-primary/5">
+                      <h3 className="text-xl font-headline font-black mb-6">Order Velocity (12h)</h3>
+                      <div className="h-[300px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={systemStats?.hourlyVelocity || []}>
+                            <defs>
+                              <linearGradient id="colorOrders" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#1a56db" stopOpacity={0.3}/>
+                                <stop offset="95%" stopColor="#1a56db" stopOpacity={0}/>
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} strokeOpacity={0.1} />
+                            <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{ fontSize: 10 }} />
+                            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10 }} />
+                            <Tooltip 
+                              contentStyle={{ 
+                                backgroundColor: '#fff', 
+                                borderRadius: '16px', 
+                                border: 'none', 
+                                boxShadow: '0 10px 30px rgba(0,0,0,0.1)' 
+                              }} 
+                            />
+                            <Area type="monotone" dataKey="orders" stroke="#1a56db" fillOpacity={1} fill="url(#colorOrders)" strokeWidth={3} />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+
+                    <div className="bg-surface-container-low rounded-[2.5rem] p-8 border border-primary/5">
+                      <h3 className="text-xl font-headline font-black mb-6">User Distribution</h3>
+                      <div className="h-[300px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={systemStats?.userTypeDist || []}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={60}
+                              outerRadius={80}
+                              paddingAngle={5}
+                              dataKey="value"
+                            >
+                              <Cell fill="#1a56db" />
+                              <Cell fill="#0e7490" />
+                              <Cell fill="#7c3aed" />
+                            </Pie>
+                            <Tooltip />
+                          </PieChart>
+                        </ResponsiveContainer>
+                        <div className="flex justify-center gap-6 mt-4">
+                          {systemStats?.userTypeDist?.map((d: any, i: number) => (
+                            <div key={d.name} className="flex items-center gap-2">
+                              <div className={cn("w-3 h-3 rounded-full", i === 0 ? "bg-primary" : i === 1 ? "bg-tertiary" : "bg-primary/50")} />
+                              <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">{d.name} ({d.value})</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {activeTab === 'settings' && (
+                <motion.div 
+                  key="settings"
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="bg-surface-container-low rounded-[2.5rem] p-8 border border-primary/5"
+                >
+                  <div className="flex justify-between items-center mb-10">
+                    <div>
+                      <h2 className="text-3xl font-headline font-black text-on-surface tracking-tight">System Configuration</h2>
+                      <p className="text-on-surface-variant font-medium">Control campus hotspots and global application parameters.</p>
+                    </div>
+                    <button 
+                      onClick={() => {
+                        const name = prompt('Landmark Name:');
+                        if (!name) return;
+                        const updated = [...landmarks, { id: Date.now(), name, active: true }];
+                        setLandmarks(updated);
+                        localStorage.setItem('qw_landmarks', JSON.stringify(updated));
+                        alert('Hotspot added! Syncing to all clients...');
+                        window.dispatchEvent(new Event('storage'));
+                      }}
+                      className="signature-gradient text-white px-8 py-4 rounded-2xl font-headline font-bold text-sm shadow-xl active:scale-95 transition-transform flex items-center gap-2"
+                    >
+                      <Plus className="w-5 h-5" /> ADD NEW HOTSPOT
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {landmarks.map(lm => (
+                      <div key={lm.id} className="bg-surface-container-lowest p-6 rounded-[2rem] border border-primary/5 shadow-sm flex items-center justify-between group">
+                        <div className="flex items-center gap-4">
+                          <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", lm.active ? "bg-success/10 text-success" : "bg-error/10 text-error")}>
+                            <MapPin className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <p className="font-headline font-black text-on-surface">{lm.name}</p>
+                            <p className="text-[8px] font-black uppercase tracking-widest text-on-surface-variant">{lm.active ? 'Operational' : 'Disabled'}</p>
+                          </div>
+                        </div>
+                        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button 
+                            onClick={() => {
+                              const updated = landmarks.map(l => l.id === lm.id ? { ...l, active: !l.active } : l);
+                              setLandmarks(updated);
+                              localStorage.setItem('qw_landmarks', JSON.stringify(updated));
+                              window.dispatchEvent(new Event('storage'));
+                            }}
+                            className="p-2 rounded-lg bg-surface-container-highest text-on-surface-variant hover:text-primary transition-colors"
+                          >
+                            <Info className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={() => {
+                              if (confirm('Delete hotspot?')) {
+                                const updated = landmarks.filter(l => l.id !== lm.id);
+                                setLandmarks(updated);
+                                localStorage.setItem('qw_landmarks', JSON.stringify(updated));
+                                window.dispatchEvent(new Event('storage'));
+                              }
+                            }}
+                            className="p-2 rounded-lg bg-surface-container-highest text-on-surface-variant hover:text-error transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    {landmarks.length === 0 && (
+                      <div className="col-span-full py-20 text-center border-4 border-dashed border-primary/10 rounded-[3rem]">
+                        <p className="text-on-surface-variant font-medium">No landmarks managed via settings yet.</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {isSuperAdmin && siteSettings && (
+                    <div className="mt-20 border-t border-primary/10 pt-20">
+                      <div className="mb-12">
+                        <h2 className="text-3xl font-headline font-black text-on-surface tracking-tight">Site Branding</h2>
+                        <p className="text-on-surface-variant font-medium">Customize the platform appearance (Super Admin Exclusive).</p>
+                      </div>
+
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+                        <div className="space-y-8">
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Site Name</label>
+                            <input 
+                              type="text" 
+                              value={siteSettings.name}
+                              onChange={(e) => setSiteSettings({ ...siteSettings, name: e.target.value })}
+                              className="w-full h-16 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-4 ring-primary/10 border border-primary/5"
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Logo URL or Base64</label>
+                            <input 
+                              type="text" 
+                              value={siteSettings.logo}
+                              onChange={(e) => setSiteSettings({ ...siteSettings, logo: e.target.value })}
+                              placeholder="data:image/png;base64,..."
+                              className="w-full h-16 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-4 ring-primary/10 border border-primary/5 font-mono text-xs"
+                            />
+                            <p className="text-[10px] text-on-surface-variant px-4">Leave empty to use default drop icon.</p>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Contact Phone</label>
+                              <input 
+                                type="text" 
+                                value={siteSettings.contactPhone}
+                                onChange={(e) => setSiteSettings({ ...siteSettings, contactPhone: e.target.value })}
+                                className="w-full h-16 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-4 ring-primary/10 border border-primary/5"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Contact Email</label>
+                              <input 
+                                type="text" 
+                                value={siteSettings.contactEmail}
+                                onChange={(e) => setSiteSettings({ ...siteSettings, contactEmail: e.target.value })}
+                                className="w-full h-16 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-4 ring-primary/10 border border-primary/5"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-8">
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Global Announcement</label>
+                            <textarea 
+                              value={siteSettings.announcement}
+                              onChange={(e) => setSiteSettings({ ...siteSettings, announcement: e.target.value })}
+                              className="w-full h-40 bg-surface-container-lowest rounded-2xl p-6 font-medium text-sm outline-none focus:ring-4 ring-primary/10 border border-primary/5 resize-none"
+                            />
+                          </div>
+
+                          <div className="flex items-center justify-between p-6 bg-surface-container-lowest rounded-2xl border border-primary/5">
+                            <div>
+                              <p className="font-headline font-black text-on-surface">Maintenance Mode</p>
+                              <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Blocks user access to all features</p>
+                            </div>
+                            <button 
+                              onClick={() => setSiteSettings({ ...siteSettings, maintenanceMode: !siteSettings.maintenanceMode })}
+                              className={cn(
+                                "w-16 h-8 rounded-full relative transition-colors",
+                                siteSettings.maintenanceMode ? "bg-error" : "bg-primary/20"
+                              )}
+                            >
+                              <div className={cn(
+                                "w-6 h-6 bg-white rounded-full absolute top-1 transition-all",
+                                siteSettings.maintenanceMode ? "right-1" : "left-1"
+                              )} />
+                            </button>
+                          </div>
+
+                          <button 
+                            disabled={isSiteUpdating}
+                            onClick={async () => {
+                              setIsSiteUpdating(true);
+                              await db.updateSiteSettings(siteSettings);
+                              setIsSiteUpdating(false);
+                              alert('Site settings propagated! All users will see the changes.');
+                            }}
+                            className="w-full h-20 signature-gradient text-white rounded-3xl font-headline font-black text-lg shadow-2xl shadow-primary/20 active:scale-[0.98] transition-all flex items-center justify-center gap-3"
+                          >
+                            {isSiteUpdating ? 'PROPAGATING...' : 'PUBLISH CHANGES'}
+                            <Globe className="w-6 h-6" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </motion.div>
               )}
 
@@ -1573,7 +1750,7 @@ export default function AdminDashboard() {
                     <div className="flex gap-4">
                       <button 
                         onClick={() => {
-                          handleApprove(verifyingUser.phoneNumber);
+                          handleApprove(verifyingUser.uid);
                           setIsVerificationModalOpen(false);
                         }}
                         className="flex-1 h-16 signature-gradient text-white rounded-2xl font-headline font-black text-sm shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-3"

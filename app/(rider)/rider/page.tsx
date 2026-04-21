@@ -9,7 +9,15 @@ import ProtectedRoute from '@/components/shared/ProtectedRoute';
 import { useAuth } from '@/hooks/use-auth';
 import { formatRelativeTime } from '@/lib/time';
 import { db, Order, UserData } from '@/lib/DatabaseService';
-import { X, History, Wallet, ShoppingBag, MapPin, Navigation, Package, CheckCircle, Clock, Phone, ArrowRight, Bike, Zap, AlertTriangle, MessageCircle, ShieldAlert } from 'lucide-react';
+import { 
+  X, History, Wallet, ShoppingBag, MapPin, Navigation, Package, CheckCircle, 
+  Clock, Phone, ArrowRight, Bike, Zap, AlertTriangle, MessageCircle, ShieldAlert,
+  BarChart3, TrendingUp, Trophy, ArrowUpRight, ArrowDownLeft 
+} from 'lucide-react';
+import { 
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  BarChart, Bar, Cell 
+} from 'recharts';
 
 import { useSearchParams } from 'next/navigation';
 
@@ -41,6 +49,7 @@ export default function RiderDashboard() {
   const [selectedOrderId, setSelectedOrderId] = React.useState<string | null>(null);
   const [timeRange, setTimeRange] = React.useState<'today' | '7d' | '14d' | '30d' | '2m' | 'custom'>('30d');
   const [customRange, setCustomRange] = React.useState({ start: '', end: '' });
+  const [earningsData, setEarningsData] = React.useState<any[]>([]);
 
   React.useEffect(() => {
     const refreshData = async () => {
@@ -75,6 +84,10 @@ export default function RiderDashboard() {
           trustScore: me?.trustScore || 100,
           completedTasks: myAll.filter((o: Order) => o.status === 'Completed' || o.status === 'Delivered').length
         });
+
+        // Mock earnings history for chart
+        const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        setEarningsData(days.map(d => ({ name: d, earnings: Math.floor(Math.random() * 3000) + 500 })));
       }
     };
 
@@ -763,11 +776,76 @@ export default function RiderDashboard() {
             {activeTab === 'wallet' && (
               <motion.section 
                 key="wallet"
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
                 className="space-y-8"
               >
-                <div className="bg-primary text-on-primary p-10 rounded-[3rem] shadow-2xl shadow-primary/30">
+                {/* Performance Chart */}
+                <div className="bg-surface-container-low rounded-[2.5rem] p-8 border border-primary/5 shadow-sm">
+                  <div className="flex justify-between items-center mb-8">
+                    <div>
+                      <h3 className="text-2xl font-headline font-black">Earnings Pulse</h3>
+                      <p className="text-on-surface-variant text-sm font-medium">Daily income tracking across campus loops.</p>
+                    </div>
+                    <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-primary">
+                      <TrendingUp className="w-6 h-6" />
+                    </div>
+                  </div>
+
+                  <div className="h-[250px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={earningsData}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} strokeOpacity={0.1} />
+                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 'bold' }} />
+                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 'bold' }} />
+                        <Tooltip cursor={{ fill: 'rgba(26, 86, 219, 0.05)' }} contentStyle={{ borderRadius: '16px', border: 'none' }} />
+                        <Bar dataKey="earnings" radius={[8, 8, 0, 0]}>
+                          {earningsData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={index === 5 ? '#1a56db' : '#1a56db33'} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Incentive Progress */}
+                  <div className="bg-surface-container-low rounded-[2.5rem] p-8 border border-primary/5 shadow-sm">
+                    <div className="flex items-center gap-4 mb-6">
+                      <div className="w-12 h-12 bg-tertiary/10 rounded-2xl flex items-center justify-center text-tertiary">
+                        <Trophy className="w-6 h-6" />
+                      </div>
+                      <h3 className="text-xl font-headline font-black">Bonus Goal</h3>
+                    </div>
+                    <div className="space-y-4">
+                      <div className="flex justify-between text-xs font-black uppercase tracking-widest text-on-surface-variant">
+                        <span>Progress</span>
+                        <span>75%</span>
+                      </div>
+                      <div className="h-3 bg-surface-container-highest rounded-full overflow-hidden">
+                        <div className="h-full bg-tertiary rounded-full w-[75%]" />
+                      </div>
+                      <p className="text-[10px] font-medium text-on-surface-variant">Complete 5 more orders to unlock ₦2,000 bonus.</p>
+                    </div>
+                  </div>
+
+                  {/* Trust Incentive */}
+                  <div className="bg-surface-container-low rounded-[2.5rem] p-8 border border-primary/5 shadow-sm">
+                    <div className="flex items-center gap-4 mb-6">
+                      <div className="w-12 h-12 bg-success/10 rounded-2xl flex items-center justify-center text-success">
+                        <Zap className="w-6 h-6" />
+                      </div>
+                      <h3 className="text-xl font-headline font-black">Trust Multiplier</h3>
+                    </div>
+                    <div className="p-4 bg-success/5 rounded-2xl border border-success/10">
+                      <p className="text-lg font-headline font-black text-success">1.2x Active</p>
+                      <p className="text-[10px] font-medium text-success/80">High trust score (&gt;90) gives you 20% more per delivery.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-primary text-on-primary p-10 rounded-[3rem] shadow-2xl shadow-primary/30 relative overflow-hidden group">
                   <p className="font-label text-xs uppercase tracking-[0.3em] font-black mb-4 opacity-80">Rider Balance</p>
                   <h2 className="text-6xl font-headline font-black mb-8 tracking-tighter">₦{(stats.walletBalance || 0).toLocaleString()}</h2>
                   <button 
