@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { db } from '@/lib/DatabaseService';
 
 export type UserRole = 'customer' | 'vendor' | 'rider' | 'admin';
 
@@ -82,17 +83,7 @@ export function useAuth() {
     }
 
     try {
-      const response = await fetch('/api/auth/signup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.message || 'Signup failed');
-      }
+      const result = await db.signup(data);
 
       const { user: newUser, token } = result;
       
@@ -117,17 +108,7 @@ export function useAuth() {
     setError(null);
     
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phoneNumber, password }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.message || 'Login failed');
-      }
+      const result = await db.login(phoneNumber, password);
 
       const { user: foundUser, token } = result;
       

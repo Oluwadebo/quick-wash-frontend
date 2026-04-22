@@ -1,7 +1,9 @@
 /**
  * DatabaseService.ts
- * Abstracts localStorage to simulate a real asynchronous database with atomic transactions.
+ * Acts as a client for the Express backend API.
  */
+
+import { API_URLS } from './api-config';
 
 export type TrustAction = 
   | 'completed_order' 
@@ -21,6 +23,7 @@ export interface UserData {
   fullName: string;
   phoneNumber: string;
   password?: string;
+  email: string;
   role: 'customer' | 'vendor' | 'rider' | 'admin';
   isApproved: boolean;
   walletBalance: number;
@@ -52,7 +55,7 @@ export interface Order {
   customerUid: string;
   customerName: string;
   customerPhone: string;
-  vendorId: string; // This is the vendor's UID
+  vendorId: string;
   vendorName: string;
   vendorPhone?: string;
   customerAddress?: string;
@@ -76,32 +79,24 @@ export interface Order {
   code3?: string | null;
   code4?: string | null;
   handoverCode?: string | null;
-  readyForDeliveryAt?: string | null;
   washingAt?: string | null;
   readyAt?: string | null;
   pickedUpAt?: string | null;
-  pickedUpDeliveryAt?: string | null;
-  paidAt?: string | null;
   deliveredAt?: string | null;
   completedAt?: string | null;
+  paidAt?: string | null;
   claimedAt?: string | null;
   paymentMethod?: 'wallet' | 'card' | 'transfer';
   penaltyApplied?: boolean;
-  payoutReleased?: boolean;
+  payoutReleased80?: boolean;
+  payoutReleased20?: boolean;
+  riderPaid?: boolean;
   disputed?: boolean;
   issueDescription?: string | null;
   disputedAt?: string | null;
   evidenceImage?: string | null;
   vendorEvidenceImage?: string | null;
-  refundAmount?: number;
-  isLocked?: boolean;
-  lockedBy?: string;
-  lockExpires?: number;
-  returnReason?: string;
-  consecutiveReturns?: number;
-  rating?: number;
-  review?: string;
-  ratedAt?: string;
+  refundAmount?: number | null;
 }
 
 export interface SiteSettings {
@@ -116,6 +111,10 @@ export interface SiteSettings {
 }
 
 class DatabaseService {
+  private getBaseUrl() {
+    return API_URLS.base || '';
+  }
+
   private async fetchAPI(endpoint: string, options: RequestInit = {}) {
     if (typeof window === 'undefined') return null;
     const token = localStorage.getItem('qw_token');
@@ -124,18 +123,24 @@ class DatabaseService {
       ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
       ...(options.headers || {})
     };
-    const response = await fetch(endpoint, { ...options, headers });
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'API request failed');
+    
+    const url = `${this.getBaseUrl()}${endpoint}`;
+    try {
+      const response = await fetch(url, { ...options, headers });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'API request failed');
+      }
+      return response.json();
+    } catch (err: any) {
+      console.error(`API Fetch Error [${url}]:`, err);
+      throw err;
     }
-    return response.json();
   }
 
   // --- USERS ---
-
   async getUsers(): Promise<UserData[]> {
-    return this.fetchAPI('/api/admin/users');
+    return this.fetchAPI('/api/users');
   }
 
   async getUser(uid: string): Promise<UserData | null> {
@@ -143,20 +148,43 @@ class DatabaseService {
   }
 
   async updateUser(uid: string, data: Partial<UserData>): Promise<UserData> {
-    return this.fetchAPI(`/api/users/${uid}`, {
+    const isAdmin = JSON.parse(localStorage.getItem('qw_user') || '{}').role === 'admin';
+    const endpoint = isAdmin ? `/api/users/${uid}` : `/api/users/profile`;
+    return this.fetchAPI(endpoint, {
       method: 'PATCH',
       body: JSON.stringify(data)
     });
   }
 
   async deleteUser(uid: string): Promise<void> {
-    await this.fetchAPI(`/api/admin/users/${uid}`, {
+    await this.fetchAPI(`/api/users/${uid}`, {
       method: 'DELETE'
     });
   }
 
-  // --- ORDERS ---
+  // --- AUTH ---
+  async signup(data: any) {
+    return this.fetchAPI('/api/users/signup', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
 
+  async login(phoneOrEmail: string, password?: string) {
+    return this.fetchAPI('/api/users/login', {
+      method: 'POST',
+      body: JSON.stringify({ phoneOrEmail, password })
+    });
+  }
+
+  async approveUser(uid: string, isApproved: boolean = true) {
+    return this.fetchAPI(`/api/users/${uid}/approve`, {
+      method: 'PATCH',
+      body: JSON.stringify({ isApproved })
+    });
+  }
+
+  // --- ORDERS ---
   async getOrders(userId?: string, role?: string): Promise<Order[]> {
     let url = '/api/orders';
     if (userId && role) url += `?userId=${userId}&role=${role}`;
@@ -182,6 +210,14 @@ class DatabaseService {
     return result.success;
   }
 
+  async returnOrder(orderId: string, riderUid: string, reason: string): Promise<boolean> {
+    const result = await this.fetchAPI(`/api/orders/${orderId}/return`, {
+      method: 'POST',
+      body: JSON.stringify({ riderUid, reason })
+    });
+    return result.success;
+  }
+
   async updateOrderStatus(orderId: string, status: string, color: string, handoverCode?: string): Promise<Order> {
     return this.fetchAPI(`/api/orders/${orderId}/status`, {
       method: 'PATCH',
@@ -203,13 +239,6 @@ class DatabaseService {
     });
   }
 
-  async returnOrder(orderId: string, riderUid: string, reason: string): Promise<boolean> {
-    const result = await this.fetchAPI(`/api/orders/${orderId}/status`, {
-      method: 'PATCH',
-      body: JSON.stringify({ action: 'push_out', reason, riderUid })
-    });
-    return !!result;
-  }
   async rateOrder(orderId: string, rating: number, review: string): Promise<Order> {
     return this.fetchAPI(`/api/orders/${orderId}/rate`, {
       method: 'POST',
@@ -217,33 +246,38 @@ class DatabaseService {
     });
   }
 
-  // --- ANALYTICS ---
+  // --- SYSTEM ---
   async getSystemStats() {
-    return this.fetchAPI('/api/stats');
+    return this.fetchAPI('/api/system/stats');
   }
 
-  // --- PRICE LISTS ---
-
-  async getVendorPriceList(vendorUid: string): Promise<any[]> {
-    return this.fetchAPI(`/api/vendor/prices/${vendorUid}`);
-  }
-
-  async saveVendorPriceList(vendorUid: string, priceList: any[]): Promise<void> {
-    await this.fetchAPI(`/api/vendor/prices/${vendorUid}`, {
-      method: 'POST',
-      body: JSON.stringify({ items: priceList })
-    });
-  }
-
-  // --- SITE SETTINGS ---
   async getSiteSettings(): Promise<SiteSettings> {
-    return this.fetchAPI('/api/settings');
+    return this.fetchAPI('/api/system/settings');
   }
 
   async updateSiteSettings(data: Partial<SiteSettings>): Promise<SiteSettings> {
-    return this.fetchAPI('/api/settings', {
+    return this.fetchAPI('/api/system/settings', {
       method: 'PATCH',
       body: JSON.stringify(data)
+    });
+  }
+
+  async submitContactForm(data: any) {
+    return this.fetchAPI('/api/system/contact', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
+
+  // --- PRICE LISTS ---
+  async getVendorPriceList(vendorUid: string): Promise<any[]> {
+    return this.fetchAPI(`/api/prices/${vendorUid}`);
+  }
+
+  async saveVendorPriceList(vendorUid: string, priceList: any[]): Promise<void> {
+    await this.fetchAPI(`/api/prices/${vendorUid}`, {
+      method: 'POST',
+      body: JSON.stringify({ items: priceList })
     });
   }
 
@@ -259,6 +293,21 @@ class DatabaseService {
     });
   }
 
+  async deposit(amount: number, desc?: string) {
+    return this.fetchAPI('/api/wallet/deposit', {
+      method: 'POST',
+      body: JSON.stringify({ amount, desc })
+    });
+  }
+
+  async withdraw(amount: number) {
+    return this.fetchAPI('/api/wallet/withdraw', {
+      method: 'POST',
+      body: JSON.stringify({ amount })
+    });
+  }
+
+  // --- RECOVERY & TRUST ---
   async processAutoRecovery(uid: string) {
     return this.fetchAPI(`/api/users/${uid}/recovery`, {
       method: 'POST'

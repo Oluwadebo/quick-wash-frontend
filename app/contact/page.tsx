@@ -7,6 +7,7 @@ import { motion } from 'motion/react';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
 import Footer from '@/components/shared/Footer';
+import { db } from '@/lib/DatabaseService';
 
 export default function ContactPage() {
   const [formState, setFormState] = React.useState({ name: '', email: '', message: '' });
@@ -20,22 +21,16 @@ export default function ContactPage() {
     setError(null);
     
     try {
-      const res = await fetch('/api/contact', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formState)
-      });
-      
-      const data = await res.json();
-      if (data.success) {
+      const data = await db.submitContactForm(formState);
+      if (data && data.success) {
         setIsSent(true);
         setFormState({ name: '', email: '', message: '' });
         setTimeout(() => setIsSent(false), 5000);
       } else {
-        setError(data.error || 'Something went wrong');
+        setError(data?.error || 'Something went wrong');
       }
-    } catch (err) {
-      setError('Failed to connect to server');
+    } catch (err: any) {
+      setError(err.message || 'Failed to connect to server');
     } finally {
       setIsSending(false);
     }

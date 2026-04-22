@@ -2,10 +2,10 @@
   "name": "quick-wash-backend",
   "version": "1.0.0",
   "description": "Backend for Quick-Wash App",
-  "main": "index.ts",
+  "main": "server.ts",
   "scripts": {
-    "start": "node --loader ts-node/esm index.ts",
-    "dev": "nodemon --exec node --loader ts-node/esm index.ts",
+    "start": "tsx server.ts",
+    "dev": "tsx watch server.ts",
     "build": "tsc"
   },
   "type": "module",

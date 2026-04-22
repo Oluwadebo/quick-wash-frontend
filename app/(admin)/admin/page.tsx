@@ -107,10 +107,9 @@ export default function AdminDashboard() {
   React.useEffect(() => {
     const fetchData = async () => {
       try {
-        const token = localStorage.getItem('qw_token');
-        const [usersRes, ordersRes, sysStats, site] = await Promise.all([
-          fetch('/api/admin/users', { headers: { 'Authorization': `Bearer ${token}` } }),
-          fetch('/api/orders', { headers: { 'Authorization': `Bearer ${token}` } }),
+        const [usersData, ordersData, sysStats, site] = await Promise.all([
+          db.getUsers(),
+          db.getOrders(),
           db.getSystemStats(),
           db.getSiteSettings()
         ]);
@@ -119,10 +118,7 @@ export default function AdminDashboard() {
         setLandmarks(lms);
         setSiteSettings(site);
 
-        if (usersRes.ok && ordersRes.ok) {
-          const usersData = await usersRes.json();
-          const ordersData = await ordersRes.json();
-          setAllUsers(usersData);
+        setAllUsers(usersData);
           setPendingUsers(usersData.filter((u: any) => !u.isApproved));
           setRiders(usersData.filter((u: any) => u.role === 'rider' && u.isApproved));
           setOrders(ordersData);
@@ -137,7 +133,6 @@ export default function AdminDashboard() {
             { label: 'Total Users', value: usersData.length.toString(), trend: '+12.1%', icon: Users, color: 'text-on-surface' },
             { label: 'System Health', value: '99.9%', trend: 'Stable', icon: Activity, color: 'text-primary' }
           ]);
-        }
       } catch (err) {
         console.error('Fetch error:', err);
       }
@@ -304,27 +299,13 @@ export default function AdminDashboard() {
 
   const handleApprove = React.useCallback(async (userId: string) => {
     try {
-      const response = await fetch('/api/admin/approve-user', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('qw_token')}`
-        },
-        body: JSON.stringify({ userId, approve: true })
-      });
-
-      if (response.ok) {
-        const updatedUser = await response.json();
-        setAllUsers(prev => prev.map(u => u.uid === userId ? updatedUser : u));
-        setPendingUsers(prev => prev.filter(u => u.uid !== userId));
-        alert('User approved successfully!');
-      } else {
-        const error = await response.json();
-        alert(error.message || 'Failed to approve user');
-      }
-    } catch (error) {
+      const updatedUser = await db.approveUser(userId);
+      setAllUsers(prev => prev.map(u => u.uid === userId ? updatedUser : u));
+      setPendingUsers(prev => prev.filter(u => u.uid !== userId));
+      alert('User approved successfully!');
+    } catch (error: any) {
       console.error('Approval error:', error);
-      alert('An error occurred. Please try again.');
+      alert(error.message || 'An error occurred. Please try again.');
     }
   }, []);
 

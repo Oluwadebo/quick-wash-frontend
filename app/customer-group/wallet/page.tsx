@@ -24,11 +24,8 @@ export default function WalletPage() {
     if (user?.uid) {
       const initWallet = async () => {
         try {
-          const response = await fetch(`/api/wallet/history?userId=${user.uid}`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('qw_token')}` }
-          });
-          const data = await response.json();
-          if (response.ok) {
+          const data = await db.getWalletHistory(user.uid);
+          if (data) {
             setHistory(data.transactions || []);
             setBalance(data.balance || 0);
           }
@@ -52,18 +49,9 @@ export default function WalletPage() {
     const amount = Number(fundAmount);
 
     try {
-      const response = await fetch('/api/wallet/fund', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('qw_token')}`
-        },
-        body: JSON.stringify({ amount, method: paymentMethod }),
-      });
+      const result = await db.deposit(amount, `Funded via ${paymentMethod}`);
 
-      const result = await response.json();
-
-      if (response.ok) {
+      if (result) {
         setBalance(result.balance);
         setHistory(prev => [result.transaction, ...prev]);
         setShowSuccessView(true);
@@ -71,12 +59,10 @@ export default function WalletPage() {
         setIsFunding(false);
         setPaymentMethod(null);
         setFundAmount('');
-      } else {
-        alert(result.message || 'Funding failed');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Funding error:', error);
-      alert('An error occurred. Please try again.');
+      alert(error.message || 'An error occurred. Please try again.');
     } finally {
       setIsProcessing(false);
     }

@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Droplets, User, Store, Bike, ShieldCheck, ArrowRight, Sparkles, Zap, Shield, Clock, MapPin, Star } from 'lucide-react';
+import { Droplets, User, Store, Bike, ShieldCheck, ArrowRight, Sparkles, Zap, Shield, Clock, MapPin, Star, ArrowUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -69,8 +69,7 @@ export default function LandingPage() {
     }
 
     // Fetch live stats
-    fetch('/api/stats')
-      .then(res => res.json())
+    db.getSystemStats()
       .then(data => {
         if (data && !data.error) {
           setStats(data);
@@ -89,6 +88,20 @@ export default function LandingPage() {
         metrics: { avgDelivery: 18, totalVolume: 82000, uptime: '99.9%' }
       }));
   }, [router]);
+
+  const [showScrollTop, setShowScrollTop] = React.useState(false);
+
+  React.useEffect(() => {
+    const handleScroll = () => {
+      setShowScrollTop(window.scrollY > 400);
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   const howItWorks = {
     customer: [
@@ -689,6 +702,21 @@ export default function LandingPage() {
       </section>
 
       <Footer />
+
+      {/* Scroll to Top Button */}
+      <AnimatePresence>
+        {showScrollTop && (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.5, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.5, y: 20 }}
+            onClick={scrollToTop}
+            className="fixed bottom-10 right-10 z-[100] w-14 h-14 signature-gradient rounded-2xl flex items-center justify-center text-white shadow-2xl shadow-primary/40 cursor-pointer active:scale-95 transition-transform"
+          >
+            <ArrowUp className="w-7 h-7" />
+          </motion.button>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
