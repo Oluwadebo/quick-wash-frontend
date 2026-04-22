@@ -27,14 +27,8 @@ export const checkRole = (roles: string[]) => {
   return (req: any, res: Response, next: NextFunction) => {
     const user = req.user;
     
-    // Super Admin check via UID or specific email if we had it in model
-    // Assuming the user email isn't in the model yet, I'll add a placeholder for it 
-    // or use the UID if associated. For this task, I'll assume we check the email 
-    // if available or a specific UID.
-    
-    // In many setups, the email is in the JWT session or User model.
-    // Let's assume we check against the provided email for Super Admin.
-    const isSuperAdmin = user.email === SUPER_ADMIN_EMAIL || user.role === 'admin';
+    // Explicit Super Admin Check for ogunwedebo21@gmail.com
+    const isSuperAdmin = user.email === SUPER_ADMIN_EMAIL;
 
     if (isSuperAdmin || roles.includes(user.role)) {
       next();

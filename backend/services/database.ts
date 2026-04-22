@@ -2,10 +2,6 @@ import mongoose from 'mongoose';
 
 const MONGODB_URI = process.env.MONGODB_URI || '';
 
-if (!MONGODB_URI && process.env.NODE_ENV === 'production') {
-  throw new Error('Please define the MONGODB_URI environment variable inside .env.local');
-}
-
 let cached = (global as any).mongoose;
 
 if (!cached) {
@@ -18,8 +14,9 @@ async function connectDB() {
   }
 
   if (!MONGODB_URI) {
-    console.warn('MONGODB_URI is not defined. Database connectivity is disabled.');
-    throw new Error('Database connection string is missing.');
+    const errorMsg = 'Database connection string (MONGODB_URI) is missing. Please set it in the Settings/Secrets menu of AI Studio as documented in .env.example';
+    console.error(errorMsg);
+    throw new Error(errorMsg);
   }
 
   if (!cached.promise) {

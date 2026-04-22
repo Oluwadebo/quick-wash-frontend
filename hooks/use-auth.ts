@@ -31,6 +31,8 @@ interface UserData {
   pendingBalance?: number;
   badges?: string[];
   status?: 'active' | 'restricted' | 'suspended';
+  restrictionExpires?: string;
+  isRaining?: boolean;
   shopImage?: string; // New field
   ninImage?: string;  // New field
   transferReference?: string; // New field

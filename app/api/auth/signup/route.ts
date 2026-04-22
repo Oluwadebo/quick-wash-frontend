@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import User from '@/lib/models/User';
+import connectDB from '@/backend/services/database';
+import User from '@/backend/models/User';
 import bcrypt from 'bcryptjs';
 import { signToken } from '@/lib/auth-utils';
 import { uploadToCloudinary } from '@/lib/cloudinary';
@@ -32,10 +32,10 @@ export async function POST(req: Request) {
 
     // Handle Cloudinary uploads if base64 images are provided
     if (shopImage) {
-      uploadedShopImage = await uploadToCloudinary(shopImage, 'vendors');
+      uploadedShopImage = (await uploadToCloudinary(shopImage, 'vendors')) || '';
     }
     if (ninImage) {
-      uploadedNinImage = await uploadToCloudinary(ninImage, 'riders');
+      uploadedNinImage = (await uploadToCloudinary(ninImage, 'riders')) || '';
     }
 
     // Create unique transfer reference

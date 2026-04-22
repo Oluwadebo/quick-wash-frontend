@@ -115,7 +115,7 @@ function OrderPageContent() {
 
       // 1. Load Auth & Existing Order
       const storedUser = localStorage.getItem('qw_user');
-      let user = null;
+      let user: any = null;
       if (storedUser) {
         user = JSON.parse(storedUser);
         setCurrentUser(user);
@@ -138,7 +138,7 @@ function OrderPageContent() {
 
       // 3. Load Price List base structure
       const myServices = await db.getVendorPriceList(vendorId);
-      let initialCart = [];
+      let initialCart: any[] = [];
       
       if (myServices && myServices.length > 0) {
         initialCart = myServices.map((vs: any) => {
@@ -182,7 +182,7 @@ function OrderPageContent() {
                   count: savedItem.count || 0,
                   selectedService: savedItem.selectedService || item.selectedService,
                   hasStainRemover: !!savedItem.hasStainRemover,
-                  subItems: item.subItems ? item.subItems.map(si => {
+                  subItems: item.subItems ? item.subItems.map((si: any) => {
                     const savedSi = savedItem.subItems?.find((ssi: any) => ssi.id === si.id);
                     return savedSi ? { ...si, count: savedSi.count || 0 } : si;
                   }) : undefined
@@ -223,10 +223,10 @@ function OrderPageContent() {
     if (isPaid) return;
     setCart(prev => prev.map(item => {
       if (item.id === itemId && item.subItems) {
-        const newSubItems = item.subItems.map(si => 
+        const newSubItems = item.subItems.map((si: any) => 
           si.id === subItemId ? { ...si, count: Math.max(0, si.count + delta) } : si
         );
-        const newTotalCount = newSubItems.reduce((acc, si) => acc + si.count, 0);
+        const newTotalCount = newSubItems.reduce((acc: number, si: any) => acc + si.count, 0);
         return { ...item, subItems: newSubItems, count: newTotalCount };
       }
       return item;
@@ -317,9 +317,9 @@ function OrderPageContent() {
     const delay = paymentMethod === 'wallet' ? 2000 : 4000;
     await new Promise(resolve => setTimeout(resolve, delay));
     
-    const itemsDescription = cart.filter(i => i.count > 0).map(i => {
+    const itemsDescription = cart.filter((i: any) => i.count > 0).map((i: any) => {
       if (i.subItems) {
-        const subDesc = i.subItems.filter(si => si.count > 0).map(si => `${si.count}x ${si.name}`).join(', ');
+        const subDesc = i.subItems.filter((si: any) => si.count > 0).map((si: any) => `${si.count}x ${si.name}`).join(', ');
         return `${subDesc} (${i.selectedService})`;
       }
       return `${i.count}x ${i.name} (${i.selectedService})`;
@@ -637,7 +637,7 @@ function OrderPageContent() {
                   <div className="flex flex-col flex-1">
                     {item.subItems && item.subItems.length > 0 && (
                       <div className="grid grid-cols-1 gap-3 mb-6">
-                        {item.subItems.map(si => (
+                        {item.subItems.map((si: any) => (
                           <div key={si.id} className="bg-white/50 p-4 rounded-2xl border border-primary/5 flex items-center justify-between">
                             <div>
                               <p className="font-headline font-black text-xs">{si.name}</p>
@@ -696,7 +696,7 @@ function OrderPageContent() {
 
                       {/* Service Grid */}
                       <div className="grid grid-cols-2 gap-2">
-                        {item.services.map(service => (
+                        {item.services.map((service: any) => (
                           <button 
                             key={service.name}
                             onClick={(e) => updateService(item.id, service.name, e)}
@@ -778,7 +778,7 @@ function OrderPageContent() {
             {!showActionRequired && totalItems > 0 && (
               <div className="mb-8 p-6 bg-surface-container rounded-[2rem] border border-primary/5 space-y-3">
                 <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Detailed Breakdown</p>
-                {cart.filter(item => item.count > 0).map(item => (
+                {cart.filter((item: any) => item.count > 0).map((item: any) => (
                   <div key={item.id} className="flex justify-between text-sm">
                     <div className="flex flex-col">
                       <span className="font-headline font-black text-on-surface">
@@ -951,7 +951,7 @@ function OrderPageContent() {
                 <div>
                   <label className="block font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-3">Select Landmark</label>
                   <div className="grid grid-cols-2 gap-3">
-                    {['Under-G', 'Adenike', 'Isale-General', 'Stadium', 'Bovina', 'LAUTECH Gate'].map((l) => (
+                    {['Under-G', 'Adenike', 'Isale-General', 'Stadium', 'Bovina', 'LAUTECH Gate'].map((l: string) => (
                       <button
                         key={l}
                         onClick={() => setPickupLandmark(l)}

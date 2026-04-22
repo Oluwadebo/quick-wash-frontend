@@ -40,6 +40,13 @@ export interface IOrder extends Document {
   issueDescription?: string;
   disputedAt?: Date;
   paymentMethod: string;
+  payoutReleased80?: boolean;
+  payoutReleased20?: boolean;
+  evidenceImage?: string;
+  vendorEvidenceImage?: string;
+  refundAmount?: number;
+  consecutiveReturns?: number;
+  returnReason?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -83,7 +90,14 @@ const OrderSchema: Schema = new Schema({
   disputed: { type: Boolean, default: false },
   issueDescription: { type: String },
   disputedAt: { type: Date },
+  payoutReleased80: { type: Boolean, default: false },
+  payoutReleased20: { type: Boolean, default: false },
+  evidenceImage: { type: String },
+  vendorEvidenceImage: { type: String },
+  refundAmount: { type: Number },
+  consecutiveReturns: { type: Number, default: 0 },
+  returnReason: { type: String },
   paymentMethod: { type: String, default: 'wallet' },
 }, { timestamps: true });
 
-export default mongoose.model<IOrder>('Order', OrderSchema);
+export default mongoose.models.Order || mongoose.model<IOrder>('Order', OrderSchema);

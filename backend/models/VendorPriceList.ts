@@ -44,4 +44,4 @@ const VendorPriceListSchema: Schema = new Schema({
   }]
 }, { timestamps: true });
 
-export default mongoose.model<IVendorPriceList>('VendorPriceList', VendorPriceListSchema);
+export default mongoose.models.VendorPriceList || mongoose.model<IVendorPriceList>('VendorPriceList', VendorPriceListSchema);

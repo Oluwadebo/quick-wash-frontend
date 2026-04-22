@@ -4,6 +4,7 @@ export interface IUser extends Document {
   uid: string;
   fullName: string;
   phoneNumber: string;
+  email: string;
   password?: string;
   role: 'customer' | 'vendor' | 'rider' | 'admin';
   isApproved: boolean;
@@ -28,6 +29,12 @@ export interface IUser extends Document {
   address?: string;
   shopAddress?: string;
   landmark?: string;
+  isRaining?: boolean;
+  shopImage?: string;
+  ninImage?: string;
+  transferReference?: string;
+  resetPasswordToken?: string;
+  resetPasswordExpires?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -36,6 +43,7 @@ const UserSchema: Schema = new Schema({
   uid: { type: String, required: true, unique: true },
   fullName: { type: String, required: true },
   phoneNumber: { type: String, required: true, unique: true },
+  email: { type: String, required: true, unique: true },
   password: { type: String },
   role: { type: String, enum: ['customer', 'vendor', 'rider', 'admin'], default: 'customer' },
   isApproved: { type: Boolean, default: false },
@@ -60,6 +68,12 @@ const UserSchema: Schema = new Schema({
   address: { type: String },
   shopAddress: { type: String },
   landmark: { type: String },
+  isRaining: { type: Boolean, default: false },
+  shopImage: { type: String },
+  ninImage: { type: String },
+  transferReference: { type: String },
+  resetPasswordToken: { type: String },
+  resetPasswordExpires: { type: Date },
 }, { timestamps: true });
 
-export default mongoose.model<IUser>('User', UserSchema);
+export default mongoose.models.User || mongoose.model<IUser>('User', UserSchema);

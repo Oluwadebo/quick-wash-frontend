@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Order from '@/lib/models/Order';
-import User from '@/lib/models/User';
-import Transaction from '@/lib/models/Transaction';
+import connectDB from '@/backend/services/database';
+import Order from '@/backend/models/Order';
+import User from '@/backend/models/User';
+import Transaction from '@/backend/models/Transaction';
 import { verifyToken } from '@/lib/auth-utils';
 
 export async function POST(req: NextRequest) {

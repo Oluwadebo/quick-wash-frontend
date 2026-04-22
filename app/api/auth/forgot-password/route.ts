@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import User from '@/lib/models/User';
+import connectDB from '@/backend/services/database';
+import User from '@/backend/models/User';
 import crypto from 'crypto';
 
 export async function POST(req: NextRequest) {

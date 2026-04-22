@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import User from '@/lib/models/User';
-import Order from '@/lib/models/Order'; // Assuming this exists or I will check
+import connectDB from '@/backend/services/database';
+import User from '@/backend/models/User';
+import Order from '@/backend/models/Order';
 
 export async function GET() {
   try {
