@@ -23,10 +23,10 @@ const nextConfig: NextConfig = {
   transpilePackages: ['motion'],
   rewrites: async () => {
     return [
-      {
-        source: '/api/:path*',
-        destination: 'http://localhost:3001/api/:path*',
-      },
+       {
+         source: '/api/:path*',
+         destination: 'http://localhost:5000/api/:path*',
+       },
     ];
   },
   webpack: (config, {dev}) => {

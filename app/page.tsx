@@ -171,7 +171,7 @@ export default function LandingPage() {
             <div className="flex -space-x-4">
               {[1, 2, 3, 4].map(i => (
                 <div key={i} className="w-10 h-10 rounded-full border-4 border-surface overflow-hidden relative">
-                  <Image src={`https://picsum.photos/seed/user${i}/100/100`} alt="Active User" fill />
+                  <Image src={`https://picsum.photos/seed/user${i}/100/100`} alt="Active User" fill sizes="40px" priority />
                 </div>
               ))}
             </div>
@@ -280,7 +280,7 @@ export default function LandingPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-12 relative">
-            <AnimatePresence mode="wait">
+            <AnimatePresence>
               {howItWorks[activeTab].map((item, idx) => (
                 <motion.div
                   key={`${activeTab}-${idx}`}
@@ -472,7 +472,7 @@ export default function LandingPage() {
       <section className="min-h-screen grid grid-cols-1 lg:grid-cols-2">
         <div className="p-16 md:p-32 flex flex-col justify-center bg-on-surface text-white relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-full opacity-20">
-            <Image src="https://picsum.photos/seed/fabric-detail/1200/1200" alt="Fabric" fill className="object-cover" referrerPolicy="no-referrer" />
+            <Image src="https://picsum.photos/seed/fabric-detail/1200/1200" alt="Fabric" fill className="object-cover" referrerPolicy="no-referrer" sizes="(max-width: 1024px) 100vw, 50vw" />
           </div>
           <div className="relative z-10">
             <motion.p 
@@ -559,8 +559,8 @@ export default function LandingPage() {
                   i === 0 ? "text-primary" : "text-tertiary"
                 )}>Top Vendor Spotlight</p>
                 <div className="flex items-center gap-8 mb-8">
-                  <div className="w-24 h-24 rounded-[2rem] overflow-hidden relative shadow-2xl">
-                    <Image src={`https://picsum.photos/seed/shop${i}/200/200`} alt="Featured Shop" fill className="object-cover" referrerPolicy="no-referrer" />
+                  <div className="w-24 h-24 rounded-[2rem] overflow-hidden relative shadow-2xl bg-surface-container">
+                    <Image src={`https://picsum.photos/seed/shop${i}/200/200`} alt="Featured Shop" fill className="object-cover" referrerPolicy="no-referrer" sizes="96px" />
                   </div>
                   <div>
                     <h3 className="text-3xl font-headline font-black text-on-surface">{feat.shopName || feat.fullName}</h3>
@@ -612,7 +612,7 @@ export default function LandingPage() {
               <div className="absolute inset-0 bg-primary/20 blur-[120px] rounded-full animate-pulse" />
               <div className="relative bg-surface-container-low rounded-[4rem] p-4 shadow-2xl border border-primary/5">
                 <div className="bg-surface rounded-[3.5rem] overflow-hidden aspect-[4/5] relative">
-                  <Image src="https://picsum.photos/seed/safety/800/1000" alt="Safety First" fill className="object-cover opacity-80" referrerPolicy="no-referrer" />
+                  <Image src="https://picsum.photos/seed/safety/800/1000" alt="Safety First" fill className="object-cover opacity-80" referrerPolicy="no-referrer" sizes="(max-width: 1024px) 100vw, 50vw" />
                   <div className="absolute inset-0 bg-gradient-to-t from-surface via-transparent to-transparent" />
                   <div className="absolute bottom-12 left-12 right-12">
                     <div className="bg-white/90 backdrop-blur-md p-8 rounded-3xl shadow-xl">
@@ -659,12 +659,12 @@ export default function LandingPage() {
           </div>
           <div className="flex-1 relative">
             <div className="absolute inset-0 bg-primary/20 blur-[100px] rounded-full" />
-            <div className="relative bg-surface-container-low rounded-[4rem] p-12 shadow-2xl border border-primary/5">
-              {/* Mock Dashboard Preview */}
-              <div className="flex items-center gap-6 mb-12">
-                <div className="w-20 h-20 rounded-full bg-surface-variant overflow-hidden">
-                  <Image src="https://picsum.photos/seed/alex/200/200" alt="User" width={80} height={80} className="object-cover" referrerPolicy="no-referrer" />
-                </div>
+              <div className="relative bg-surface-container-low rounded-[4rem] p-12 shadow-2xl border border-primary/5">
+                {/* Mock Dashboard Preview */}
+                <div className="flex items-center gap-6 mb-12">
+                  <div className="w-20 h-20 rounded-full bg-surface-variant overflow-hidden relative">
+                    <Image src="https://picsum.photos/seed/alex/200/200" alt="User" width={80} height={80} className="object-cover" referrerPolicy="no-referrer" />
+                  </div>
                 <div>
                   <h4 className="text-2xl font-headline font-black">Alex Thompson</h4>
                   <p className="text-primary font-black text-sm uppercase tracking-widest">Elite Member • 820 Points</p>

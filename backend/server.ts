@@ -11,7 +11,7 @@ import systemRoutes from './routes/systemRoutes.js';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.BACKEND_PORT || 3001;
+const PORT = process.env.BACKEND_PORT || 5000;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/quick-wash';
 
 app.use(cors());
@@ -30,12 +30,22 @@ app.get('/', (req, res) => {
 });
 
 // Database connection
-mongoose.connect(MONGODB_URI)
+if (!process.env.MONGODB_URI) {
+  console.warn('⚠️ WARNING: MONGODB_URI environment variable is not defined.');
+  console.warn('In local development, ensure MongoDB is running at localhost:27017 or provide a URI.');
+  console.warn('In production (AI Studio/Render), add your MONGODB_URI to the Secrets/Environment variables.');
+}
+
+console.log('Connecting to MongoDB...');
+mongoose.connect(MONGODB_URI, {
+  serverSelectionTimeoutMS: 5000, // Timeout after 5 seconds instead of 30 for faster failure feedback
+})
   .then(() => {
-    console.log('Connected to MongoDB');
+    console.log('✅ Connected to MongoDB');
   })
   .catch((err) => {
-    console.error('MongoDB connection error:', err);
+    console.error('❌ MongoDB Connection Error:', err.message);
+    console.error('Please verify that your database is running and the URI is correct.');
   });
 
 console.log(`Starting backend server on port ${PORT}...`);

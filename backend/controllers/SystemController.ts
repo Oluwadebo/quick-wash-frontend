@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import mongoose from 'mongoose';
 import SiteSettings from '../models/SiteSettings.js';
 import ContactSubmission from '../models/ContactSubmission.js';
 import User from '../models/User.js';
@@ -6,6 +7,9 @@ import Order from '../models/Order.js';
 
 export const getSiteSettings = async (req: Request, res: Response) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({ message: 'Database not connected. Please check your MONGODB_URI.' });
+    }
     let settings = await SiteSettings.findOne();
     if (!settings) {
       settings = await SiteSettings.create({ name: 'Quick-Wash' });
@@ -38,6 +42,9 @@ export const submitContactForm = async (req: Request, res: Response) => {
 
 export const getStats = async (req: Request, res: Response) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({ message: 'Database not connected. Please check your MONGODB_URI.' });
+    }
     const [userCount, vendorCount, riderCount, orderCount, topVendors] = await Promise.all([
       User.countDocuments({ role: 'customer' }),
       User.countDocuments({ role: 'vendor' }),
