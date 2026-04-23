@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
+import { seedAdmin } from './lib/seed.js';
 import orderRoutes from './routes/orderRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import walletRoutes from './routes/walletRoutes.js';
@@ -31,25 +32,32 @@ app.get('/', (req, res) => {
 });
 
 // Database connection
-if (!process.env.MONGODB_URI) {
-  console.warn('⚠️ WARNING: MONGODB_URI environment variable is not defined.');
-  console.warn('In local development, ensure MongoDB is running at localhost:27017 or provide a URI.');
-  console.warn('In production (AI Studio/Render), add your MONGODB_URI to the Secrets/Environment variables.');
-}
+const startServer = async () => {
+  if (!process.env.MONGODB_URI) {
+    console.warn('⚠️ WARNING: MONGODB_URI environment variable is not defined.');
+    console.warn('In local development, ensure MongoDB is running at localhost:27017 or provide a URI.');
+    console.warn('In production (AI Studio/Render), add your MONGODB_URI to the Secrets/Environment variables.');
+  }
 
-console.log('Connecting to MongoDB...');
-mongoose.connect(MONGODB_URI, {
-  serverSelectionTimeoutMS: 5000, // Timeout after 5 seconds instead of 30 for faster failure feedback
-})
-  .then(() => {
+  console.log('Connecting to MongoDB...');
+  try {
+    await mongoose.connect(MONGODB_URI, {
+      serverSelectionTimeoutMS: 5000,
+    });
     console.log('✅ Connected to MongoDB');
-  })
-  .catch((err) => {
+    
+    // Seed admin before starting server requests
+    await seedAdmin();
+
+    console.log(`Starting backend server on port ${PORT}...`);
+    app.listen(PORT as number, '0.0.0.0', () => {
+      console.log(`✅ Backend server successfully running on http://0.0.0.0:${PORT}`);
+    });
+  } catch (err: any) {
     console.error('❌ MongoDB Connection Error:', err.message);
     console.error('Please verify that your database is running and the URI is correct.');
-  });
+    process.exit(1);
+  }
+};
 
-console.log(`Starting backend server on port ${PORT}...`);
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ Backend server successfully running on http://0.0.0.0:${PORT}`);
-});
+startServer();

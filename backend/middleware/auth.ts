@@ -2,6 +2,11 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 
+export interface AuthRequest extends Request {
+  user?: any;
+  token?: string;
+}
+
 const JWT_SECRET = process.env.JWT_SECRET || 'quick_wash_secret_99';
 const SUPER_ADMIN_EMAIL = 'ogunwedebo21@gmail.com';
 
