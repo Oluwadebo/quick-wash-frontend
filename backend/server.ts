@@ -43,21 +43,22 @@ const startServer = async () => {
   try {
     await mongoose.connect(MONGODB_URI, {
       serverSelectionTimeoutMS: 5000,
+      bufferCommands: false, // Disable buffering to prevent hanging operations when DB is slow/down
     });
     console.log('✅ Connected to MongoDB');
     
     // Seed admin before starting server requests
     await seedAdmin();
-
-    console.log(`Starting backend server on port ${PORT}...`);
-    app.listen(PORT as number, '0.0.0.0', () => {
-      console.log(`✅ Backend server successfully running on http://0.0.0.0:${PORT}`);
-    });
   } catch (err: any) {
     console.error('❌ MongoDB Connection Error:', err.message);
-    console.error('Please verify that your database is running and the URI is correct.');
-    process.exit(1);
+    console.warn('⚠️ Server starting in degraded mode (No Database).');
+    console.warn('Please verify that your database is running and the URI is correct.');
   }
+
+  console.log(`Starting backend server on port ${PORT}...`);
+  app.listen(Number(PORT), '0.0.0.0', () => {
+    console.log(`✅ Backend server successfully running on http://0.0.0.0:${PORT}`);
+  });
 };
 
 startServer();

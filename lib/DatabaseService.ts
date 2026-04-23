@@ -127,11 +127,23 @@ class DatabaseService {
     const url = `${this.getBaseUrl()}${endpoint}`;
     try {
       const response = await fetch(url, { ...options, headers });
+      
+      const contentType = response.headers.get('content-type');
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'API request failed');
+        let errorMessage = 'API request failed';
+        if (contentType && contentType.includes('application/json')) {
+          const error = await response.json();
+          errorMessage = error.message || errorMessage;
+        } else {
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
       }
-      return response.json();
+
+      if (contentType && contentType.includes('application/json')) {
+        return response.json();
+      }
+      return null;
     } catch (err: any) {
       console.error(`API Fetch Error [${url}]:`, err);
       throw err;
