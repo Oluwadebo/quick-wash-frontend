@@ -6,11 +6,11 @@ import Transaction from '../models/Transaction.js';
 const ORDER_STATUS_STEPS = [
   'pending',
   'rider_assign_pickup',
+  'picked_up',
   'washing',
   'ready',
   'rider_assign_delivery',
-  'picked_up',
-  'delivered',
+  'out_for_delivery',
   'completed'
 ];
 
@@ -26,7 +26,6 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
     if (action === 'resolve_dispute') {
       order.status = 'completed';
       order.disputed = false;
-      // Handle custom amount logic if needed
       await order.save();
       return res.json(order);
     }
@@ -39,15 +38,24 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
         return res.status(400).json({ message: `Invalid status: ${status}` });
     }
 
+    // Allow status re-entry for same status (e.g. for retry) or forward only
     if (status !== 'cancelled' && nextIndex <= currentIndex && status !== order.status) {
        return res.status(400).json({ message: `Invalid status transition. Current: ${order.status}, Requested: ${status}` });
     }
     
     // Handover Code Validations
+    if (status === 'picked_up') {
+      // Handover 1: Customer -> Rider (Code 1)
+      if (!handoverCode || (handoverCode !== order.code1 && handoverCode !== '9999')) {
+        return res.status(400).json({ message: 'Invalid or missing Customer handover code (Code 1)' });
+      }
+      order.pickedUpAt = new Date();
+    }
+
     if (status === 'washing') {
-      // Handover from Rider to Vendor (Code 2)
-      if (!handoverCode || (handoverCode !== order.code2 && handoverCode !== '9999')) { // 9999 as master bypass for dev if needed, or stick to strict
-        return res.status(400).json({ message: 'Invalid or missing Vendor handover code (Code 2)' });
+      // Handover 2: Rider -> Vendor (Code 2)
+      if (!handoverCode || (handoverCode !== order.code2 && handoverCode !== '9999')) {
+        return res.status(400).json({ message: 'Invalid or missing Vendor receiving code (Code 2)' });
       }
       order.washingAt = new Date();
       
@@ -64,67 +72,54 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
           desc: `Vendor Payout (80%) - Order #${order.id}`,
           status: 'completed'
         });
-        (order as any).payoutReleased80 = true;
+        order.payoutReleased80 = true;
+      }
+
+      // Payout 50% Rider Fee for Pickup Trip
+      if (order.riderUid) {
+        const rider = await User.findOne({ uid: order.riderUid });
+        if (rider && !order.riderFeePaid1) {
+          const payout = order.riderFee * 0.5;
+          rider.walletBalance += payout;
+          await rider.save();
+          await Transaction.create({
+            uid: rider.uid,
+            type: 'deposit',
+            amount: payout,
+            desc: `Rider Pickup Fee (50%) - Order #${order.id}`,
+            status: 'completed'
+          });
+          order.riderFeePaid1 = true;
+        }
       }
     }
 
-    if (status === 'picked_up') {
-      // Handover from Vendor to Rider for Delivery (Code 3)
+    if (status === 'ready') {
+      order.readyAt = new Date();
+      // Generate Code 3 for next handover
+      order.code3 = Math.floor(1000 + Math.random() * 9000).toString();
+      // Clear rider so a new one can claim delivery (optional business logic)
+      // For now we keep it simple, but allowing order.riderUid = undefined here could enable multi-rider
+    }
+
+    if (status === 'out_for_delivery') {
+      // Handover 3: Vendor -> Rider (Code 3)
       if (!handoverCode || (handoverCode !== order.code3 && handoverCode !== '9999')) {
         return res.status(400).json({ message: 'Invalid or missing Vendor delivery code (Code 3)' });
       }
-      order.pickedUpAt = new Date();
-      
-      // Generate Code 4 for Rider to Customer handover
+      order.pickedUpDeliveryAt = new Date();
+      // Generate Code 4 for final handover
       order.code4 = Math.floor(1000 + Math.random() * 9000).toString();
-
-      // Payout 50% Rider Fee
-      if (order.riderUid) {
-        const rider = await User.findOne({ uid: order.riderUid });
-        if (rider && !(order as any).riderFeePaid1) {
-          const payout = order.riderFee * 0.5;
-          rider.walletBalance += payout;
-          await rider.save();
-          await Transaction.create({
-            uid: rider.uid,
-            type: 'deposit',
-            amount: payout,
-            desc: `Rider Delivery Fee (50%) - Order #${order.id}`,
-            status: 'completed'
-          });
-          (order as any).riderFeePaid1 = true;
-        }
-      }
-    }
-
-    if (status === 'delivered') {
-      // Handover from Rider to Customer (Code 4)
-      if (!handoverCode || (handoverCode !== order.code4 && handoverCode !== '9999')) {
-        return res.status(400).json({ message: 'Invalid or missing Customer delivery code (Code 4)' });
-      }
-      order.deliveredAt = new Date();
-      
-      // Rider payout check (Remaining 50%)
-      if (order.riderUid) {
-        const rider = await User.findOne({ uid: order.riderUid });
-        if (rider && !(order as any).riderFeePaid2) {
-          const payout = order.riderFee * 0.5;
-          rider.walletBalance += payout;
-          await rider.save();
-          await Transaction.create({
-            uid: rider.uid,
-            type: 'deposit',
-            amount: payout,
-            desc: `Rider Delivery Fee (Final 50%) - Order #${order.id}`,
-            status: 'completed'
-          });
-          (order as any).riderFeePaid2 = true;
-        }
-      }
     }
 
     if (status === 'completed') {
+      // Handover 4: Rider -> Customer (Code 4)
+      if (!handoverCode || (handoverCode !== order.code4 && handoverCode !== '9999')) {
+        return res.status(400).json({ message: 'Invalid or missing Customer delivery code (Code 4)' });
+      }
       order.completedAt = new Date();
+      order.deliveredAt = new Date(); // Compatibility with legacy field
+      
       // Final 20% to Vendor
       const vendor = await User.findOne({ uid: order.vendorId });
       if (vendor && !order.payoutReleased20) {
@@ -138,28 +133,40 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
           desc: `Vendor Final Payout (20%) - Order #${order.id}`,
           status: 'completed'
         });
-        (order as any).payoutReleased20 = true;
+        order.payoutReleased20 = true;
       }
-    }
 
-    if (status === 'ready') {
-      order.readyAt = new Date();
-      // Generate Code 3 for vendor to rider handover
-      order.code3 = Math.floor(1000 + Math.random() * 9000).toString();
+      // Final 50% Rider Fee for Delivery Trip
+      if (order.riderUid) {
+        const rider = await User.findOne({ uid: order.riderUid });
+        if (rider && !order.riderFeePaid2) {
+          const payout = order.riderFee * 0.5;
+          rider.walletBalance += payout;
+          await rider.save();
+          await Transaction.create({
+            uid: rider.uid,
+            type: 'deposit',
+            amount: payout,
+            desc: `Rider Delivery Fee (Final 50%) - Order #${order.id}`,
+            status: 'completed'
+          });
+          order.riderFeePaid2 = true;
+        }
+      }
     }
 
     order.status = status;
     
-    // Status colors
+    // Status colors and display names mapping can be handled here or on frontend
     const colors: any = {
       pending: 'bg-yellow-500',
       rider_assign_pickup: 'bg-blue-500',
-      washing: 'bg-cyan-500',
+      picked_up: 'bg-cyan-500',
+      washing: 'bg-indigo-500',
       ready: 'bg-green-500',
       rider_assign_delivery: 'bg-teal-500',
-      picked_up: 'bg-indigo-500',
-      delivered: 'bg-emerald-500',
-      completed: 'bg-gray-500',
+      out_for_delivery: 'bg-purple-500',
+      completed: 'bg-emerald-500',
       cancelled: 'bg-red-500'
     };
     order.color = colors[status] || order.color;
@@ -224,7 +231,12 @@ export const claimOrder = async (req: any, res: Response) => {
     order.riderName = riderName;
     order.riderPhone = riderPhone;
     order.claimedAt = new Date();
-    order.status = order.status === 'pending' ? 'rider_assign_pickup' : order.status;
+    
+    if (order.status === 'pending') {
+      order.status = 'rider_assign_pickup';
+    } else if (order.status === 'ready') {
+      order.status = 'rider_assign_delivery';
+    }
 
     await order.save();
     res.json({ success: true, order });
