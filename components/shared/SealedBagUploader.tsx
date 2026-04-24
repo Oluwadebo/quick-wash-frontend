@@ -15,7 +15,7 @@ export default function SealedBagUploader({ orderId, onUploaded }: { orderId: st
       const file = e.target.files[0];
       setStatus('uploading');
 
-      // Convert to Base64 to save in database
+      // Convert to Base64 to store in localStorage
       const reader = new FileReader();
       reader.onloadend = async () => {
         const base64String = reader.result as string;

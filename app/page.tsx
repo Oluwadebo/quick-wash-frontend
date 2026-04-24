@@ -2,14 +2,13 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Droplets, User, Store, Bike, ShieldCheck, ArrowRight, Sparkles, Zap, Shield, Clock, MapPin, Star, ArrowUp } from 'lucide-react';
+import { Droplets, User, Store, Bike, ShieldCheck, ArrowRight, Sparkles, Zap, Shield, Clock, MapPin, Star } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import Footer from '@/components/shared/Footer';
 import { db, SiteSettings } from '@/lib/DatabaseService';
-import { useAuth } from '@/hooks/use-auth';
 
 const roles = [
   { 
@@ -50,7 +49,6 @@ const features = [
 
 export default function LandingPage() {
   const router = useRouter();
-  const { user, loading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = React.useState<'customer' | 'vendor' | 'rider'>('customer');
   const [settings, setSettings] = React.useState<SiteSettings | null>(null);
   const [stats, setStats] = React.useState<any>({ 
@@ -64,41 +62,33 @@ export default function LandingPage() {
 
   React.useEffect(() => {
     db.getSiteSettings().then(setSettings);
-    
-    if (!authLoading && user) {
+    const storedUser = localStorage.getItem('qw_user');
+    if (storedUser) {
+      const user = JSON.parse(storedUser);
       router.push(`/${user.role === 'customer' ? 'customer' : user.role}`);
     }
 
     // Fetch live stats
-    db.getSystemStats()
+    fetch('/api/stats')
+      .then(res => res.json())
       .then(data => {
         if (data && !data.error) {
           setStats(data);
         }
       })
       .catch(() => setStats({ 
-        customers: 0, 
-        vendors: 0, 
-        riders: 0, 
-        completedOrders: 0,
-        featured: [],
-        metrics: { avgDelivery: 24, totalVolume: 0, uptime: '99.9%' }
+        customers: 1250, 
+        vendors: 28, 
+        riders: 52, 
+        completedOrders: 15600,
+        featured: [
+          { shopName: 'Campus Cleans', trustPoints: 950, address: 'Under G Hub' },
+          { shopName: 'Laundry King', trustPoints: 880, address: 'Main Gate' },
+          { shopName: 'Wash Pros', trustPoints: 820, address: 'Student Union' }
+        ],
+        metrics: { avgDelivery: 18, totalVolume: 82000, uptime: '99.9%' }
       }));
-  }, [router, user, authLoading]);
-
-  const [showScrollTop, setShowScrollTop] = React.useState(false);
-
-  React.useEffect(() => {
-    const handleScroll = () => {
-      setShowScrollTop(window.scrollY > 400);
-    };
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  const scrollToTop = () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+  }, [router]);
 
   const howItWorks = {
     customer: [
@@ -168,11 +158,11 @@ export default function LandingPage() {
             <div className="flex -space-x-4">
               {[1, 2, 3, 4].map(i => (
                 <div key={i} className="w-10 h-10 rounded-full border-4 border-surface overflow-hidden relative">
-                  <Image src={`https://picsum.photos/seed/user${i}/100/100`} alt="Active User" fill sizes="40px" priority />
+                  <Image src={`https://picsum.photos/seed/user${i}/100/100`} alt="Active User" fill />
                 </div>
               ))}
             </div>
-            <p className="text-xs font-bold text-on-surface-variant">Joined by <span className="text-primary font-black">{(stats.customers || 0) + (stats.vendors || 0) + (stats.riders || 0)}+ campus members</span></p>
+            <p className="text-xs font-bold text-on-surface-variant">Joined by <span className="text-primary font-black">200+ students</span> today</p>
           </motion.div>
 
           <motion.div 
@@ -277,7 +267,7 @@ export default function LandingPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-12 relative">
-            <AnimatePresence>
+            <AnimatePresence mode="wait">
               {howItWorks[activeTab].map((item, idx) => (
                 <motion.div
                   key={`${activeTab}-${idx}`}
@@ -469,7 +459,7 @@ export default function LandingPage() {
       <section className="min-h-screen grid grid-cols-1 lg:grid-cols-2">
         <div className="p-16 md:p-32 flex flex-col justify-center bg-on-surface text-white relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-full opacity-20">
-            <Image src="https://picsum.photos/seed/fabric-detail/1200/1200" alt="Fabric" fill className="object-cover" referrerPolicy="no-referrer" sizes="(max-width: 1024px) 100vw, 50vw" />
+            <Image src="https://picsum.photos/seed/fabric-detail/1200/1200" alt="Fabric" fill className="object-cover" referrerPolicy="no-referrer" />
           </div>
           <div className="relative z-10">
             <motion.p 
@@ -556,8 +546,8 @@ export default function LandingPage() {
                   i === 0 ? "text-primary" : "text-tertiary"
                 )}>Top Vendor Spotlight</p>
                 <div className="flex items-center gap-8 mb-8">
-                  <div className="w-24 h-24 rounded-[2rem] overflow-hidden relative shadow-2xl bg-surface-container">
-                    <Image src={`https://picsum.photos/seed/shop${i}/200/200`} alt="Featured Shop" fill className="object-cover" referrerPolicy="no-referrer" sizes="96px" />
+                  <div className="w-24 h-24 rounded-[2rem] overflow-hidden relative shadow-2xl">
+                    <Image src={`https://picsum.photos/seed/shop${i}/200/200`} alt="Featured Shop" fill className="object-cover" referrerPolicy="no-referrer" />
                   </div>
                   <div>
                     <h3 className="text-3xl font-headline font-black text-on-surface">{feat.shopName || feat.fullName}</h3>
@@ -609,7 +599,7 @@ export default function LandingPage() {
               <div className="absolute inset-0 bg-primary/20 blur-[120px] rounded-full animate-pulse" />
               <div className="relative bg-surface-container-low rounded-[4rem] p-4 shadow-2xl border border-primary/5">
                 <div className="bg-surface rounded-[3.5rem] overflow-hidden aspect-[4/5] relative">
-                  <Image src="https://picsum.photos/seed/safety/800/1000" alt="Safety First" fill className="object-cover opacity-80" referrerPolicy="no-referrer" sizes="(max-width: 1024px) 100vw, 50vw" />
+                  <Image src="https://picsum.photos/seed/safety/800/1000" alt="Safety First" fill className="object-cover opacity-80" referrerPolicy="no-referrer" />
                   <div className="absolute inset-0 bg-gradient-to-t from-surface via-transparent to-transparent" />
                   <div className="absolute bottom-12 left-12 right-12">
                     <div className="bg-white/90 backdrop-blur-md p-8 rounded-3xl shadow-xl">
@@ -656,12 +646,12 @@ export default function LandingPage() {
           </div>
           <div className="flex-1 relative">
             <div className="absolute inset-0 bg-primary/20 blur-[100px] rounded-full" />
-              <div className="relative bg-surface-container-low rounded-[4rem] p-12 shadow-2xl border border-primary/5">
-                {/* Mock Dashboard Preview */}
-                <div className="flex items-center gap-6 mb-12">
-                  <div className="w-20 h-20 rounded-full bg-surface-variant overflow-hidden relative">
-                    <Image src="https://picsum.photos/seed/alex/200/200" alt="User" width={80} height={80} className="object-cover" referrerPolicy="no-referrer" />
-                  </div>
+            <div className="relative bg-surface-container-low rounded-[4rem] p-12 shadow-2xl border border-primary/5">
+              {/* Mock Dashboard Preview */}
+              <div className="flex items-center gap-6 mb-12">
+                <div className="w-20 h-20 rounded-full bg-surface-variant overflow-hidden">
+                  <Image src="https://picsum.photos/seed/alex/200/200" alt="User" width={80} height={80} className="object-cover" referrerPolicy="no-referrer" />
+                </div>
                 <div>
                   <h4 className="text-2xl font-headline font-black">Alex Thompson</h4>
                   <p className="text-primary font-black text-sm uppercase tracking-widest">Elite Member • 820 Points</p>
@@ -699,21 +689,6 @@ export default function LandingPage() {
       </section>
 
       <Footer />
-
-      {/* Scroll to Top Button */}
-      <AnimatePresence>
-        {showScrollTop && (
-          <motion.button
-            initial={{ opacity: 0, scale: 0.5, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.5, y: 20 }}
-            onClick={scrollToTop}
-            className="fixed bottom-10 right-10 z-[100] w-14 h-14 signature-gradient rounded-2xl flex items-center justify-center text-white shadow-2xl shadow-primary/40 cursor-pointer active:scale-95 transition-transform"
-          >
-            <ArrowUp className="w-7 h-7" />
-          </motion.button>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

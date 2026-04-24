@@ -36,21 +36,10 @@ export interface IOrder extends Document {
   paidAt?: Date;
   deliveredAt?: Date;
   completedAt?: Date;
-  claimedAt?: Date;
   disputed?: boolean;
   issueDescription?: string;
   disputedAt?: Date;
   paymentMethod: string;
-  payoutReleased80?: boolean;
-  payoutReleased20?: boolean;
-  riderPaid?: boolean;
-  riderFeePaid1?: boolean;
-  riderFeePaid2?: boolean;
-  evidenceImage?: string;
-  vendorEvidenceImage?: string;
-  refundAmount?: number;
-  consecutiveReturns?: number;
-  returnReason?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -87,7 +76,6 @@ const OrderSchema: Schema = new Schema({
   washingAt: { type: Date },
   readyAt: { type: Date },
   pickedUpAt: { type: Date },
-  claimedAt: { type: Date },
   pickedUpDeliveryAt: { type: Date },
   paidAt: { type: Date },
   deliveredAt: { type: Date },
@@ -95,17 +83,7 @@ const OrderSchema: Schema = new Schema({
   disputed: { type: Boolean, default: false },
   issueDescription: { type: String },
   disputedAt: { type: Date },
-  payoutReleased80: { type: Boolean, default: false },
-  payoutReleased20: { type: Boolean, default: false },
-  riderPaid: { type: Boolean, default: false },
-  riderFeePaid1: { type: Boolean, default: false },
-  riderFeePaid2: { type: Boolean, default: false },
-  evidenceImage: { type: String },
-  vendorEvidenceImage: { type: String },
-  refundAmount: { type: Number },
-  consecutiveReturns: { type: Number, default: 0 },
-  returnReason: { type: String },
   paymentMethod: { type: String, default: 'wallet' },
 }, { timestamps: true });
 
-export default mongoose.models.Order || mongoose.model<IOrder>('Order', OrderSchema);
+export default mongoose.model<IOrder>('Order', OrderSchema);

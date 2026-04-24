@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/backend/services/database';
-import Transaction from '@/backend/models/Transaction';
-import User from '@/backend/models/User';
+import connectDB from '@/lib/mongodb';
+import Transaction from '@/lib/models/Transaction';
+import User from '@/lib/models/User';
 import { verifyToken } from '@/lib/auth-utils';
 
 export async function GET(req: NextRequest) {

@@ -2,10 +2,10 @@
   "name": "quick-wash-backend",
   "version": "1.0.0",
   "description": "Backend for Quick-Wash App",
-  "main": "server.ts",
+  "main": "index.ts",
   "scripts": {
-    "start": "tsx server.ts",
-    "dev": "tsx watch server.ts",
+    "start": "node --loader ts-node/esm index.ts",
+    "dev": "nodemon --exec node --loader ts-node/esm index.ts",
     "build": "tsc"
   },
   "type": "module",
@@ -14,11 +14,8 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^5.0.0",
-    "express-rate-limit": "^7.2.0",
-    "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^8.2.1",
-    "morgan": "^1.10.0"
+    "mongoose": "^8.2.1"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

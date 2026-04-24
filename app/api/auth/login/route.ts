@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import connectDB from '@/backend/services/database';
-import User from '@/backend/models/User';
+import connectDB from '@/lib/mongodb';
+import User from '@/lib/models/User';
 import bcrypt from 'bcryptjs';
 import { signToken } from '@/lib/auth-utils';
 

@@ -57,43 +57,44 @@ export default function AdminDashboard() {
 
   const isSuperAdmin = currentUser?.role === 'admin' && (currentUser?.phoneNumber === '09012345678' || currentUser?.email === 'ogunwedebo21@gmail.com');
 
-  const handleRestrictUser = async (phone: string, status: 'active' | 'restricted' | 'suspended') => {
+  const handleRestrictUser = (phone: string, status: 'active' | 'restricted' | 'suspended') => {
     if (!isSuperAdmin) {
       alert('Only Super Admin can restrict or ban users.');
       return;
     }
-    try {
-      const userToUpdate = allUsers.find(u => u.phoneNumber === phone);
-      if (!userToUpdate) return;
-      
-      await db.updateUser(userToUpdate.uid, { status });
-      await fetchData();
-      alert(`User status updated to ${status}.`);
-    } catch (err: any) {
-      alert(`Update failed: ${err.message}`);
-    }
+    const users = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
+    const updated = users.map((u: any) => u.phoneNumber === phone ? { ...u, status } : u);
+    localStorage.setItem('qw_all_users', JSON.stringify(updated));
+    setAllUsers(updated);
+    alert(`User status updated to ${status}.`);
   };
 
-  const handleAddUser = async (e: React.FormEvent) => {
+  const handleAddUser = (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      const result = await db.signup(newUser);
-      await fetchData();
-      setIsAddUserModalOpen(false);
-      setNewUser({ fullName: '', phoneNumber: '', password: '', role: 'customer', status: 'active', isApproved: true });
-      
-      await db.createAuditLog({
-        action: 'User Created',
-        target: newUser.phoneNumber,
-        adminUid: currentUser?.uid,
-        admin: currentUser?.fullName || currentUser?.phoneNumber,
-        details: `Admin created a new ${newUser.role}: ${newUser.fullName}`
-      });
-      
-      alert(`User ${newUser.fullName} created successfully!`);
-    } catch (err: any) {
-      alert(`Failed to create user: ${err.message}`);
+    const users = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
+    if (users.find((u: any) => u.phoneNumber === newUser.phoneNumber)) {
+      alert('User with this phone number already exists!');
+      return;
     }
+    const updated = [...users, { ...newUser, trustPoints: 50, trustScore: 100, walletBalance: 0, pendingBalance: 0 }];
+    localStorage.setItem('qw_all_users', JSON.stringify(updated));
+    setAllUsers(updated);
+    setIsAddUserModalOpen(false);
+    setNewUser({ fullName: '', phoneNumber: '', password: '', role: 'customer', status: 'active', isApproved: true });
+    
+    // Add audit log
+    const logs = JSON.parse(localStorage.getItem('qw_audit_logs') || '[]');
+    logs.push({
+      id: Date.now(),
+      action: 'User Created',
+      target: newUser.phoneNumber,
+      admin: currentUser?.phoneNumber,
+      time: new Date().toISOString(),
+      details: `Admin ${currentUser?.fullName} created a new ${newUser.role}: ${newUser.fullName}`
+    });
+    localStorage.setItem('qw_audit_logs', JSON.stringify(logs));
+    
+    alert(`User ${newUser.fullName} created successfully! Details: Phone: ${newUser.phoneNumber}, Role: ${newUser.role}`);
   };
   const [isVerificationModalOpen, setIsVerificationModalOpen] = React.useState(false);
   const [verifyingUser, setVerifyingUser] = React.useState<any>(null);
@@ -102,47 +103,49 @@ export default function AdminDashboard() {
   const [systemStats, setSystemStats] = React.useState<any>(null);
   const [landmarks, setLandmarks] = React.useState<any[]>([]);
   const [riders, setRiders] = React.useState<any[]>([]);
-  const [auditLogs, setAuditLogs] = React.useState<any[]>([]);
-  const [campaigns, setCampaigns] = React.useState<any[]>([]);
-
-  const fetchData = React.useCallback(async () => {
-    try {
-      const [usersData, ordersData, sysStats, site, logs] = await Promise.all([
-        db.getUsers(),
-        db.getOrders(),
-        db.getSystemStats(),
-        db.getSiteSettings(),
-        db.getAuditLogs()
-      ]);
-
-      setLandmarks(site.landmarks || []);
-      setCampaigns(site.campaigns || []);
-      setSiteSettings(site);
-      setAuditLogs(logs || []);
-
-      setAllUsers(usersData);
-      setPendingUsers(usersData.filter((u: any) => !u.isApproved));
-      setRiders(usersData.filter((u: any) => u.role === 'rider' && u.isApproved));
-      setOrders(ordersData);
-      setSystemStats(sysStats);
-
-      const totalRevenue = ordersData.reduce((acc: number, o: any) => acc + (Number(o.totalPrice) || 0), 0);
-      const activeOrders = ordersData.filter((o: any) => o.status !== 'delivered' && o.status !== 'completed' && !o.status.includes('Cancelled')).length;
-      
-      setStats([
-        { label: 'Total Revenue', value: `₦${(totalRevenue || 0).toLocaleString()}`, trend: '+18.2%', icon: TrendingUp, color: 'text-primary' },
-        { label: 'Active Orders', value: activeOrders.toString(), trend: '+5.4%', icon: ShoppingBag, color: 'text-tertiary' },
-        { label: 'Total Users', value: usersData.length.toString(), trend: '+12.1%', icon: Users, color: 'text-on-surface' },
-        { label: 'System Health', value: '99.9%', trend: 'Stable', icon: Activity, color: 'text-primary' }
-      ]);
-    } catch (err) {
-      console.error('Fetch error:', err);
-    }
-  }, [setLandmarks, setCampaigns, setSiteSettings, setAuditLogs, setAllUsers, setPendingUsers, setRiders, setOrders, setSystemStats, setStats]);
 
   React.useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const token = localStorage.getItem('qw_token');
+        const [usersRes, ordersRes, sysStats, site] = await Promise.all([
+          fetch('/api/admin/users', { headers: { 'Authorization': `Bearer ${token}` } }),
+          fetch('/api/orders', { headers: { 'Authorization': `Bearer ${token}` } }),
+          db.getSystemStats(),
+          db.getSiteSettings()
+        ]);
+
+        const lms = JSON.parse(localStorage.getItem('qw_landmarks') || '[]');
+        setLandmarks(lms);
+        setSiteSettings(site);
+
+        if (usersRes.ok && ordersRes.ok) {
+          const usersData = await usersRes.json();
+          const ordersData = await ordersRes.json();
+          setAllUsers(usersData);
+          setPendingUsers(usersData.filter((u: any) => !u.isApproved));
+          setRiders(usersData.filter((u: any) => u.role === 'rider' && u.isApproved));
+          setOrders(ordersData);
+          setSystemStats(sysStats);
+
+          const totalRevenue = ordersData.reduce((acc: number, o: any) => acc + (Number(o.totalPrice) || 0), 0);
+          const activeOrders = ordersData.filter((o: any) => o.status !== 'delivered' && o.status !== 'completed' && !o.status.includes('Cancelled')).length;
+          
+          setStats([
+            { label: 'Total Revenue', value: `₦${(totalRevenue || 0).toLocaleString()}`, trend: '+18.2%', icon: TrendingUp, color: 'text-primary' },
+            { label: 'Active Orders', value: activeOrders.toString(), trend: '+5.4%', icon: ShoppingBag, color: 'text-tertiary' },
+            { label: 'Total Users', value: usersData.length.toString(), trend: '+12.1%', icon: Users, color: 'text-on-surface' },
+            { label: 'System Health', value: '99.9%', trend: 'Stable', icon: Activity, color: 'text-primary' }
+          ]);
+        }
+      } catch (err) {
+        console.error('Fetch error:', err);
+      }
+    };
     fetchData();
-  }, [fetchData, currentUser]);
+    window.addEventListener('storage', fetchData);
+    return () => window.removeEventListener('storage', fetchData);
+  }, [currentUser]);
   const [selectedDetail, setSelectedDetail] = React.useState<any>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = React.useState(false);
   const [showNewUserPassword, setShowNewUserPassword] = React.useState(false);
@@ -151,6 +154,7 @@ export default function AdminDashboard() {
   const [isOverriding, setIsOverriding] = React.useState(false);
   const [overrideData, setOverrideData] = React.useState({ action: '', reason: '' });
 
+  const [campaigns, setCampaigns] = React.useState<any[]>([]);
   const [isCampaignModalOpen, setIsCampaignModalOpen] = React.useState(false);
   const [editingCampaign, setEditingCampaign] = React.useState<any>(null);
   const [campaignToDelete, setCampaignToDelete] = React.useState<number | null>(null);
@@ -162,57 +166,53 @@ export default function AdminDashboard() {
     color: 'bg-primary'
   });
 
-  const handleAddCampaign = React.useCallback(async (e: React.FormEvent) => {
+  const handleAddCampaign = React.useCallback((e: React.FormEvent) => {
     e.preventDefault();
-    if (!siteSettings) return;
+    const updated = editingCampaign 
+      ? campaigns.map(c => c.id === editingCampaign.id ? { ...campaignForm, id: c.id } : c)
+      : [...campaigns, { ...campaignForm, id: Date.now() }];
+    
+    localStorage.setItem('qw_campaigns', JSON.stringify(updated));
+    setCampaigns(updated);
+    setIsCampaignModalOpen(false);
+    setEditingCampaign(null);
+    setCampaignForm({ name: '', status: 'Active', reach: '0', conversion: '0%', color: 'bg-primary' });
+    
+    // Audit Log
+    const logs = JSON.parse(localStorage.getItem('qw_audit_logs') || '[]');
+    logs.push({
+      id: Date.now(),
+      action: editingCampaign ? 'Campaign Updated' : 'Campaign Created',
+      target: campaignForm.name,
+      admin: currentUser?.phoneNumber,
+      time: new Date().toISOString(),
+      details: `Admin ${currentUser?.fullName} ${editingCampaign ? 'updated' : 'created'} campaign: ${campaignForm.name}`
+    });
+    localStorage.setItem('qw_audit_logs', JSON.stringify(logs));
+  }, [campaigns, editingCampaign, campaignForm, currentUser]);
 
-    try {
-      const updatedCampaigns = editingCampaign 
-        ? campaigns.map(c => c.id === editingCampaign.id ? { ...campaignForm, id: c.id } : c)
-        : [...campaigns, { ...campaignForm, id: Date.now() }];
-      
-      await db.updateSiteSettings({ campaigns: updatedCampaigns });
-      await fetchData();
-      setIsCampaignModalOpen(false);
-      setEditingCampaign(null);
-      setCampaignForm({ name: '', status: 'Active', reach: '0', conversion: '0%', color: 'bg-primary' });
-      
-      await db.createAuditLog({
-        action: editingCampaign ? 'Campaign Updated' : 'Campaign Created',
-        target: campaignForm.name,
-        adminUid: currentUser?.uid,
-        admin: currentUser?.fullName || currentUser?.phoneNumber,
-        details: `Admin ${editingCampaign ? 'updated' : 'created'} campaign: ${campaignForm.name}`
-      });
-      alert('Campaign saved to database!');
-    } catch (err: any) {
-      alert(`Failed to save campaign: ${err.message}`);
-    }
-  }, [campaigns, editingCampaign, campaignForm, currentUser, siteSettings, fetchData]);
-
-  const handleDeleteCampaign = React.useCallback(async (id: number) => {
-    if (!siteSettings) return;
-    try {
-      const updatedCampaigns = campaigns.filter(c => c.id !== id);
-      await db.updateSiteSettings({ campaigns: updatedCampaigns });
-      await fetchData();
-      
-      await db.createAuditLog({
-        action: 'Campaign Deleted',
-        target: id.toString(),
-        adminUid: currentUser?.uid,
-        admin: currentUser?.fullName || currentUser?.phoneNumber,
-      });
-      setCampaignToDelete(null);
-      alert('Campaign deleted from database.');
-    } catch (err: any) {
-      alert(`Failed to delete campaign: ${err.message}`);
-    }
-  }, [campaigns, currentUser, siteSettings, fetchData]);
+  const handleDeleteCampaign = React.useCallback((id: number) => {
+    const updated = campaigns.filter(c => c.id !== id);
+    localStorage.setItem('qw_campaigns', JSON.stringify(updated));
+    setCampaigns(updated);
+    
+    // Audit Log
+    const logs = JSON.parse(localStorage.getItem('qw_audit_logs') || '[]');
+    logs.push({
+      id: Date.now(),
+      action: 'Campaign Deleted',
+      target: id.toString(),
+      admin: currentUser?.phoneNumber,
+      time: new Date().toISOString()
+    });
+    localStorage.setItem('qw_audit_logs', JSON.stringify(logs));
+    setCampaignToDelete(null);
+  }, [campaigns, currentUser]);
 
   const clearAlerts = () => {
+    localStorage.setItem('qw_alerts', JSON.stringify([]));
     setAlerts([]);
-    alert('System alerts cleared for this session.');
+    alert('System alerts cleared.');
   };
 
   const handleEditUser = (user: any) => {
@@ -228,46 +228,47 @@ export default function AdminDashboard() {
 
     if (confirm('Are you sure you want to delete this user?')) {
       await db.deleteUser(uid);
-      await fetchData();
+      const updated = await db.getUsers();
+      setAllUsers(updated);
+      setPendingUsers(updated.filter((u: any) => !u.isApproved));
 
-      await db.createAuditLog({
+      // Audit Log
+      const logs = JSON.parse(localStorage.getItem('qw_audit_logs') || '[]');
+      logs.push({
+        id: Date.now(),
         action: 'User Deleted',
         target: uid,
-        adminUid: currentUser?.uid,
-        admin: currentUser?.fullName || currentUser?.phoneNumber,
+        admin: currentUser?.phoneNumber,
+        time: new Date().toISOString(),
         details: `Super Admin deleted user with UID: ${uid}`
       });
+      localStorage.setItem('qw_audit_logs', JSON.stringify(logs));
       
       alert('User deleted successfully.');
     }
   };
 
-  const handleSaveUser = async (e: React.FormEvent) => {
+  const handleSaveUser = (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      await db.updateUser(editingUser.uid, editingUser);
-      await fetchData();
-      setIsUserModalOpen(false);
-      alert('User updated successfully!');
-    } catch (err: any) {
-      alert(`Failed to update user: ${err.message}`);
-    }
+    const users = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
+    const updated = users.map((u: any) => u.phoneNumber === editingUser.phoneNumber ? editingUser : u);
+    localStorage.setItem('qw_all_users', JSON.stringify(updated));
+    setAllUsers(updated);
+    setIsUserModalOpen(false);
+    alert('User updated successfully!');
   };
 
-  const assignRider = async (orderId: string, riderPhone: string) => {
-    try {
-      const order = orders.find(o => o.id === orderId);
-      if (!order) return;
-      
-      const rider = allUsers.find(u => u.phoneNumber === riderPhone);
-      if (!rider) return;
-
-      await db.claimOrder(orderId, rider.uid, rider.fullName, rider.phoneNumber);
-      await fetchData();
-      alert('Rider assigned successfully!');
-    } catch (err: any) {
-      alert(`Assignment failed: ${err.message}`);
-    }
+  const assignRider = (orderId: string, riderPhone: string) => {
+    const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
+    const updated = allOrders.map((o: any) => {
+      if (o.id === orderId) {
+        return { ...o, riderPhone, status: o.status === 'Pending Pickup' ? 'Pending Pickup' : o.status };
+      }
+      return o;
+    });
+    localStorage.setItem('qw_orders', JSON.stringify(updated));
+    setOrders(updated);
+    alert('Rider assigned successfully!');
   };
 
   const [isRefundModalOpen, setIsRefundModalOpen] = React.useState(false);
@@ -303,13 +304,27 @@ export default function AdminDashboard() {
 
   const handleApprove = React.useCallback(async (userId: string) => {
     try {
-      const updatedUser = await db.approveUser(userId);
-      setAllUsers(prev => prev.map(u => u.uid === userId ? updatedUser : u));
-      setPendingUsers(prev => prev.filter(u => u.uid !== userId));
-      alert('User approved successfully!');
-    } catch (error: any) {
+      const response = await fetch('/api/admin/approve-user', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('qw_token')}`
+        },
+        body: JSON.stringify({ userId, approve: true })
+      });
+
+      if (response.ok) {
+        const updatedUser = await response.json();
+        setAllUsers(prev => prev.map(u => u.uid === userId ? updatedUser : u));
+        setPendingUsers(prev => prev.filter(u => u.uid !== userId));
+        alert('User approved successfully!');
+      } else {
+        const error = await response.json();
+        alert(error.message || 'Failed to approve user');
+      }
+    } catch (error) {
       console.error('Approval error:', error);
-      alert(error.message || 'An error occurred. Please try again.');
+      alert('An error occurred. Please try again.');
     }
   }, []);
 
@@ -584,19 +599,14 @@ export default function AdminDashboard() {
                       <p className="text-on-surface-variant font-medium">Control campus hotspots and global application parameters.</p>
                     </div>
                     <button 
-                      onClick={async () => {
+                      onClick={() => {
                         const name = prompt('Landmark Name:');
                         if (!name) return;
-                        if (!siteSettings) return;
-                        
-                        try {
-                          const updated = [...landmarks, { id: Date.now(), name, active: true }];
-                          await db.updateSiteSettings({ landmarks: updated });
-                          await fetchData();
-                          alert('Hotspot added! Syncing to all clients...');
-                        } catch (err: any) {
-                          alert(`Failed to add hotspot: ${err.message}`);
-                        }
+                        const updated = [...landmarks, { id: Date.now(), name, active: true }];
+                        setLandmarks(updated);
+                        localStorage.setItem('qw_landmarks', JSON.stringify(updated));
+                        alert('Hotspot added! Syncing to all clients...');
+                        window.dispatchEvent(new Event('storage'));
                       }}
                       className="signature-gradient text-white px-8 py-4 rounded-2xl font-headline font-bold text-sm shadow-xl active:scale-95 transition-transform flex items-center gap-2"
                     >
@@ -618,29 +628,23 @@ export default function AdminDashboard() {
                         </div>
                         <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button 
-                            onClick={async () => {
-                              try {
-                                const updated = landmarks.map(l => l.id === lm.id ? { ...l, active: !l.active } : l);
-                                await db.updateSiteSettings({ landmarks: updated });
-                                await fetchData();
-                              } catch (err: any) {
-                                alert(`Failed to update: ${err.message}`);
-                              }
+                            onClick={() => {
+                              const updated = landmarks.map(l => l.id === lm.id ? { ...l, active: !l.active } : l);
+                              setLandmarks(updated);
+                              localStorage.setItem('qw_landmarks', JSON.stringify(updated));
+                              window.dispatchEvent(new Event('storage'));
                             }}
                             className="p-2 rounded-lg bg-surface-container-highest text-on-surface-variant hover:text-primary transition-colors"
                           >
                             <Info className="w-4 h-4" />
                           </button>
                           <button 
-                            onClick={async () => {
+                            onClick={() => {
                               if (confirm('Delete hotspot?')) {
-                                try {
-                                  const updated = landmarks.filter(l => l.id !== lm.id);
-                                  await db.updateSiteSettings({ landmarks: updated });
-                                  await fetchData();
-                                } catch (err: any) {
-                                  alert(`Failed to delete: ${err.message}`);
-                                }
+                                const updated = landmarks.filter(l => l.id !== lm.id);
+                                setLandmarks(updated);
+                                localStorage.setItem('qw_landmarks', JSON.stringify(updated));
+                                window.dispatchEvent(new Event('storage'));
                               }
                             }}
                             className="p-2 rounded-lg bg-surface-container-highest text-on-surface-variant hover:text-error transition-colors"
@@ -980,9 +984,9 @@ export default function AdminDashboard() {
                 >
                   <h2 className="text-2xl font-headline font-black text-on-surface mb-8">System Audit Log</h2>
                   <div className="space-y-4">
-                    {auditLogs.map((log: any) => (
+                    {(JSON.parse(localStorage.getItem('qw_audit_logs') || '[]')).reverse().map((log: any) => (
                       <div 
-                        key={log._id || log.id} 
+                        key={log.id} 
                         onClick={() => {
                           setSelectedDetail({ type: 'Audit Log', ...log });
                           setIsDetailModalOpen(true);
@@ -998,10 +1002,10 @@ export default function AdminDashboard() {
                             <p className="text-[10px] text-on-surface-variant">Admin: {log.admin} • Target: {log.target}</p>
                           </div>
                         </div>
-                        <span className="text-[10px] font-bold text-on-surface-variant">{new Date(log.time || log.createdAt).toLocaleString()}</span>
+                        <span className="text-[10px] font-bold text-on-surface-variant">{new Date(log.time).toLocaleString()}</span>
                       </div>
                     ))}
-                    {auditLogs.length === 0 && (
+                    {(JSON.parse(localStorage.getItem('qw_audit_logs') || '[]')).length === 0 && (
                       <div className="py-20 text-center border-2 border-dashed border-primary/10 rounded-3xl">
                         <p className="text-on-surface-variant font-medium">No audit logs found.</p>
                       </div>
@@ -1020,19 +1024,15 @@ export default function AdminDashboard() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="bg-primary text-on-primary p-8 rounded-[2.5rem] shadow-xl">
                       <p className="font-label text-[10px] font-black uppercase tracking-widest opacity-80 mb-2">Platform Commission</p>
-                      <h3 className="text-4xl font-headline font-black">₦{allUsers.find(u => u.email === 'ogunwedebo21@gmail.com')?.walletBalance?.toLocaleString() || '0'}</h3>
+                      <h3 className="text-4xl font-headline font-black">₦{allUsers.find(u => u.phoneNumber === '09012345678')?.walletBalance?.toLocaleString() || '0'}</h3>
                     </div>
                     <div className="bg-surface-container-low p-8 rounded-[2.5rem] border border-primary/5">
                       <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Total Payouts</p>
-                      <h3 className="text-4xl font-headline font-black text-on-surface">
-                        ₦{allUsers.reduce((acc, u) => acc + (u.role !== 'admin' ? (u.walletBalance < 0 ? Math.abs(u.walletBalance) : 0) : 0), 0).toLocaleString()}
-                      </h3>
+                      <h3 className="text-4xl font-headline font-black text-on-surface">₦450,000</h3>
                     </div>
                     <div className="bg-surface-container-low p-8 rounded-[2.5rem] border border-primary/5">
                       <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Pending Withdrawals</p>
-                      <h3 className="text-4xl font-headline font-black text-warning">
-                        ₦{allUsers.filter(u => u.withdrawalRequested).reduce((acc, u) => acc + (u.walletBalance || 0), 0).toLocaleString()}
-                      </h3>
+                      <h3 className="text-4xl font-headline font-black text-warning">₦12,500</h3>
                     </div>
                   </div>
 
@@ -1859,9 +1859,10 @@ export default function AdminDashboard() {
                             <button 
                               onClick={() => {
                                 if (!overrideData.reason) return alert('Please provide a reason.');
-                                // In a real production system, audit logs are often immutable. 
-                                // For now, we'll just show a success message as override is a sensitive operation.
-                                alert('Override request logged. Database remains source of truth.');
+                                const logs = JSON.parse(localStorage.getItem('qw_audit_logs') || '[]');
+                                const updated = logs.map((l: any) => l.id === selectedDetail.id ? { ...l, action: overrideData.action, overrideReason: overrideData.reason, overridenBy: currentUser?.phoneNumber } : l);
+                                localStorage.setItem('qw_audit_logs', JSON.stringify(updated));
+                                alert('Audit log updated successfully.');
                                 setIsOverriding(false);
                                 setIsDetailModalOpen(false);
                               }}

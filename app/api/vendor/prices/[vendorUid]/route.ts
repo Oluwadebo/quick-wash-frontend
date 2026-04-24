@@ -1,31 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/backend/services/database';
-import VendorPriceList from '@/backend/models/VendorPriceList';
+import connectDB from '@/lib/mongodb';
+import VendorPriceList from '@/lib/models/VendorPriceList';
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ vendorUid: string }> }) {
+export async function GET(req: NextRequest, { params }: { params: { vendorUid: string } }) {
   try {
-    const { vendorUid } = await params;
     await connectDB();
-    const priceList = await VendorPriceList.findOne({ vendorUid: vendorUid });
-    return NextResponse.json(priceList?.items || []);
-  } catch (error: any) {
-    return NextResponse.json({ message: error.message }, { status: 500 });
-  }
-}
+    const { vendorUid } = params;
+    
+    // Check both vendorId and vendorUid because of inconsistency in models
+    const priceList = await VendorPriceList.findOne({ 
+      $or: [{ vendorId: vendorUid }, { vendorUid: vendorUid }] 
+    });
+    
+    if (!priceList) {
+      return NextResponse.json([]);
+    }
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ vendorUid: string }> }) {
-  try {
-    const { vendorUid } = await params;
-    await connectDB();
-    const { items } = await req.json();
-    
-    const updated = await VendorPriceList.findOneAndUpdate(
-      { vendorUid: vendorUid },
-      { items },
-      { upsert: true, new: true }
-    );
-    
-    return NextResponse.json(updated);
+    // Return services or items depending on which is populated
+    return NextResponse.json(priceList.services || priceList.items || []);
   } catch (error: any) {
     return NextResponse.json({ message: error.message }, { status: 500 });
   }

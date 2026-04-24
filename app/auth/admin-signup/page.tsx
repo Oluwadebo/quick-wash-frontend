@@ -10,7 +10,6 @@ export default function AdminSignupPage() {
   const { signup, isProcessing, error } = useAuth();
   const [formData, setFormData] = React.useState({
     fullName: '',
-    email: '',
     phoneNumber: '',
     password: '',
     role: 'admin' as const
@@ -49,21 +48,6 @@ export default function AdminSignupPage() {
                   className="w-full h-16 pl-14 pr-6 bg-surface-container-lowest rounded-2xl border border-primary/5 outline-none focus:border-primary transition-all font-headline font-bold"
                   value={formData.fullName}
                   onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="font-label text-[10px] font-black uppercase tracking-widest text-primary ml-2">Email Address</label>
-              <div className="relative">
-                <ArrowRight className="absolute left-5 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5 rotate-180" />
-                <input 
-                  required
-                  type="email"
-                  placeholder="admin@quickwash.co"
-                  className="w-full h-16 pl-14 pr-6 bg-surface-container-lowest rounded-2xl border border-primary/5 outline-none focus:border-primary transition-all font-headline font-bold"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 />
               </div>
             </div>
