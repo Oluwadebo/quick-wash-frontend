@@ -11,12 +11,12 @@ import mongoose from "mongoose";
 import morgan from "morgan";
 
 // Routes Imports
-import { seedAdmin } from "./lib/seed.js";
-import orderRoutes from "./routes/orderRoutes.js";
-import priceRoutes from "./routes/priceRoutes.js";
-import systemRoutes from "./routes/systemRoutes.js";
-import userRoutes from "./routes/userRoutes.js";
-import walletRoutes from "./routes/walletRoutes.js";
+import { seedAdmin } from "./lib/seed";
+import orderRoutes from "./routes/orderRoutes";
+import priceRoutes from "./routes/priceRoutes";
+import systemRoutes from "./routes/systemRoutes";
+import userRoutes from "./routes/userRoutes";
+import walletRoutes from "./routes/walletRoutes";
 
 dotenv.config();
 

@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
-import Order from '../models/Order.js';
-import User from '../models/User.js';
-import Transaction from '../models/Transaction.js';
+import Order from '../models/Order';
+import User from '../models/User';
+import Transaction from '../models/Transaction';
 
 const ORDER_STATUS_STEPS = [
   'pending',

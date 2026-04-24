@@ -1,9 +1,9 @@
 import { Request, Response } from 'express';
-import User from '../models/User.js';
-import Wallet from '../models/Wallet.js';
+import User from '../models/User';
+import Wallet from '../models/Wallet';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { AuthRequest } from '../middleware/auth.js';
+import { AuthRequest } from '../middleware/auth';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'quick_wash_secret_99';
 

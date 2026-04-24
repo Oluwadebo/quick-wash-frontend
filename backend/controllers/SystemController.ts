@@ -1,10 +1,10 @@
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
-import SiteSettings from '../models/SiteSettings.js';
-import ContactSubmission from '../models/ContactSubmission.js';
-import User from '../models/User.js';
-import Order from '../models/Order.js';
-import AuditLog from '../models/AuditLog.js';
+import SiteSettings from '../models/SiteSettings';
+import ContactSubmission from '../models/ContactSubmission';
+import User from '../models/User';
+import Order from '../models/Order';
+import AuditLog from '../models/AuditLog';
 
 export const getAuditLogs = async (req: Request, res: Response) => {
   try {

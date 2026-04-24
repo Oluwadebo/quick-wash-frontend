@@ -15,8 +15,8 @@ import {
   recordTransaction,
   updateUserByUid,
   getVendors
-} from '../controllers/UserController.js';
-import { auth, checkRole } from '../middleware/auth.js';
+} from '../controllers/UserController';
+import { auth, checkRole } from '../middleware/auth';
 
 const router = express.Router();
 

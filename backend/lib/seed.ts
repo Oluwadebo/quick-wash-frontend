@@ -1,4 +1,4 @@
-import User from "../models/User.js";
+import User from "../models/User";
 import bcrypt from "bcryptjs";
 
 export const seedAdmin = async () => {

@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import VendorPriceList from '../models/VendorPriceList.js';
+import VendorPriceList from '../models/VendorPriceList';
 
 export const getPrices = async (req: Request, res: Response) => {
   try {

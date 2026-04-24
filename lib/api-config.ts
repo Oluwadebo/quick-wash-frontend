@@ -8,8 +8,8 @@ const isProduction = typeof window !== 'undefined' && window.location.hostname !
 
 // Preferred way: use NEXT_PUBLIC_API_URL environment variable.
 // Otherwise, relative paths work best for Next.js rewrites in most environments.
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 
-  (isProduction ? '' : 'http://localhost:3000');
+// AI Studio works best with empty string for relative paths to use Next.js rewrites.
+const API_BASE_URL = typeof window !== 'undefined' ? '' : 'http://localhost:5000';
 
 export const API_URLS = {
   base: API_BASE_URL,

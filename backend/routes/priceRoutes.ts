@@ -1,6 +1,6 @@
 import express from 'express';
-import { getPrices, updatePrices } from '../controllers/PriceController.js';
-import { auth } from '../middleware/auth.js';
+import { getPrices, updatePrices } from '../controllers/PriceController';
+import { auth } from '../middleware/auth';
 
 const router = express.Router();
 

@@ -9,8 +9,8 @@ import {
   returnOrder,
   submitDispute, 
   autoCancelOrders 
-} from '../controllers/OrderController.js';
-import { auth, checkRole } from '../middleware/auth.js';
+} from '../controllers/OrderController';
+import { auth, checkRole } from '../middleware/auth';
 
 const router = express.Router();
 

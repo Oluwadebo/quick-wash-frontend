@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
-import Transaction from '../models/Transaction.js';
-import User from '../models/User.js';
+import Transaction from '../models/Transaction';
+import User from '../models/User';
 
 export const getHistory = async (req: any, res: Response) => {
   try {

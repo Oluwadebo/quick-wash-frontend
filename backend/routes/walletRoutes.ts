@@ -1,6 +1,6 @@
 import express from 'express';
-import { getHistory, deposit, withdraw, createTransaction } from '../controllers/WalletController.js';
-import { auth } from '../middleware/auth.js';
+import { getHistory, deposit, withdraw, createTransaction } from '../controllers/WalletController';
+import { auth } from '../middleware/auth';
 
 const router = express.Router();
 
