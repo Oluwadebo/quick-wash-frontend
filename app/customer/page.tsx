@@ -8,6 +8,7 @@ import { Minus, Plus, Sparkles, Shirt, ShoppingBag, Bed, CreditCard, Bolt, Info,
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { db, Order, UserData } from '@/lib/DatabaseService';
+import { useAuth } from '@/hooks/use-auth';
 import { Toast } from '@/components/shared/Toast';
 
 import { formatRelativeTime } from '@/lib/time';
@@ -92,12 +93,12 @@ export default function OrderPage() {
 function OrderPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user: currentUser } = useAuth();
   const vendorId = searchParams.get('vendor');
   const [cart, setCart] = React.useState<any[]>(defaultItems);
   const [isPaid, setIsPaid] = React.useState(false);
   const [isPaying, setIsPaying] = React.useState(false);
   const [vendor, setVendor] = React.useState<UserData | null>(null);
-  const [currentUser, setCurrentUser] = React.useState<UserData | null>(null);
   const [existingOrderId, setExistingOrderId] = React.useState<string | null>(null);
   const [notification, setNotification] = React.useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
   const [pickupAddress, setPickupAddress] = React.useState('');
@@ -109,27 +110,20 @@ function OrderPageContent() {
 
   React.useEffect(() => {
     const initPage = async () => {
-      if (!vendorId) return;
+      if (!vendorId || !currentUser) return;
 
       const isNew = searchParams.get('new') === 'true';
 
-      // 1. Load Auth & Existing Order
-      const storedUser = localStorage.getItem('qw_user');
-      let user: any = null;
-      if (storedUser) {
-        user = JSON.parse(storedUser);
-        setCurrentUser(user);
-        
-        const orders = await db.getOrders();
-        const existing = orders.find((o: Order) => 
-          o.customerUid === user.uid && 
-          o.status === 'confirm' &&
-          o.vendorId === vendorId
-        );
-        if (existing && !isNew) {
-          setExistingOrderId(existing.id);
-          setIsPaid(true);
-        }
+      // 1. Load Existing Order
+      const orders = await db.getOrders();
+      const existing = orders.find((o: Order) => 
+        o.customerUid === currentUser.uid && 
+        o.status === 'confirm' &&
+        o.vendorId === vendorId
+      );
+      if (existing && !isNew) {
+        setExistingOrderId(existing.id);
+        setIsPaid(true);
       }
 
       // 2. Load Vendor Info
@@ -164,13 +158,12 @@ function OrderPageContent() {
           };
         });
       } else if (vendorId) {
-        // Fallback to default items only if no vendor-specific services exist
         initialCart = defaultItems.map(item => ({ ...item, count: 0 }));
       }
 
       // 4. Restore Saved Count Data (Skip if isNew)
-      if (user?.uid && !isNew) {
-        const savedCartStr = localStorage.getItem(`qw_pending_cart_${user.uid}_${vendorId}`);
+      if (!isNew) {
+        const savedCartStr = sessionStorage.getItem(`qw_pending_cart_${currentUser.uid}_${vendorId}`);
         if (savedCartStr) {
           try {
             const savedCart = JSON.parse(savedCartStr);
@@ -194,8 +187,8 @@ function OrderPageContent() {
             console.error('Failed to parse saved cart', e);
           }
         }
-      } else if (user?.uid && isNew) {
-        localStorage.removeItem(`qw_pending_cart_${user.uid}_${vendorId}`);
+      } else {
+        sessionStorage.removeItem(`qw_pending_cart_${currentUser.uid}_${vendorId}`);
       }
 
       setCart(initialCart);
@@ -203,12 +196,12 @@ function OrderPageContent() {
     };
 
     initPage();
-  }, [vendorId, searchParams]);
+  }, [vendorId, searchParams, currentUser]);
 
-  // Save to localStorage whenever cart changes AFTER initialization
+  // Save to sessionStorage whenever cart changes AFTER initialization
   React.useEffect(() => {
     if (isInitialized && currentUser?.uid && vendorId) {
-      localStorage.setItem(`qw_pending_cart_${currentUser.uid}_${vendorId}`, JSON.stringify(cart));
+      sessionStorage.setItem(`qw_pending_cart_${currentUser.uid}_${vendorId}`, JSON.stringify(cart));
     }
   }, [cart, currentUser, vendorId, isInitialized]);
 
@@ -376,11 +369,11 @@ function OrderPageContent() {
       }
 
       await db.saveOrder(newOrder);
-      localStorage.setItem('qw_current_order_id', newOrderId);
+      sessionStorage.setItem('qw_current_order_id', newOrderId);
       setExistingOrderId(newOrderId);
       
       if (currentUser?.uid && vendorId) {
-        localStorage.removeItem(`qw_pending_cart_${currentUser.uid}_${vendorId}`);
+        sessionStorage.removeItem(`qw_pending_cart_${currentUser.uid}_${vendorId}`);
       }
       
       setIsPaid(true);
@@ -402,7 +395,7 @@ function OrderPageContent() {
   };
 
   const handlePickupRequest = React.useCallback(async () => {
-    const orderId = existingOrderId || localStorage.getItem('qw_current_order_id');
+    const orderId = existingOrderId || sessionStorage.getItem('qw_current_order_id');
     if (!orderId) return;
 
     // Use state values if they exist, otherwise error
@@ -423,7 +416,7 @@ function OrderPageContent() {
         color: 'bg-primary-container text-on-primary-container',
       });
       
-      localStorage.removeItem('qw_current_order_id');
+      sessionStorage.removeItem('qw_current_order_id');
       setNotification({ message: 'Order confirmed! Redirecting to tracking...', type: 'success' });
       
       // FEEDBACK LOOP: Mandatory 2000ms delay
@@ -456,15 +449,13 @@ function OrderPageContent() {
       }
 
       // 2. Delete the order
-      const allOrders = await db.getOrders();
-      const filtered = allOrders.filter((o: Order) => o.id !== existingOrder.id);
-      localStorage.setItem('qw_orders', JSON.stringify(filtered));
+      await db.deleteOrder(existingOrder.id);
 
       // 3. Reset state
       setExistingOrderId(null);
       setExistingOrder(null);
       setIsPaid(false);
-      localStorage.removeItem('qw_current_order_id');
+      sessionStorage.removeItem('qw_current_order_id');
       
       setNotification({ message: "Order cancelled and refunded successfully.", type: 'success' });
       setIsPaying(false);

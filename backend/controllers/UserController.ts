@@ -130,6 +130,15 @@ export const getAllUsers = async (req: Request, res: Response) => {
   }
 };
 
+export const getVendors = async (req: Request, res: Response) => {
+  try {
+    const vendors = await User.find({ role: 'vendor', isApproved: true }).select('-password');
+    res.json(vendors);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 export const approveUser = async (req: Request, res: Response) => {
   try {
     const { uid } = req.params;
@@ -141,10 +150,26 @@ export const approveUser = async (req: Request, res: Response) => {
   }
 };
 
-export const getUserById = async (req: Request, res: Response) => {
+export const getUserById = async (req: AuthRequest, res: Response) => {
   try {
     const user = await User.findOne({ uid: req.params.uid }).select('-password');
     if (!user) return res.status(404).json({ message: 'User not found' });
+    
+    // Check if requester is admin or owner
+    const isOwner = req.user && req.user.uid === user.uid;
+    const isAdmin = req.user && (req.user.role === 'admin' || req.user.email === 'ogunwedebo21@gmail.com');
+
+    if (!isAdmin && !isOwner) {
+      const userObj = user.toObject();
+      // Hide sensitive fields from others
+      delete userObj.nin;
+      delete userObj.ninImage;
+      delete userObj.bankAccountNumber;
+      delete userObj.bankAccountName;
+      delete userObj.bankName;
+      return res.json(userObj);
+    }
+
     res.json(user);
   } catch (error: any) {
     res.status(500).json({ message: error.message });

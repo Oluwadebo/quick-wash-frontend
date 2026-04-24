@@ -20,7 +20,7 @@ export type TrustAction =
 
 export interface UserData {
   uid: string;
-  fullName: string;
+  fullName?: string;
   phoneNumber: string;
   password?: string;
   email: string;
@@ -48,6 +48,9 @@ export interface UserData {
   shopAddress?: string;
   landmark?: string;
   isRaining?: boolean;
+  shopImage?: string;
+  ninImage?: string;
+  transferReference?: string;
 }
 
 export interface Order {
@@ -97,6 +100,8 @@ export interface Order {
   evidenceImage?: string | null;
   vendorEvidenceImage?: string | null;
   refundAmount?: number | null;
+  rating?: number;
+  review?: string;
 }
 
 export interface SiteSettings {
@@ -108,6 +113,8 @@ export interface SiteSettings {
   emergencyAlert: string;
   maintenanceMode: boolean;
   announcement: string;
+  landmarks?: { id: string; name: string }[];
+  campaigns?: any[];
 }
 
 class DatabaseService {
@@ -115,7 +122,7 @@ class DatabaseService {
     return API_URLS.base || '';
   }
 
-  private async fetchAPI(endpoint: string, options: RequestInit = {}) {
+  async fetchAPI(endpoint: string, options: RequestInit = {}) {
     if (typeof window === 'undefined') return null;
     const token = localStorage.getItem('qw_token');
     const headers = {
@@ -154,15 +161,24 @@ class DatabaseService {
   async getUsers(): Promise<UserData[]> {
     return this.fetchAPI('/api/users');
   }
+  
+  async getVendors(): Promise<UserData[]> {
+    return this.fetchAPI('/api/users/vendors');
+  }
 
   async getUser(uid: string): Promise<UserData | null> {
     return this.fetchAPI(`/api/users/${uid}`);
   }
 
   async updateUser(uid: string, data: Partial<UserData>): Promise<UserData> {
-    const isAdmin = JSON.parse(localStorage.getItem('qw_user') || '{}').role === 'admin';
-    const endpoint = isAdmin ? `/api/users/${uid}` : `/api/users/profile`;
-    return this.fetchAPI(endpoint, {
+    return this.fetchAPI(`/api/users/${uid}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data)
+    });
+  }
+
+  async updateProfile(data: Partial<UserData>): Promise<UserData> {
+    return this.fetchAPI(`/api/users/profile`, {
       method: 'PATCH',
       body: JSON.stringify(data)
     });
@@ -214,7 +230,13 @@ class DatabaseService {
     });
   }
 
-  async claimOrder(orderId: string, riderUid: string, riderName: string, riderPhone: string): Promise<boolean> {
+  async deleteOrder(orderId: string): Promise<void> {
+    return this.fetchAPI(`/api/orders/${orderId}`, {
+      method: 'DELETE'
+    });
+  }
+
+  async claimOrder(orderId: string, riderUid: string, riderName?: string, riderPhone?: string): Promise<boolean> {
     const result = await this.fetchAPI(`/api/orders/${orderId}/claim`, {
       method: 'POST',
       body: JSON.stringify({ riderUid, riderName, riderPhone })
@@ -281,6 +303,17 @@ class DatabaseService {
     });
   }
 
+  async getAuditLogs() {
+    return this.fetchAPI('/api/system/audit');
+  }
+
+  async createAuditLog(data: any) {
+    return this.fetchAPI('/api/system/audit', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
+
   // --- PRICE LISTS ---
   async getVendorPriceList(vendorUid: string): Promise<any[]> {
     return this.fetchAPI(`/api/prices/${vendorUid}`);
@@ -316,6 +349,13 @@ class DatabaseService {
     return this.fetchAPI('/api/wallet/withdraw', {
       method: 'POST',
       body: JSON.stringify({ amount })
+    });
+  }
+
+  async reportTransaction(transactionId: string, issue: string) {
+    return this.fetchAPI(`/api/wallet/transactions/${transactionId}/report`, {
+      method: 'POST',
+      body: JSON.stringify({ issueDescription: issue })
     });
   }
 

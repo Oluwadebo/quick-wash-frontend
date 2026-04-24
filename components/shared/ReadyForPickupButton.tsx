@@ -20,7 +20,7 @@ export default function ReadyForPickupButton({
 
   const handleAction = () => {
     // Yoruba Audio Cue Logic
-    const audioEnabled = localStorage.getItem('yoruba-audio-enabled') === 'true';
+    const audioEnabled = sessionStorage.getItem('yoruba-audio-enabled') === 'true';
     if (audioEnabled) {
       setIsPlaying(true);
       if ('speechSynthesis' in window) {

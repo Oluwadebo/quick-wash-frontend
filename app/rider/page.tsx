@@ -22,14 +22,15 @@ import { motion, AnimatePresence } from 'motion/react';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
 import { db, Order, UserData } from '@/lib/DatabaseService';
+import { useAuth } from '@/hooks/use-auth';
 import { Toast } from '@/components/shared/Toast';
 
 export default function RiderDashboard() {
   const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = React.useState<'tasks' | 'active' | 'wallet' | 'settings'>('tasks');
   const [availableOrders, setAvailableOrders] = React.useState<Order[]>([]);
   const [myOrders, setMyOrders] = React.useState<Order[]>([]);
-  const [user, setUser] = React.useState<UserData | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [handoverCode, setHandoverCode] = React.useState('');
   const [processingId, setProcessingId] = React.useState<string | null>(null);
@@ -47,16 +48,18 @@ export default function RiderDashboard() {
   }, []);
 
   React.useEffect(() => {
-    const stored = localStorage.getItem('qw_user');
-    if (!stored) { router.push('/auth'); return; }
-    const u = JSON.parse(stored);
-    if (u.role !== 'rider') { router.push('/'); return; }
-    setUser(u);
-    fetchOrders(u);
-
-    const interval = setInterval(() => fetchOrders(u), 15000);
-    return () => clearInterval(interval);
-  }, [router, fetchOrders]);
+    if (!authLoading) {
+      if (!user) {
+        router.push('/auth');
+      } else if (user.role !== 'rider') {
+        router.push('/');
+      } else {
+        fetchOrders(user);
+        const interval = setInterval(() => fetchOrders(user), 15000);
+        return () => clearInterval(interval);
+      }
+    }
+  }, [user, authLoading, router, fetchOrders]);
 
   const handleClaim = async (orderId: string) => {
     if (!user) return;

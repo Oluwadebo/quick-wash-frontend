@@ -9,10 +9,23 @@ export const seedAdmin = async () => {
 
     console.log('🔍 Checking for Super Admin...');
 
-    // Check if any admin exists
-    const adminExists = await User.findOne({ role: 'admin' });
-    if (adminExists) {
-      console.log(`ℹ️  Admin account exists: ${adminExists.email}`);
+    // Check if the specific admin account already exists
+    const existingAdmin = await User.findOne({ email: adminEmail, role: 'admin' });
+    
+    if (existingAdmin) {
+      console.log(`ℹ️  Admin account exists: ${existingAdmin.email}`);
+      // Update password to match .env if it exists (ensures user doesn't get locked out during dev)
+      const hashedPassword = await bcrypt.hash(adminPassword, 10);
+      existingAdmin.password = hashedPassword;
+      await existingAdmin.save();
+      console.log('✅ Admin password synchronized with .env');
+      return;
+    }
+
+    // Check if any other admin exists (preventing multiple admins if not intended yet)
+    const anyAdminExists = await User.findOne({ role: 'admin' });
+    if (anyAdminExists) {
+      console.log(`ℹ️  Another admin account exists: ${anyAdminExists.email}`);
       return;
     }
 

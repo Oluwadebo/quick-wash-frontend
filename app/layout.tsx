@@ -21,12 +21,20 @@ export const metadata: Metadata = {
 
 import BottomNav from '@/components/shared/BottomNav';
 import Sidebar from '@/components/shared/Sidebar';
+import { Suspense } from 'react';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${plusJakartaSans.variable} ${manrope.variable}`}>
       <body suppressHydrationWarning className="bg-surface text-on-surface antialiased">
-        {children}
+        <div className="flex min-h-screen">
+          <Suspense fallback={<div className="w-72 hidden lg:block" />}>
+            <Sidebar />
+          </Suspense>
+          <main className="flex-1 w-full lg:max-w-[calc(100vw-18rem)]">
+            {children}
+          </main>
+        </div>
         <BottomNav />
       </body>
     </html>

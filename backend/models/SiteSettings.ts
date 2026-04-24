@@ -9,6 +9,8 @@ export interface ISiteSettings extends Document {
   emergencyAlert?: string;
   maintenanceMode?: boolean;
   announcement?: string;
+  landmarks?: { id: string; name: string }[];
+  campaigns?: any[];
 }
 
 const SiteSettingsSchema: Schema = new Schema({
@@ -19,7 +21,9 @@ const SiteSettingsSchema: Schema = new Schema({
   contactPhone: { type: String, default: '+234 812 345 6789' },
   emergencyAlert: { type: String },
   maintenanceMode: { type: Boolean, default: false },
-  announcement: { type: String, default: 'Welcome to the new Quick-Wash platform!' }
+  announcement: { type: String, default: 'Welcome to the new Quick-Wash platform!' },
+  landmarks: { type: Array, default: [] },
+  campaigns: { type: Array, default: [] }
 }, { timestamps: true });
 
 export default mongoose.models.SiteSettings || mongoose.model<ISiteSettings>('SiteSettings', SiteSettingsSchema);

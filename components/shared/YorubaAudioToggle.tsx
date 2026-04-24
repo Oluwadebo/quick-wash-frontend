@@ -8,14 +8,14 @@ export default function YorubaAudioToggle() {
   const [isEnabled, setIsEnabled] = React.useState(false);
 
   React.useEffect(() => {
-    const stored = localStorage.getItem('yoruba-audio-enabled');
+    const stored = sessionStorage.getItem('yoruba-audio-enabled');
     setIsEnabled(stored === 'true');
   }, []);
 
   const toggle = () => {
     const newState = !isEnabled;
     setIsEnabled(newState);
-    localStorage.setItem('yoruba-audio-enabled', String(newState));
+    sessionStorage.setItem('yoruba-audio-enabled', String(newState));
     
     // Play a small feedback sound if enabled
     if (newState) {

@@ -6,11 +6,10 @@
 
 const isProduction = typeof window !== 'undefined' && window.location.hostname !== 'localhost';
 
-// For Next.js, relative paths ('') work best with the built-in proxy (rewrites).
-// If deploying the backend separately (e.g., on Render), change the production URL here.
-const API_BASE_URL = isProduction
-  ? '' // Using relative paths for Next.js rewrites. Change to e.g. 'https://api.yourserver.com' if needed.
-  : 'http://localhost:3000';
+// Preferred way: use NEXT_PUBLIC_API_URL environment variable.
+// Otherwise, relative paths work best for Next.js rewrites in most environments.
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 
+  (isProduction ? '' : 'http://localhost:3000');
 
 export const API_URLS = {
   base: API_BASE_URL,

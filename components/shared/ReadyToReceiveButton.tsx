@@ -9,7 +9,7 @@ export default function ReadyToReceiveButton({ onClick }: { onClick?: () => void
   const [isPlaying, setIsPlaying] = React.useState(false);
 
   const handleAction = () => {
-    const audioEnabled = localStorage.getItem('yoruba-audio-enabled') === 'true';
+    const audioEnabled = sessionStorage.getItem('yoruba-audio-enabled') === 'true';
     if (audioEnabled) {
       setIsPlaying(true);
       if ('speechSynthesis' in window) {

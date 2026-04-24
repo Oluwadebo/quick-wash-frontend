@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useAuth } from '@/hooks/use-auth';
 
 interface NavItem {
   label: string;
@@ -46,12 +47,7 @@ const riderItems: NavItem[] = [
 
 export default function BottomNav() {
   const pathname = usePathname();
-  const [user, setUser] = React.useState<any>(null);
-
-  React.useEffect(() => {
-    const u = JSON.parse(localStorage.getItem('qw_user') || 'null');
-    setUser(u);
-  }, [pathname]);
+  const { user } = useAuth();
   
   if (pathname === '/' || pathname.startsWith('/auth') || pathname.startsWith('/admin') || !user) return null;
 

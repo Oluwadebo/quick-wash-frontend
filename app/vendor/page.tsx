@@ -19,13 +19,14 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { db, Order, UserData } from '@/lib/DatabaseService';
+import { useAuth } from '@/hooks/use-auth';
 import { Toast } from '@/components/shared/Toast';
 
 export default function VendorDashboard() {
   const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = React.useState<'active' | 'prices' | 'wallet' | 'settings'>('active');
   const [orders, setOrders] = React.useState<Order[]>([]);
-  const [user, setUser] = React.useState<UserData | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [handoverCode, setHandoverCode] = React.useState('');
   const [processingId, setProcessingId] = React.useState<string | null>(null);
@@ -40,13 +41,16 @@ export default function VendorDashboard() {
   }, []);
 
   React.useEffect(() => {
-    const stored = localStorage.getItem('qw_user');
-    if (!stored) { router.push('/auth'); return; }
-    const u = JSON.parse(stored);
-    if (u.role !== 'vendor') { router.push('/'); return; }
-    setUser(u);
-    fetchOrders(u);
-  }, [router, fetchOrders]);
+    if (!authLoading) {
+      if (!user) {
+        router.push('/auth');
+      } else if (user.role !== 'vendor') {
+        router.push('/');
+      } else {
+        fetchOrders(user);
+      }
+    }
+  }, [user, authLoading, router, fetchOrders]);
 
   const handleUpdateStatus = async (orderId: string, status: string, code?: string) => {
     try {

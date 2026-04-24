@@ -4,6 +4,26 @@ import SiteSettings from '../models/SiteSettings.js';
 import ContactSubmission from '../models/ContactSubmission.js';
 import User from '../models/User.js';
 import Order from '../models/Order.js';
+import AuditLog from '../models/AuditLog.js';
+
+export const getAuditLogs = async (req: Request, res: Response) => {
+  try {
+    const logs = await AuditLog.find().sort({ createdAt: -1 }).limit(100);
+    res.json(logs);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const createAuditLog = async (req: Request, res: Response) => {
+  try {
+    const { action, admin, adminUid, target, details } = req.body;
+    const log = await AuditLog.create({ action, admin, adminUid, target, details });
+    res.status(201).json(log);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+};
 
 export const getSiteSettings = async (req: Request, res: Response) => {
   try {
@@ -57,14 +77,14 @@ export const getStats = async (req: Request, res: Response) => {
     ]);
 
     res.json({
-      customers: userCount + 1240, 
-      vendors: vendorCount + 28,
-      riders: riderCount + 52,
-      completedOrders: orderCount + 15600,
+      customers: userCount, 
+      vendors: vendorCount,
+      riders: riderCount,
+      completedOrders: orderCount,
       featured: topVendors,
       metrics: {
         avgDelivery: 18,
-        totalVolume: Math.round((orderCount + 15400) * 5.2),
+        totalVolume: Math.round(orderCount * 5.2),
         uptime: '99.9%'
       }
     });

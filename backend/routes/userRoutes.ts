@@ -13,7 +13,8 @@ import {
   adjustTrust,
   autoRecoverTrust,
   recordTransaction,
-  updateUserByUid
+  updateUserByUid,
+  getVendors
 } from '../controllers/UserController.js';
 import { auth, checkRole } from '../middleware/auth.js';
 
@@ -23,10 +24,11 @@ router.post('/signup', signup);
 router.post('/login', login);
 router.get('/profile', auth, getUserProfile);
 router.patch('/profile', auth, updateProfile);
+router.get('/vendors', auth, getVendors);
 
 // Admin routes
 router.get('/', auth, checkRole(['admin']), getAllUsers);
-router.get('/:uid', auth, checkRole(['admin']), getUserById);
+router.get('/:uid', auth, getUserById); // All authenticated users can at least see profiles (filtered in controller)
 router.patch('/:uid', auth, checkRole(['admin']), updateUserById);
 router.delete('/:uid', auth, checkRole(['admin']), deleteUser);
 router.patch('/:uid/approve', auth, checkRole(['admin']), approveUser);

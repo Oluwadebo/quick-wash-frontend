@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import Footer from '@/components/shared/Footer';
 import { db, SiteSettings } from '@/lib/DatabaseService';
+import { useAuth } from '@/hooks/use-auth';
 
 const roles = [
   { 
@@ -49,6 +50,7 @@ const features = [
 
 export default function LandingPage() {
   const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = React.useState<'customer' | 'vendor' | 'rider'>('customer');
   const [settings, setSettings] = React.useState<SiteSettings | null>(null);
   const [stats, setStats] = React.useState<any>({ 
@@ -62,9 +64,8 @@ export default function LandingPage() {
 
   React.useEffect(() => {
     db.getSiteSettings().then(setSettings);
-    const storedUser = localStorage.getItem('qw_user');
-    if (storedUser) {
-      const user = JSON.parse(storedUser);
+    
+    if (!authLoading && user) {
       router.push(`/${user.role === 'customer' ? 'customer' : user.role}`);
     }
 
@@ -76,18 +77,14 @@ export default function LandingPage() {
         }
       })
       .catch(() => setStats({ 
-        customers: 1250, 
-        vendors: 28, 
-        riders: 52, 
-        completedOrders: 15600,
-        featured: [
-          { shopName: 'Campus Cleans', trustPoints: 950, address: 'Under G Hub' },
-          { shopName: 'Laundry King', trustPoints: 880, address: 'Main Gate' },
-          { shopName: 'Wash Pros', trustPoints: 820, address: 'Student Union' }
-        ],
-        metrics: { avgDelivery: 18, totalVolume: 82000, uptime: '99.9%' }
+        customers: 0, 
+        vendors: 0, 
+        riders: 0, 
+        completedOrders: 0,
+        featured: [],
+        metrics: { avgDelivery: 24, totalVolume: 0, uptime: '99.9%' }
       }));
-  }, [router]);
+  }, [router, user, authLoading]);
 
   const [showScrollTop, setShowScrollTop] = React.useState(false);
 
@@ -175,7 +172,7 @@ export default function LandingPage() {
                 </div>
               ))}
             </div>
-            <p className="text-xs font-bold text-on-surface-variant">Joined by <span className="text-primary font-black">200+ students</span> today</p>
+            <p className="text-xs font-bold text-on-surface-variant">Joined by <span className="text-primary font-black">{(stats.customers || 0) + (stats.vendors || 0) + (stats.riders || 0)}+ campus members</span></p>
           </motion.div>
 
           <motion.div 

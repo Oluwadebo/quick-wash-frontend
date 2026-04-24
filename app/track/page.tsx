@@ -20,6 +20,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { db, Order, UserData } from '@/lib/DatabaseService';
+import { useAuth } from '@/hooks/use-auth';
 import { Toast } from '@/components/shared/Toast';
 
 const STATUS_MAP: Record<string, { label: string; desc: string; icon: any }> = {
@@ -37,9 +38,9 @@ const STEPS = ['pending', 'rider_assign_pickup', 'picked_up', 'washing', 'ready'
 
 export default function TrackPage() {
   const router = useRouter();
+  const { user: currentUser, loading: authLoading } = useAuth();
   const [orders, setOrders] = React.useState<Order[]>([]);
   const [loading, setLoading] = React.useState(true);
-  const [currentUser, setCurrentUser] = React.useState<UserData | null>(null);
   const [notification, setNotification] = React.useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
 
@@ -58,19 +59,17 @@ export default function TrackPage() {
   }, []);
 
   React.useEffect(() => {
-    const storedUser = localStorage.getItem('qw_user');
-    if (!storedUser) {
-      router.push('/auth');
-      return;
+    if (!authLoading) {
+      if (!currentUser) {
+        router.push('/auth');
+      } else {
+        fetchOrders(currentUser);
+        // Auto-refresh every 15 seconds
+        const interval = setInterval(() => fetchOrders(currentUser), 15000);
+        return () => clearInterval(interval);
+      }
     }
-    const user = JSON.parse(storedUser);
-    setCurrentUser(user);
-    fetchOrders(user);
-
-    // Auto-refresh every 15 seconds
-    const interval = setInterval(() => fetchOrders(user), 15000);
-    return () => clearInterval(interval);
-  }, [router, fetchOrders]);
+  }, [currentUser, authLoading, router, fetchOrders]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
