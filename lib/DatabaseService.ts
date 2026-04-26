@@ -20,8 +20,9 @@ export interface UserData {
   uid: string;
   fullName: string;
   phoneNumber: string;
+  email: string;
   password?: string;
-  role: 'customer' | 'vendor' | 'rider' | 'admin';
+  role: 'customer' | 'vendor' | 'rider' | 'admin' | 'super-sub-admin';
   isApproved: boolean;
   walletBalance: number;
   pendingBalance: number;
@@ -32,6 +33,7 @@ export interface UserData {
   restrictionExpires?: string;
   lastPenaltyAt?: string;
   lastRecoveryAt?: string;
+  consecutiveReturns?: number;
   shopName?: string;
   vehicleType?: string;
   nin?: string;
@@ -99,6 +101,12 @@ export interface Order {
   ratedAt?: string;
 }
 
+export interface Landmark {
+  id: string;
+  name: string;
+  active: boolean;
+}
+
 export interface SiteSettings {
   name: string;
   logo: string;
@@ -108,6 +116,7 @@ export interface SiteSettings {
   emergencyAlert: string;
   maintenanceMode: boolean;
   announcement: string;
+  landmarks: Landmark[];
 }
 
 const DELAY = 300; // Simulate network latency
@@ -121,250 +130,191 @@ class DatabaseService {
 
   async getUsers(): Promise<UserData[]> {
     await this.delay();
-    const localUsers = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
-    
-    // Check if we should sync from server
-    // For now, if local is empty, always try server
-    if (localUsers.length === 0 && typeof window !== 'undefined') {
-      try {
-        const resp = await fetch('/api/users');
-        if (resp.ok) {
-          const serverUsers = await resp.json();
-          if (Array.isArray(serverUsers) && serverUsers.length > 0) {
-            localStorage.setItem('qw_all_users', JSON.stringify(serverUsers));
-            return serverUsers;
-          }
-        }
-      } catch (e) {
-        console.error('Failed to sync users from server:', e);
-      }
-    }
-    
-    return localUsers;
-  }
-
-  async getUser(uid: string): Promise<UserData | null> {
-    const users = await this.getUsers();
-    const found = users.find(u => u.uid === uid);
-    if (found) return found;
-
-    // Fallback if not in the list yet
     if (typeof window !== 'undefined') {
       try {
-        const resp = await fetch(`/api/users/${uid}`);
+        const token = localStorage.getItem('qw_token');
+        const resp = await fetch('/api/users', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
         if (resp.ok) {
           return await resp.json();
         }
-      } catch (e) {}
+      } catch (e) {
+        console.error('Failed to fetch users:', e);
+      }
+    }
+    return [];
+  }
+
+  async getUser(uid: string): Promise<UserData | null> {
+    await this.delay();
+    if (typeof window !== 'undefined') {
+      try {
+        const token = localStorage.getItem('qw_token');
+        const resp = await fetch(`/api/users/${uid}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (resp.ok) {
+          return await resp.json();
+        }
+      } catch (e) {
+        console.error('Failed to fetch user:', e);
+      }
     }
     return null;
   }
 
   async updateUser(uid: string, data: Partial<UserData>): Promise<UserData> {
-    const users = await this.getUsers();
-    const index = users.findIndex(u => u.uid === uid);
-    if (index === -1) throw new Error('User not found');
-    
-    // Cap trustPoints at 100
-    if (data.trustPoints !== undefined) {
-      data.trustPoints = Math.min(100, Math.max(0, data.trustPoints));
-    }
-    // Cap trustScore at 100
-    if (data.trustScore !== undefined) {
-      data.trustScore = Math.min(100, Math.max(0, data.trustScore));
-    }
-    
-    users[index] = { ...users[index], ...data };
-    
-    // Check for status changes based on trust points
-    const user = users[index];
-    if (user.trustPoints < 10) {
-      // High risk - Admin decision, but we'll flag it or keep as suspended
-      user.status = 'suspended';
-    } else if (user.trustPoints < 30) {
-      user.status = 'suspended';
-    } else if (user.trustPoints < 60) {
-      user.status = 'restricted';
-      // If not already restricted with an expiry, set a default 2-day restriction
-      if (!user.restrictionExpires) {
-        user.restrictionExpires = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
-      }
-    } else {
-      // Check if restriction expired
-      if (user.status === 'restricted' && user.restrictionExpires) {
-        if (new Date().getTime() > new Date(user.restrictionExpires).getTime()) {
-          user.status = 'active';
-          user.restrictionExpires = undefined;
+    await this.delay();
+    if (typeof window !== 'undefined') {
+      try {
+        const token = localStorage.getItem('qw_token');
+        const resp = await fetch(`/api/users/${uid}`, {
+          method: 'PATCH',
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(data)
+        });
+        if (resp.ok) {
+          const updated = await resp.json();
+          // If updating self, sync localStorage token-related info if needed, but usually we just re-fetch
+          return updated;
         }
-      } else if (user.status === 'restricted' && !user.restrictionExpires) {
-        user.status = 'active';
+        throw new Error(await resp.text());
+      } catch (e: any) {
+        throw new Error(e.message);
       }
     }
-
-    localStorage.setItem('qw_all_users', JSON.stringify(users));
-    
-    // If updating current user, sync qw_user
-    const currentUser = JSON.parse(localStorage.getItem('qw_user') || '{}');
-    if (currentUser.uid === uid) {
-      localStorage.setItem('qw_user', JSON.stringify(users[index]));
-    }
-    
-    window.dispatchEvent(new Event('storage'));
-    return users[index];
+    throw new Error('Client side only');
   }
 
   async deleteUser(uid: string): Promise<void> {
     await this.delay();
-    const users = await this.getUsers();
-    const updated = users.filter(u => u.uid !== uid);
-    localStorage.setItem('qw_all_users', JSON.stringify(updated));
-    window.dispatchEvent(new Event('storage'));
+    if (typeof window !== 'undefined') {
+      try {
+        const token = localStorage.getItem('qw_token');
+        await fetch(`/api/users/${uid}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+      } catch (e) {}
+    }
   }
 
   // --- ORDERS ---
 
   async getOrders(): Promise<Order[]> {
     await this.delay();
-    return JSON.parse(localStorage.getItem('qw_orders') || '[]');
+    const currentUser = JSON.parse(localStorage.getItem('qw_user') || '{}');
+    const token = localStorage.getItem('qw_token');
+    
+    if (typeof window !== 'undefined' && currentUser.uid) {
+      try {
+        const url = `/api/orders?userId=${currentUser.uid}&role=${currentUser.role}`;
+        console.log(`Fetching orders from: ${url}`);
+        const resp = await fetch(url, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (resp.ok) {
+          return await resp.json();
+        }
+        const errorText = await resp.text();
+        console.error('Failed to fetch orders (Response not OK):', errorText);
+      } catch (e) {
+        console.error('Failed to fetch orders (Network Error):', e);
+      }
+    }
+    return [];
   }
 
   async getOrder(id: string): Promise<Order | null> {
-    const orders = await this.getOrders();
-    return orders.find(o => o.id === id) || null;
+    await this.delay();
+    if (typeof window !== 'undefined') {
+      try {
+        const token = localStorage.getItem('qw_token');
+        const resp = await fetch(`/api/orders/${id}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (resp.ok) return await resp.json();
+      } catch (e) {}
+    }
+    return null;
   }
 
   async saveOrder(order: Order): Promise<Order> {
-    const orders = await this.getOrders();
-    const index = orders.findIndex(o => o.id === order.id);
-    if (index === -1) {
-      orders.push(order);
-    } else {
-      orders[index] = order;
+    await this.delay();
+    if (typeof window !== 'undefined') {
+      try {
+        const token = localStorage.getItem('qw_token');
+        const isNew = !order._id; // Crude way to check if it's new or existing in Mongoose terms
+        const resp = await fetch(isNew ? '/api/orders' : `/api/orders/${order.id}`, {
+          method: isNew ? 'POST' : 'PATCH',
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(order)
+        });
+        if (resp.ok) return await resp.json();
+        throw new Error(await resp.text());
+      } catch (e: any) {
+        throw new Error(e.message);
+      }
     }
-    localStorage.setItem('qw_orders', JSON.stringify(orders));
-    window.dispatchEvent(new Event('storage'));
     return order;
   }
 
   /**
    * Atomic Transaction: Claim Order
-   * Uses a "First-to-Claim" lock mechanism to prevent double-claiming.
    */
   async claimOrder(orderId: string, riderUid: string, riderName: string, riderPhone: string): Promise<boolean> {
     await this.delay();
-    
-    // 1. Get current state
-    const orders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-    const orderIndex = orders.findIndex((o: any) => o.id === orderId);
-    
-    if (orderIndex === -1) return false;
-    const order = orders[orderIndex];
-
-    // 2. Check if already claimed or locked
-    const now = Date.now();
-    if (order.riderUid) return false; // Already claimed
-    if (order.isLocked && order.lockExpires && order.lockExpires > now) return false; // Currently being processed by someone else
-
-    // 3. Attempt to set lock (Atomic-ish for localStorage)
-    order.isLocked = true;
-    order.lockedBy = riderUid;
-    order.lockExpires = now + 5000; // 5 second lock
-    localStorage.setItem('qw_orders', JSON.stringify(orders));
-
-    // 4. Re-verify after a short jitter to simulate race condition check
-    await new Promise(resolve => setTimeout(resolve, 50));
-    const recheckOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-    const recheckOrder = recheckOrders.find((o: any) => o.id === orderId);
-    
-    if (recheckOrder.lockedBy !== riderUid) return false; // Someone else won the race
-
-    // 5. Finalize claim
-    recheckOrder.riderUid = riderUid;
-    recheckOrder.riderName = riderName;
-    recheckOrder.riderPhone = riderPhone;
-    recheckOrder.isLocked = false;
-    recheckOrder.lockedBy = undefined;
-    recheckOrder.lockExpires = undefined;
-    
-    localStorage.setItem('qw_orders', JSON.stringify(recheckOrders));
-    window.dispatchEvent(new Event('storage'));
-    return true;
+    if (typeof window !== 'undefined') {
+      try {
+        const token = localStorage.getItem('qw_token');
+        const resp = await fetch(`/api/orders/${orderId}`, {
+          method: 'PATCH',
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ 
+            riderUid, 
+            riderName, 
+            riderPhone,
+            status: 'rider_accepted' // Update status when claimed
+          })
+        });
+        return resp.ok;
+      } catch (e) {
+        return false;
+      }
+    }
+    return false;
   }
 
   async updateOrderStatus(orderId: string, status: string, color: string, handoverCode?: string): Promise<Order> {
-    const order = await this.getOrder(orderId);
-    if (!order) throw new Error('Order not found');
-
-    const currentUser = JSON.parse(localStorage.getItem('qw_user') || '{}');
-
-    // Handover Code Validation for specific status transitions
-    if (status === 'picked_up') {
-      if (handoverCode !== order.code1) {
-        throw new Error('Invalid pickup code');
-      }
-      order.pickedUpAt = new Date().toISOString();
-      // Generate Code 2 for Vendor
-      order.code2 = Math.floor(1000 + Math.random() * 9000).toString();
-
-      // Rider gets first 50% fee
-      if (order.riderUid) {
-        const rider = await this.getUser(order.riderUid);
-        if (rider) {
-          const firstHalf = (order.riderFee || 0) * 0.5;
-          await this.updateUser(rider.uid, { walletBalance: (rider.walletBalance || 0) + firstHalf });
-          await this.recordTransaction(rider.uid, {
-            type: 'deposit',
-            amount: firstHalf,
-            desc: `Rider Fee (50%) - Order #${order.id}`
-          });
-        }
+    await this.delay();
+    if (typeof window !== 'undefined') {
+      try {
+        const token = localStorage.getItem('qw_token');
+        const resp = await fetch(`/api/orders/${orderId}`, {
+          method: 'PATCH',
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ status, color, handoverCode })
+        });
+        if (resp.ok) return await resp.json();
+        throw new Error(await resp.text());
+      } catch (e: any) {
+        throw new Error(e.message);
       }
     }
-    
-    if (status === 'picked_up_delivery') {
-      if (handoverCode !== order.code3) {
-        throw new Error('Invalid handover code from vendor');
-      }
-      order.pickedUpDeliveryAt = new Date().toISOString();
-      // Generate Code 4 for Customer
-      order.code4 = Math.floor(1000 + Math.random() * 9000).toString();
-    }
-
-    if (status === 'delivered') {
-      if (handoverCode !== order.code4) {
-        throw new Error('Invalid delivery code');
-      }
-      order.deliveredAt = new Date().toISOString();
-
-      // Rider gets second 50% fee
-      if (order.riderUid) {
-        const rider = await this.getUser(order.riderUid);
-        if (rider) {
-          const secondHalf = (order.riderFee || 0) * 0.5;
-          await this.updateUser(rider.uid, { walletBalance: (rider.walletBalance || 0) + secondHalf });
-          await this.recordTransaction(rider.uid, {
-            type: 'deposit',
-            amount: secondHalf,
-            desc: `Rider Fee (2nd Half) - Order #${order.id}`
-          });
-          // Also trust points for successful delivery
-          await this.adjustTrustPoints(rider.uid, 'completed_order');
-        }
-      }
-    }
-    
-    order.status = status;
-    order.color = color;
-    
-    // Track transitions
-    if (status === 'washing') order.washingAt = new Date().toISOString();
-    if (status === 'ready') order.readyAt = new Date().toISOString();
-    if (status === 'completed') {
-      order.completedAt = new Date().toISOString();
-      // release payment if not already released (optional logic here)
-    }
-    
-    return await this.saveOrder(order);
+    throw new Error('Client mode enabled');
   }
 
   /**
@@ -534,35 +484,54 @@ class DatabaseService {
 
   // --- WALLET ---
   async recordTransaction(uid: string, transaction: any) {
-    const history = JSON.parse(localStorage.getItem(`qw_wallet_history_${uid}`) || '[]');
-    history.unshift({ ...transaction, id: Math.random().toString(36).substr(2, 9), date: new Date().toISOString() });
-    localStorage.setItem(`qw_wallet_history_${uid}`, JSON.stringify(history));
+    if (typeof window !== 'undefined') {
+      try {
+        const token = localStorage.getItem('qw_token');
+        const resp = await fetch('/api/transactions', {
+          method: 'POST',
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ ...transaction, userId: uid })
+        });
+        if (resp.ok) {
+          const result = await resp.json();
+          const storedUser = localStorage.getItem('qw_user');
+          if (storedUser) {
+            const user = JSON.parse(storedUser);
+            if (user.uid === uid) {
+              user.walletBalance = result.balance;
+              localStorage.setItem('qw_user', JSON.stringify(user));
+            }
+          }
+        } else {
+          console.error('Transaction failed:', await resp.text());
+        }
+      } catch (e) {
+        console.error('Transaction API error:', e);
+      }
+    }
   }
 
   // --- RATINGS ---
   async rateOrder(orderId: string, rating: number, review: string): Promise<Order> {
-    const order = await this.getOrder(orderId);
-    if (!order) throw new Error('Order not found');
-
-    const updated: Order = {
-      ...order,
-      rating,
-      review,
-      ratedAt: new Date().toISOString()
-    };
-    await this.saveOrder(updated);
-
-    // Adjust vendor/rider trust points based on rating
-    if (order.vendorId) {
-      if (rating >= 4) await this.adjustTrustPoints(order.vendorId, 'five_star_review');
-      if (rating <= 2) await this.adjustTrustPoints(order.vendorId, 'vendor_delay'); // Negative impact
+    await this.delay();
+    if (typeof window !== 'undefined') {
+      try {
+        const token = localStorage.getItem('qw_token');
+        const resp = await fetch(`/api/orders/${orderId}`, {
+          method: 'PATCH',
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ rating, review, ratedAt: new Date().toISOString() })
+        });
+        if (resp.ok) return await resp.json();
+      } catch (e) {}
     }
-    
-    if (order.riderUid && rating >= 4) {
-      await this.adjustTrustPoints(order.riderUid, 'five_star_review');
-    }
-
-    return updated;
+    throw new Error('Rating failed');
   }
 
   // --- ANALYTICS ---
@@ -570,7 +539,6 @@ class DatabaseService {
     const users = await this.getUsers();
     const orders = await this.getOrders();
     const now = new Date();
-    const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
     const completed = orders.filter(o => o.status === 'completed' || o.status === 'delivered');
     const revenue = completed.reduce((acc, o) => acc + (o.totalPrice || 0), 0);
@@ -601,19 +569,13 @@ class DatabaseService {
 
   async getVendorPriceList(vendorUid: string): Promise<any[]> {
     await this.delay();
-    const allLists = JSON.parse(localStorage.getItem('qw_vendor_price_lists') || '{}');
-    // Case-insensitive lookup
-    const key = Object.keys(allLists).find(k => k.toLowerCase() === vendorUid.toLowerCase());
-    if (key) return allLists[key];
-
-    // Fallback to Server
     if (typeof window !== 'undefined') {
       try {
-        const resp = await fetch(`/api/vendor/prices/${vendorUid}`);
-        if (resp.ok) {
-          const list = await resp.json();
-          if (Array.isArray(list)) return list;
-        }
+        const token = localStorage.getItem('qw_token');
+        const resp = await fetch(`/api/vendor/prices/${vendorUid}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (resp.ok) return await resp.json();
       } catch (e) {}
     }
     return [];
@@ -621,17 +583,33 @@ class DatabaseService {
 
   async saveVendorPriceList(vendorUid: string, priceList: any[]): Promise<void> {
     await this.delay();
-    const allLists = JSON.parse(localStorage.getItem('qw_vendor_price_lists') || '{}');
-    allLists[vendorUid] = priceList;
-    localStorage.setItem('qw_vendor_price_lists', JSON.stringify(allLists));
-    window.dispatchEvent(new Event('storage'));
+    if (typeof window !== 'undefined') {
+      try {
+        const token = localStorage.getItem('qw_token');
+        await fetch(`/api/vendor/prices/${vendorUid}`, {
+          method: 'POST',
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ prices: priceList })
+        });
+      } catch (e) {}
+    }
   }
 
   // --- SITE SETTINGS ---
   async getSiteSettings(): Promise<SiteSettings> {
     await this.delay();
-    const settings = localStorage.getItem('qw_site_settings');
-    if (settings) return JSON.parse(settings);
+    if (typeof window !== 'undefined') {
+      try {
+        const token = localStorage.getItem('qw_token');
+        const resp = await fetch('/api/admin/settings', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (resp.ok) return await resp.json();
+      } catch (e) {}
+    }
     
     // Default settings
     const defaults: SiteSettings = {
@@ -644,16 +622,26 @@ class DatabaseService {
       maintenanceMode: false,
       announcement: 'Welcome to the new Quick-Wash platform!'
     };
-    localStorage.setItem('qw_site_settings', JSON.stringify(defaults));
     return defaults;
   }
 
   async updateSiteSettings(data: Partial<SiteSettings>): Promise<SiteSettings> {
-    const current = await this.getSiteSettings();
-    const updated = { ...current, ...data };
-    localStorage.setItem('qw_site_settings', JSON.stringify(updated));
-    window.dispatchEvent(new Event('storage'));
-    return updated;
+    await this.delay();
+    if (typeof window !== 'undefined') {
+      try {
+        const token = localStorage.getItem('qw_token');
+        const resp = await fetch('/api/admin/settings', {
+          method: 'PATCH',
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(data)
+        });
+        if (resp.ok) return await resp.json();
+      } catch (e) {}
+    }
+    throw new Error('Settings update failed');
   }
 }
 

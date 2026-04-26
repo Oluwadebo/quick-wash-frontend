@@ -7,7 +7,8 @@ import {
   Map, Activity, ArrowUpRight, Check, X as XIcon, 
   Wallet, BarChart3, Megaphone, History, MessageSquare, 
   Search, Filter, MoreHorizontal, UserPlus, Trash2, ExternalLink,
-  Edit3, Bike, Package, Navigation, Info, Plus, MapPin, X, Globe
+  Edit3, Bike, Package, Navigation, Info, Plus, MapPin, X, Globe, Star,
+  Zap, CheckCircle, ShieldAlert
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
@@ -32,69 +33,114 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = React.useState<AdminTab>('overview');
 
   React.useEffect(() => {
-    if (tabParam) {
-      setActiveTab(tabParam);
-    }
+    setActiveTab(tabParam || 'overview');
   }, [tabParam]);
   const [userSection, setUserSection] = React.useState<UserSection>('all');
   const [pendingUsers, setPendingUsers] = React.useState<any[]>([]);
   const [allUsers, setAllUsers] = React.useState<any[]>([]);
+  const [allTransactions, setAllTransactions] = React.useState<any[]>([]);
   const [orders, setOrders] = React.useState<any[]>([]);
   const [alerts, setAlerts] = React.useState<any[]>([]);
   const [stats, setStats] = React.useState<any[]>([]);
 
   const [isUserModalOpen, setIsUserModalOpen] = React.useState(false);
   const [isAddUserModalOpen, setIsAddUserModalOpen] = React.useState(false);
+  const [historyModal, setHistoryModal] = React.useState<{ open: boolean; type: 'payout' | 'withdrawal' }>({ open: false, type: 'payout' });
   const [editingUser, setEditingUser] = React.useState<any>(null);
   const [newUser, setNewUser] = React.useState<any>({
     fullName: '',
     phoneNumber: '',
+    email: '',
     password: '',
     role: 'customer',
     status: 'active',
     isApproved: true
   });
 
-  const isSuperAdmin = currentUser?.role === 'admin' && (currentUser?.phoneNumber === '09012345678' || currentUser?.email === 'ogunwedebo21@gmail.com');
+  const isSuperAdmin = currentUser?.email === 'ogunweoluwadebo1@gmail.com' || currentUser?.email === 'ogunwedebo21@gmail.com' || currentUser?.phoneNumber === '07048865686';
+  const isSuperSubAdmin = currentUser?.role === 'super-sub-admin';
+  const hasFullAdminPrivileges = isSuperAdmin || isSuperSubAdmin || currentUser?.role === 'admin';
 
-  const handleRestrictUser = (phone: string, status: 'active' | 'restricted' | 'suspended') => {
-    if (!isSuperAdmin) {
+  const handleRestrictUser = async (uid: string, status: 'active' | 'restricted' | 'suspended') => {
+    if (!hasFullAdminPrivileges) {
       alert('Only Super Admin can restrict or ban users.');
       return;
     }
-    const users = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
-    const updated = users.map((u: any) => u.phoneNumber === phone ? { ...u, status } : u);
-    localStorage.setItem('qw_all_users', JSON.stringify(updated));
-    setAllUsers(updated);
-    alert(`User status updated to ${status}.`);
+    try {
+      const token = localStorage.getItem('qw_token');
+      const resp = await fetch(`/api/users/${uid}`, {
+        method: 'PATCH',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ status })
+      });
+      if (resp.ok) {
+        setAllUsers(prev => prev.map(u => u.uid === uid ? { ...u, status } : u));
+        alert(`User status updated to ${status}.`);
+      }
+    } catch (err) {
+      alert('Failed to update status.');
+    }
   };
 
-  const handleAddUser = (e: React.FormEvent) => {
+  const [inviteLink, setInviteLink] = React.useState<string | null>(null);
+
+  const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    const users = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
-    if (users.find((u: any) => u.phoneNumber === newUser.phoneNumber)) {
-      alert('User with this phone number already exists!');
-      return;
+    try {
+      const token = localStorage.getItem('qw_token');
+      
+      // If role is admin, use the invite system
+      if (newUser.role === 'admin' || newUser.role === 'super-sub-admin') {
+        const resp = await fetch('/api/admin/invite', {
+          method: 'POST',
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ 
+            fullName: newUser.fullName, 
+            email: newUser.email,
+            role: newUser.role 
+          })
+        });
+        
+        if (resp.ok) {
+          const data = await resp.json();
+          setInviteLink(data.inviteLink);
+          setNotification({ message: 'Invite link generated successfully!', type: 'success' });
+          return;
+        } else {
+          const err = await resp.json();
+          setNotification({ message: err.message || 'Failed to generate invite link.', type: 'error' });
+          return;
+        }
+      }
+
+      const resp = await fetch('/api/admin/users/create', {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ ...newUser, trustPoints: 50, trustScore: 100, walletBalance: 0, pendingBalance: 0 })
+      });
+      
+      if (resp.ok) {
+        const createdUser = await resp.json();
+        setAllUsers(prev => [...prev, createdUser]);
+        setIsAddUserModalOpen(false);
+        setNewUser({ fullName: '', phoneNumber: '', email: '', password: '', role: 'customer', status: 'active', isApproved: true });
+        setNotification({ message: `User ${newUser.fullName} created successfully!`, type: 'success' });
+      } else {
+        const err = await resp.json();
+        setNotification({ message: err.message || 'Failed to create user.', type: 'error' });
+      }
+    } catch (err) {
+      setNotification({ message: 'Network error occurred.', type: 'error' });
     }
-    const updated = [...users, { ...newUser, trustPoints: 50, trustScore: 100, walletBalance: 0, pendingBalance: 0 }];
-    localStorage.setItem('qw_all_users', JSON.stringify(updated));
-    setAllUsers(updated);
-    setIsAddUserModalOpen(false);
-    setNewUser({ fullName: '', phoneNumber: '', password: '', role: 'customer', status: 'active', isApproved: true });
-    
-    // Add audit log
-    const logs = JSON.parse(localStorage.getItem('qw_audit_logs') || '[]');
-    logs.push({
-      id: Date.now(),
-      action: 'User Created',
-      target: newUser.phoneNumber,
-      admin: currentUser?.phoneNumber,
-      time: new Date().toISOString(),
-      details: `Admin ${currentUser?.fullName} created a new ${newUser.role}: ${newUser.fullName}`
-    });
-    localStorage.setItem('qw_audit_logs', JSON.stringify(logs));
-    
-    alert(`User ${newUser.fullName} created successfully! Details: Phone: ${newUser.phoneNumber}, Role: ${newUser.role}`);
   };
   const [isVerificationModalOpen, setIsVerificationModalOpen] = React.useState(false);
   const [verifyingUser, setVerifyingUser] = React.useState<any>(null);
@@ -103,41 +149,46 @@ export default function AdminDashboard() {
   const [systemStats, setSystemStats] = React.useState<any>(null);
   const [landmarks, setLandmarks] = React.useState<any[]>([]);
   const [riders, setRiders] = React.useState<any[]>([]);
+  const [isLandmarkModalOpen, setIsLandmarkModalOpen] = React.useState(false);
+  const [newLandmarkName, setNewLandmarkName] = React.useState('');
+  const [notification, setNotification] = React.useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
 
   React.useEffect(() => {
     const fetchData = async () => {
       try {
         const token = localStorage.getItem('qw_token');
-        const [usersRes, ordersRes, sysStats, site] = await Promise.all([
+        const [usersRes, ordersRes, transRes, sysStats, site] = await Promise.all([
           fetch('/api/admin/users', { headers: { 'Authorization': `Bearer ${token}` } }),
           fetch('/api/orders', { headers: { 'Authorization': `Bearer ${token}` } }),
+          fetch('/api/transactions', { headers: { 'Authorization': `Bearer ${token}` } }),
           db.getSystemStats(),
           db.getSiteSettings()
         ]);
 
-        const lms = JSON.parse(localStorage.getItem('qw_landmarks') || '[]');
-        setLandmarks(lms);
+        const [usersData, ordersData, transData] = await Promise.all([
+          usersRes.ok ? usersRes.json() : Promise.resolve([]),
+          ordersRes.ok ? ordersRes.json() : Promise.resolve([]),
+          transRes.ok ? transRes.json() : Promise.resolve([])
+        ]);
+
+        setAllUsers(usersData);
+        setOrders(ordersData);
+        setAllTransactions(transData);
+        setSystemStats(sysStats);
         setSiteSettings(site);
 
-        if (usersRes.ok && ordersRes.ok) {
-          const usersData = await usersRes.json();
-          const ordersData = await ordersRes.json();
-          setAllUsers(usersData);
-          setPendingUsers(usersData.filter((u: any) => !u.isApproved));
-          setRiders(usersData.filter((u: any) => u.role === 'rider' && u.isApproved));
-          setOrders(ordersData);
-          setSystemStats(sysStats);
+        setPendingUsers(usersData.filter((u: any) => !u.isApproved));
+        setRiders(usersData.filter((u: any) => u.role === 'rider' && u.isApproved));
 
-          const totalRevenue = ordersData.reduce((acc: number, o: any) => acc + (Number(o.totalPrice) || 0), 0);
-          const activeOrders = ordersData.filter((o: any) => o.status !== 'delivered' && o.status !== 'completed' && !o.status.includes('Cancelled')).length;
-          
-          setStats([
-            { label: 'Total Revenue', value: `₦${(totalRevenue || 0).toLocaleString()}`, trend: '+18.2%', icon: TrendingUp, color: 'text-primary' },
-            { label: 'Active Orders', value: activeOrders.toString(), trend: '+5.4%', icon: ShoppingBag, color: 'text-tertiary' },
-            { label: 'Total Users', value: usersData.length.toString(), trend: '+12.1%', icon: Users, color: 'text-on-surface' },
-            { label: 'System Health', value: '99.9%', trend: 'Stable', icon: Activity, color: 'text-primary' }
-          ]);
-        }
+        const totalRevenue = ordersData.reduce((acc: number, o: any) => acc + (Number(o.totalPrice) || 0), 0);
+        const activeOrders = ordersData.filter((o: any) => o.status !== 'delivered' && o.status !== 'completed' && !o.status.includes('Cancelled')).length;
+        
+        setStats([
+          { label: 'Total Revenue', value: `₦${(totalRevenue || 0).toLocaleString()}`, trend: '+18.2%', icon: TrendingUp, color: 'text-primary' },
+          { label: 'Active Orders', value: activeOrders.toString(), trend: '+5.4%', icon: ShoppingBag, color: 'text-tertiary' },
+          { label: 'Total Users', value: usersData.length.toString(), trend: '+12.1%', icon: Users, color: 'text-on-surface' },
+          { label: 'System Health', value: '99.9%', trend: 'Stable', icon: Activity, color: 'text-primary' }
+        ]);
       } catch (err) {
         console.error('Fetch error:', err);
       }
@@ -180,8 +231,10 @@ export default function AdminDashboard() {
     
     // Audit Log
     const logs = JSON.parse(localStorage.getItem('qw_audit_logs') || '[]');
+    // eslint-disable-next-line react-hooks/purity
+    const auditId = Date.now();
     logs.push({
-      id: Date.now(),
+      id: auditId,
       action: editingCampaign ? 'Campaign Updated' : 'Campaign Created',
       target: campaignForm.name,
       admin: currentUser?.phoneNumber,
@@ -198,8 +251,10 @@ export default function AdminDashboard() {
     
     // Audit Log
     const logs = JSON.parse(localStorage.getItem('qw_audit_logs') || '[]');
+    // eslint-disable-next-line react-hooks/purity
+    const auditId = Date.now();
     logs.push({
-      id: Date.now(),
+      id: auditId,
       action: 'Campaign Deleted',
       target: id.toString(),
       admin: currentUser?.phoneNumber,
@@ -221,7 +276,7 @@ export default function AdminDashboard() {
   };
 
   const handleDeleteUser = async (uid: string) => {
-    if (!isSuperAdmin) {
+    if (!hasFullAdminPrivileges) {
       alert('Only Super Admin can delete users.');
       return;
     }
@@ -234,8 +289,10 @@ export default function AdminDashboard() {
 
       // Audit Log
       const logs = JSON.parse(localStorage.getItem('qw_audit_logs') || '[]');
+      // eslint-disable-next-line react-hooks/purity
+      const auditId = Date.now();
       logs.push({
-        id: Date.now(),
+        id: auditId,
         action: 'User Deleted',
         target: uid,
         admin: currentUser?.phoneNumber,
@@ -248,14 +305,16 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleSaveUser = (e: React.FormEvent) => {
+  const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    const users = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
-    const updated = users.map((u: any) => u.phoneNumber === editingUser.phoneNumber ? editingUser : u);
-    localStorage.setItem('qw_all_users', JSON.stringify(updated));
-    setAllUsers(updated);
-    setIsUserModalOpen(false);
-    alert('User updated successfully!');
+    try {
+      const updated = await db.updateUser(editingUser.uid, editingUser);
+      setAllUsers(prev => prev.map(u => u.uid === updated.uid ? updated : u));
+      setIsUserModalOpen(false);
+      alert('User updated successfully!');
+    } catch (err: any) {
+      alert(err.message || 'Failed to update user.');
+    }
   };
 
   const assignRider = (orderId: string, riderPhone: string) => {
@@ -342,7 +401,7 @@ export default function AdminDashboard() {
 
   return (
     <div className="pb-32 bg-surface">
-      <TopAppBar roleLabel={currentUser?.phoneNumber === '09012345678' ? 'Super Admin' : 'Moderator Admin'} />
+      <TopAppBar roleLabel={isSuperAdmin ? 'Super Admin' : 'Moderator Admin'} />
       
       <div className="flex-1 overflow-y-auto p-8">
         <header className="mb-10 flex justify-between items-end">
@@ -593,29 +652,25 @@ export default function AdminDashboard() {
                   animate={{ opacity: 1, scale: 1 }}
                   className="bg-surface-container-low rounded-[2.5rem] p-8 border border-primary/5"
                 >
-                  <div className="flex justify-between items-center mb-10">
-                    <div>
-                      <h2 className="text-3xl font-headline font-black text-on-surface tracking-tight">System Configuration</h2>
-                      <p className="text-on-surface-variant font-medium">Control campus hotspots and global application parameters.</p>
+                    <div className="flex justify-between items-center mb-10">
+                      <div>
+                        <h2 className="text-3xl font-headline font-black text-on-surface tracking-tight">System Configuration</h2>
+                        <p className="text-on-surface-variant font-medium">Control campus hotspots and global application parameters.</p>
+                      </div>
+                      {hasFullAdminPrivileges && (
+                        <button 
+                          onClick={() => {
+                            setIsLandmarkModalOpen(true);
+                          }}
+                          className="signature-gradient text-white px-8 py-4 rounded-2xl font-headline font-bold text-sm shadow-xl active:scale-95 transition-transform flex items-center gap-2"
+                        >
+                          <Plus className="w-5 h-5" /> ADD NEW HOTSPOT
+                        </button>
+                      )}
                     </div>
-                    <button 
-                      onClick={() => {
-                        const name = prompt('Landmark Name:');
-                        if (!name) return;
-                        const updated = [...landmarks, { id: Date.now(), name, active: true }];
-                        setLandmarks(updated);
-                        localStorage.setItem('qw_landmarks', JSON.stringify(updated));
-                        alert('Hotspot added! Syncing to all clients...');
-                        window.dispatchEvent(new Event('storage'));
-                      }}
-                      className="signature-gradient text-white px-8 py-4 rounded-2xl font-headline font-bold text-sm shadow-xl active:scale-95 transition-transform flex items-center gap-2"
-                    >
-                      <Plus className="w-5 h-5" /> ADD NEW HOTSPOT
-                    </button>
-                  </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {landmarks.map(lm => (
+                    {siteSettings?.landmarks?.map(lm => (
                       <div key={lm.id} className="bg-surface-container-lowest p-6 rounded-[2rem] border border-primary/5 shadow-sm flex items-center justify-between group">
                         <div className="flex items-center gap-4">
                           <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", lm.active ? "bg-success/10 text-success" : "bg-error/10 text-error")}>
@@ -626,42 +681,42 @@ export default function AdminDashboard() {
                             <p className="text-[8px] font-black uppercase tracking-widest text-on-surface-variant">{lm.active ? 'Operational' : 'Disabled'}</p>
                           </div>
                         </div>
-                        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button 
-                            onClick={() => {
-                              const updated = landmarks.map(l => l.id === lm.id ? { ...l, active: !l.active } : l);
-                              setLandmarks(updated);
-                              localStorage.setItem('qw_landmarks', JSON.stringify(updated));
-                              window.dispatchEvent(new Event('storage'));
-                            }}
-                            className="p-2 rounded-lg bg-surface-container-highest text-on-surface-variant hover:text-primary transition-colors"
-                          >
-                            <Info className="w-4 h-4" />
-                          </button>
-                          <button 
-                            onClick={() => {
-                              if (confirm('Delete hotspot?')) {
-                                const updated = landmarks.filter(l => l.id !== lm.id);
-                                setLandmarks(updated);
-                                localStorage.setItem('qw_landmarks', JSON.stringify(updated));
-                                window.dispatchEvent(new Event('storage'));
-                              }
-                            }}
-                            className="p-2 rounded-lg bg-surface-container-highest text-on-surface-variant hover:text-error transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
+                          <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button 
+                              onClick={() => {
+                                if (!siteSettings || !hasFullAdminPrivileges) return;
+                                const updated = siteSettings.landmarks.map(l => l.id === lm.id ? { ...l, active: !l.active } : l);
+                                db.updateSiteSettings({ landmarks: updated }).then(setSiteSettings);
+                              }}
+                              className="p-2 rounded-lg bg-surface-container-highest text-on-surface-variant hover:text-primary transition-colors disabled:opacity-50"
+                              disabled={!hasFullAdminPrivileges}
+                            >
+                              <Info className="w-4 h-4" />
+                            </button>
+                            <button 
+                              onClick={() => {
+                                if (!siteSettings || !hasFullAdminPrivileges) return;
+                                if (confirm('Delete hotspot?')) {
+                                  const updated = siteSettings.landmarks.filter(l => l.id !== lm.id);
+                                  db.updateSiteSettings({ landmarks: updated }).then(setSiteSettings);
+                                }
+                              }}
+                              className="p-2 rounded-lg bg-surface-container-highest text-on-surface-variant hover:text-error transition-colors disabled:opacity-50"
+                              disabled={!hasFullAdminPrivileges}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                       </div>
                     ))}
-                    {landmarks.length === 0 && (
+                    {(siteSettings?.landmarks || []).length === 0 && (
                       <div className="col-span-full py-20 text-center border-4 border-dashed border-primary/10 rounded-[3rem]">
                         <p className="text-on-surface-variant font-medium">No landmarks managed via settings yet.</p>
                       </div>
                     )}
                   </div>
 
-                  {isSuperAdmin && siteSettings && (
+                  {hasFullAdminPrivileges && siteSettings && (
                     <div className="mt-20 border-t border-primary/10 pt-20">
                       <div className="mb-12">
                         <h2 className="text-3xl font-headline font-black text-on-surface tracking-tight">Site Branding</h2>
@@ -885,11 +940,8 @@ export default function AdminDashboard() {
                         {allUsers
                           .filter(u => userSection === 'all' || u.role === userSection)
                           .filter(u => {
-                            // Moderator restrictions: hide admins and super admin
-                            if (!isSuperAdmin) {
-                              if (u.role === 'admin') return false;
-                              if (u.phoneNumber === '09012345678') return false;
-                            }
+                            const isUserSuperAdmin = u.email === 'ogunweoluwadebo1@gmail.com' || u.email === 'ogunwedebo21@gmail.com' || u.phoneNumber === '07048865686';
+                            if (isUserSuperAdmin && !isSuperAdmin) return false;
                             return true;
                           })
                           .map(u => (
@@ -925,17 +977,19 @@ export default function AdminDashboard() {
                             <td className="py-4 font-headline font-black text-sm">{u.trustPoints || 0}</td>
                             <td className="py-4">
                               <div className="flex gap-2">
-                                <button 
-                                  onClick={() => handleEditUser(u)}
-                                  className="p-2 rounded-lg bg-surface-container-highest text-on-surface-variant hover:text-primary transition-colors"
-                                  title="Edit User"
-                                >
-                                  <Edit3 className="w-4 h-4" />
-                                </button>
-                                {isSuperAdmin && (
+                                {((u.role !== 'admin' && u.role !== 'super-sub-admin') || isSuperAdmin) && (
+                                  <button 
+                                    onClick={() => handleEditUser(u)}
+                                    className="p-2 rounded-lg bg-surface-container-highest text-on-surface-variant hover:text-primary transition-colors"
+                                    title="Edit User"
+                                  >
+                                    <Edit3 className="w-4 h-4" />
+                                  </button>
+                                )}
+                                {hasFullAdminPrivileges && (u.role !== 'admin' || isSuperAdmin) && (
                                   <>
                                     <button 
-                                      onClick={() => handleRestrictUser(u.phoneNumber, u.status === 'restricted' ? 'active' : 'restricted')}
+                                      onClick={() => handleRestrictUser(u.uid, u.status === 'restricted' ? 'active' : 'restricted')}
                                       className={cn(
                                         "p-2 rounded-lg bg-surface-container-highest transition-colors",
                                         u.status === 'restricted' ? "text-success hover:bg-success/10" : "text-warning hover:bg-warning/10"
@@ -945,7 +999,7 @@ export default function AdminDashboard() {
                                       <ShieldCheck className="w-4 h-4" />
                                     </button>
                                     <button 
-                                      onClick={() => handleRestrictUser(u.phoneNumber, u.status === 'suspended' ? 'active' : 'suspended')}
+                                      onClick={() => handleRestrictUser(u.uid, u.status === 'suspended' ? 'active' : 'suspended')}
                                       className={cn(
                                         "p-2 rounded-lg bg-surface-container-highest transition-colors",
                                         u.status === 'suspended' ? "text-success hover:bg-success/10" : "text-error hover:bg-error/10"
@@ -956,7 +1010,7 @@ export default function AdminDashboard() {
                                     </button>
                                   </>
                                 )}
-                                {isSuperAdmin && (
+                                {hasFullAdminPrivileges && (u.role !== 'admin' || isSuperAdmin) && (
                                   <button 
                                     onClick={() => handleDeleteUser(u.uid)}
                                     className="p-2 rounded-lg bg-surface-container-highest text-on-surface-variant hover:text-error transition-colors"
@@ -1022,17 +1076,40 @@ export default function AdminDashboard() {
                   className="space-y-8"
                 >
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="bg-primary text-on-primary p-8 rounded-[2.5rem] shadow-xl">
-                      <p className="font-label text-[10px] font-black uppercase tracking-widest opacity-80 mb-2">Platform Commission</p>
-                      <h3 className="text-4xl font-headline font-black">₦{allUsers.find(u => u.phoneNumber === '09012345678')?.walletBalance?.toLocaleString() || '0'}</h3>
+                    {isSuperAdmin && (
+                      <div className="bg-primary text-on-primary p-8 rounded-[2.5rem] shadow-xl">
+                        <p className="font-label text-[10px] font-black uppercase tracking-widest opacity-80 mb-2">Platform Commission</p>
+                        <h3 className="text-4xl font-headline font-black">
+                          ₦{allTransactions
+                            .filter(t => t.type === 'commission' && t.status === 'completed')
+                            .reduce((acc, t) => acc + t.amount, 0)
+                            .toLocaleString()}
+                        </h3>
+                      </div>
+                    )}
+                    <div className="bg-surface-container-low p-8 rounded-[2.5rem] border border-primary/5">
+                      <div className="flex justify-between items-start mb-2">
+                        <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Total Payouts</p>
+                        <button onClick={() => setHistoryModal({ open: true, type: 'payout' })} className="text-[10px] font-black text-primary hover:underline">HISTORY</button>
+                      </div>
+                      <h3 className="text-4xl font-headline font-black text-on-surface">
+                        ₦{allTransactions
+                          .filter(t => t.type === 'payout' && t.status === 'completed')
+                          .reduce((acc, t) => acc + t.amount, 0)
+                          .toLocaleString()}
+                      </h3>
                     </div>
                     <div className="bg-surface-container-low p-8 rounded-[2.5rem] border border-primary/5">
-                      <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Total Payouts</p>
-                      <h3 className="text-4xl font-headline font-black text-on-surface">₦450,000</h3>
-                    </div>
-                    <div className="bg-surface-container-low p-8 rounded-[2.5rem] border border-primary/5">
-                      <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Pending Withdrawals</p>
-                      <h3 className="text-4xl font-headline font-black text-warning">₦12,500</h3>
+                      <div className="flex justify-between items-start mb-2">
+                        <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Pending Withdrawals</p>
+                        <button onClick={() => setHistoryModal({ open: true, type: 'withdrawal' })} className="text-[10px] font-black text-primary hover:underline">HISTORY</button>
+                      </div>
+                      <h3 className="text-4xl font-headline font-black text-warning">
+                        ₦{allTransactions
+                          .filter(t => t.type === 'withdrawal' && t.status === 'pending')
+                          .reduce((acc, t) => acc + t.amount, 0)
+                          .toLocaleString()}
+                      </h3>
                     </div>
                   </div>
 
@@ -1171,85 +1248,7 @@ export default function AdminDashboard() {
                 </motion.div>
               )}
 
-              {activeTab === 'analytics' && (
-                <motion.div 
-                  key="analytics"
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="space-y-8"
-                >
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    <div className="bg-surface-container-low p-8 rounded-[2.5rem] border border-primary/5">
-                      <h3 className="text-xl font-headline font-black mb-6">Revenue Growth</h3>
-                      <div className="h-80 w-full">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <AreaChart data={[
-                            { name: 'Mon', value: 4000 },
-                            { name: 'Tue', value: 3000 },
-                            { name: 'Wed', value: 5000 },
-                            { name: 'Thu', value: 2780 },
-                            { name: 'Fri', value: 1890 },
-                            { name: 'Sat', value: 2390 },
-                            { name: 'Sun', value: 3490 },
-                          ]}>
-                            <defs>
-                              <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#6750A4" stopOpacity={0.3}/>
-                                <stop offset="95%" stopColor="#6750A4" stopOpacity={0}/>
-                              </linearGradient>
-                            </defs>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E1E2EC" />
-                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700 }} />
-                            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700 }} />
-                            <Tooltip 
-                              contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                            />
-                            <Area type="monotone" dataKey="value" stroke="#6750A4" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
-                          </AreaChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </div>
-
-                    <div className="bg-surface-container-low p-8 rounded-[2.5rem] border border-primary/5">
-                      <h3 className="text-xl font-headline font-black mb-6">Order Categories</h3>
-                      <div className="h-80 w-full">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={[
-                            { name: 'Wash', value: 450 },
-                            { name: 'Iron', value: 300 },
-                            { name: 'Wash+Iron', value: 600 },
-                            { name: 'Premium', value: 150 },
-                          ]}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E1E2EC" />
-                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700 }} />
-                            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700 }} />
-                            <Tooltip 
-                              contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                            />
-                            <Bar dataKey="value" fill="#6750A4" radius={[8, 8, 0, 0]} />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {[
-                      { label: 'Avg. Order Value', value: '₦3,450', trend: '+12%' },
-                      { label: 'Customer Retention', value: '78%', trend: '+5%' },
-                      { label: 'Rider Efficiency', value: '94%', trend: '+2%' }
-                    ].map(m => (
-                      <div key={m.label} className="bg-surface-container-low p-6 rounded-3xl border border-primary/5">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">{m.label}</p>
-                        <div className="flex justify-between items-end">
-                          <h4 className="text-2xl font-headline font-black">{m.value}</h4>
-                          <span className="text-xs font-bold text-success">{m.trend}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </motion.div>
-              )}
+      {/* Duplicate analytics block removed */}
 
               {activeTab === 'marketing' && (
                 <motion.div 
@@ -1399,8 +1398,10 @@ export default function AdminDashboard() {
                   </div>
                 </motion.div>
               )}
-              {/* Campaign Modal */}
-              {isCampaignModalOpen && (
+            </AnimatePresence>
+
+            {/* Campaign Modal */}
+            {isCampaignModalOpen && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
                   <motion.div 
                     initial={{ opacity: 0 }} animate={{ opacity: 1 }}
@@ -1498,6 +1499,61 @@ export default function AdminDashboard() {
                 </div>
               )}
 
+              {/* Landmark Modal */}
+              {isLandmarkModalOpen && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center p-6">
+                  <motion.div 
+                    initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                    className="absolute inset-0 bg-surface/80 backdrop-blur-xl"
+                    onClick={() => setIsLandmarkModalOpen(false)}
+                  />
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    className="relative w-full max-w-sm bg-surface-container-low rounded-[3rem] p-10 border border-primary/10 shadow-2xl"
+                  >
+                    <h2 className="text-2xl font-headline font-black text-on-surface mb-6 tracking-tighter">Add New Hotspot</h2>
+                    <div className="space-y-6">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Hotspot Name</label>
+                        <input 
+                          type="text" 
+                          placeholder="e.g. Under G Hub"
+                          value={newLandmarkName}
+                          onChange={(e) => setNewLandmarkName(e.target.value)}
+                          className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none border border-primary/5 focus:border-primary"
+                        />
+                      </div>
+                      <div className="flex gap-3">
+                        <button 
+                          onClick={() => setIsLandmarkModalOpen(false)}
+                          className="flex-1 h-12 bg-surface-container-highest text-on-surface rounded-xl font-headline font-bold text-xs"
+                        >
+                          CANCEL
+                        </button>
+                        <button 
+                          onClick={() => {
+                            if (!newLandmarkName || !siteSettings) return;
+                            const newLandmark = { id: Date.now().toString(), name: newLandmarkName, active: true };
+                            const updatedLandmarks = [...(siteSettings.landmarks || []), newLandmark];
+                            
+                            db.updateSiteSettings({ landmarks: updatedLandmarks }).then(updated => {
+                              setSiteSettings(updated);
+                              setIsLandmarkModalOpen(false);
+                              setNewLandmarkName('');
+                              alert('Hotspot added!');
+                            });
+                          }}
+                          className="flex-1 h-12 signature-gradient text-white rounded-xl font-headline font-bold text-xs shadow-lg"
+                        >
+                          ADD HOTSPOT
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                </div>
+              )}
+
               {/* Add User Modal */}
               {isAddUserModalOpen && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
@@ -1511,80 +1567,206 @@ export default function AdminDashboard() {
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     className="relative w-full max-w-lg bg-surface-container-low rounded-[3rem] p-10 border border-primary/10 shadow-2xl overflow-y-auto max-h-[90vh]"
                   >
-                    <h2 className="text-3xl font-headline font-black text-on-surface mb-8 tracking-tighter">Add New User</h2>
-                    <form onSubmit={handleAddUser} className="space-y-6">
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Full Name</label>
-                        <input 
-                          type="text" 
-                          required
-                          value={newUser.fullName}
-                          onChange={(e) => setNewUser({ ...newUser, fullName: e.target.value })}
-                          className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Phone Number</label>
-                        <input 
-                          type="tel" 
-                          required
-                          value={newUser.phoneNumber}
-                          onChange={(e) => setNewUser({ ...newUser, phoneNumber: e.target.value })}
-                          className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Password</label>
-                        <div className="relative">
-                          <input 
-                            type={showNewUserPassword ? "text" : "password"} 
-                            required
-                            value={newUser.password}
-                            onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-                            className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 pr-14 font-headline font-bold outline-none focus:ring-2 ring-primary"
-                          />
+                    <h2 className="text-3xl font-headline font-black text-on-surface mb-8 tracking-tighter">
+                      {newUser.role.includes('admin') ? 'Invite New Admin' : 'Add New User'}
+                    </h2>
+                    
+                    {inviteLink ? (
+                      <div className="space-y-6">
+                        <div className="p-6 bg-primary/5 border-2 border-dashed border-primary/20 rounded-3xl text-center">
+                          <Zap className="w-10 h-10 text-primary mx-auto mb-4" />
+                          <h3 className="text-xl font-headline font-black text-primary mb-2">Invite Link Ready</h3>
+                          
+                          {/* Admin Details - Fixed & Immutable */}
+                          <div className="mb-6 p-4 bg-surface-container-lowest rounded-2xl border border-primary/10 text-left">
+                            <div className="mb-3">
+                              <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">Target Name</p>
+                              <p className="font-headline font-bold text-on-surface">{newUser.fullName}</p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">Target Email</p>
+                              <p className="font-headline font-bold text-on-surface">{newUser.email}</p>
+                            </div>
+                          </div>
+
+                          <div className="p-4 bg-surface-container-lowest rounded-xl break-all font-mono text-xs mb-4 border border-primary/5 select-all">
+                            {inviteLink}
+                          </div>
+                          
                           <button 
-                            type="button"
-                            onClick={() => setShowNewUserPassword(!showNewUserPassword)}
-                            className="absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant"
+                            onClick={async () => {
+                              try {
+                                if (navigator.clipboard && navigator.clipboard.writeText) {
+                                  await navigator.clipboard.writeText(inviteLink);
+                                  setNotification({ message: 'Link copied to clipboard!', type: 'success' });
+                                } else {
+                                  const textArea = document.createElement("textarea");
+                                  textArea.value = inviteLink;
+                                  document.body.appendChild(textArea);
+                                  textArea.select();
+                                  document.execCommand('copy');
+                                  document.body.removeChild(textArea);
+                                  setNotification({ message: 'Link copied to clipboard!', type: 'success' });
+                                }
+                              } catch (err) {
+                                setNotification({ message: 'Failed to copy. Please manually copy the link above.', type: 'error' });
+                              }
+                            }}
+                            className="h-14 w-full signature-gradient text-white rounded-2xl font-headline font-black text-sm shadow-lg active:scale-95 transition-transform"
                           >
-                            {showNewUserPassword ? (
-                              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.88 9.88L4.62 4.62"/><path d="M1 1l22 22"/><path d="M10.47 4.38A12.5 12.5 0 0 1 23 12a12.5 12.5 0 0 1-2.47 3.62"/><path d="M13.02 19.44A12.5 12.5 0 0 1 1 12a12.5 12.5 0 0 1 5.02-6.44"/><circle cx="12" cy="12" r="3"/><path d="M14.22 14.22a3 3 0 1 1-4.24-4.24"/></svg>
-                            ) : (
-                              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                            )}
+                            COPY INVITE LINK
                           </button>
                         </div>
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Role</label>
-                        <select 
-                          value={newUser.role}
-                          onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
-                          className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
-                        >
-                          <option value="customer">Customer</option>
-                          <option value="vendor">Vendor</option>
-                          <option value="rider">Rider</option>
-                          {isSuperAdmin && <option value="admin">Admin</option>}
-                        </select>
-                      </div>
-                      <div className="flex gap-4 pt-4">
                         <button 
-                          type="button"
-                          onClick={() => setIsAddUserModalOpen(false)}
-                          className="flex-1 h-14 bg-surface-container-highest text-on-surface rounded-2xl font-headline font-black text-sm active:scale-95 transition-transform"
+                          onClick={() => { 
+                            setIsAddUserModalOpen(false); 
+                            setInviteLink(null); 
+                            setNewUser({ fullName: '', phoneNumber: '', email: '', password: '', role: 'customer', status: 'active', isApproved: true });
+                          }}
+                          className="w-full h-14 bg-surface-container-highest text-on-surface rounded-2xl font-headline font-black text-sm active:scale-95 transition-transform"
                         >
-                          CANCEL
-                        </button>
-                        <button 
-                          type="submit"
-                          className="flex-1 h-14 signature-gradient text-white rounded-2xl font-headline font-black text-sm shadow-lg active:scale-95 transition-transform"
-                        >
-                          CREATE USER
+                          CLOSE
                         </button>
                       </div>
-                    </form>
+                    ) : (newUser.role === 'admin' || newUser.role === 'super-sub-admin') ? (
+                      <form onSubmit={handleAddUser} className="space-y-6">
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Full Name</label>
+                          <input 
+                            type="text" 
+                            required
+                            value={newUser.fullName}
+                            onChange={(e) => setNewUser({ ...newUser, fullName: e.target.value })}
+                            className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Email Address</label>
+                          <input 
+                            type="email" 
+                            required
+                            value={newUser.email}
+                            onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                            className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Role</label>
+                          <select 
+                            value={newUser.role}
+                            onChange={(e) => setNewUser({ ...newUser, role: e.target.value as any })}
+                            className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
+                          >
+                            {hasFullAdminPrivileges && <option value="admin">Moderator Admin</option>}
+                            {hasFullAdminPrivileges && <option value="super-sub-admin">Super Admin (Sub)</option>}
+                          </select>
+                        </div>
+                        <div className="flex gap-4 pt-4">
+                          <button 
+                            type="button"
+                            onClick={() => setIsAddUserModalOpen(false)}
+                            className="flex-1 h-14 bg-surface-container-highest text-on-surface rounded-2xl font-headline font-black text-sm active:scale-95 transition-transform"
+                          >
+                            CANCEL
+                          </button>
+                          <button 
+                            type="submit"
+                            className="flex-1 h-14 bg-primary text-on-primary rounded-2xl font-headline font-black text-sm active:scale-95 transition-transform"
+                          >
+                            GENERATE LINK
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <form onSubmit={handleAddUser} className="space-y-6">
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Full Name</label>
+                          <input 
+                            type="text" 
+                            required
+                            value={newUser.fullName}
+                            onChange={(e) => setNewUser({ ...newUser, fullName: e.target.value })}
+                            className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
+                          />
+                        </div>
+
+                        <>
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Phone Number</label>
+                            <input 
+                              type="tel" 
+                              required
+                              value={newUser.phoneNumber}
+                              onChange={(e) => setNewUser({ ...newUser, phoneNumber: e.target.value })}
+                              className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Email Address</label>
+                            <input 
+                              type="email" 
+                              required
+                              value={newUser.email}
+                              onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                              className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Password</label>
+                            <div className="relative">
+                              <input 
+                                type={showNewUserPassword ? "text" : "password"} 
+                                required
+                                value={newUser.password}
+                                onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                                className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 pr-14 font-headline font-bold outline-none focus:ring-2 ring-primary"
+                              />
+                              <button 
+                                type="button"
+                                onClick={() => setShowNewUserPassword(!showNewUserPassword)}
+                                className="absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant"
+                              >
+                                {showNewUserPassword ? (
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.88 9.88L4.62 4.62"/><path d="M1 1l22 22"/><path d="M10.47 4.38A12.5 12.5 0 0 1 23 12a12.5 12.5 0 0 1-2.47 3.62"/><path d="M13.02 19.44A12.5 12.5 0 0 1 1 12a12.5 12.5 0 0 1 5.02-6.44"/><circle cx="12" cy="12" r="3"/><path d="M14.22 14.22a3 3 0 1 1-4.24-4.24"/></svg>
+                                ) : (
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        </>
+                        
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Role</label>
+                          <select 
+                            value={newUser.role}
+                            onChange={(e) => setNewUser({ ...newUser, role: e.target.value as any })}
+                            className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
+                          >
+                            <option value="customer">Customer</option>
+                            <option value="vendor">Vendor</option>
+                            <option value="rider">Rider</option>
+                            {hasFullAdminPrivileges && <option value="admin">Moderator Admin</option>}
+                            {hasFullAdminPrivileges && <option value="super-sub-admin">Super Admin (Sub)</option>}
+                          </select>
+                        </div>
+                        <div className="flex gap-4 pt-4">
+                          <button 
+                            type="button"
+                            onClick={() => setIsAddUserModalOpen(false)}
+                            className="flex-1 h-14 bg-surface-container-highest text-on-surface rounded-2xl font-headline font-black text-sm active:scale-95 transition-transform"
+                          >
+                            CANCEL
+                          </button>
+                          <button 
+                            type="submit"
+                            className="flex-1 h-14 bg-primary text-on-primary rounded-2xl font-headline font-black text-sm active:scale-95 transition-transform"
+                          >
+                            CREATE USER
+                          </button>
+                        </div>
+                      </form>
+                    )}
                   </motion.div>
                 </div>
               )}
@@ -1623,7 +1805,9 @@ export default function AdminDashboard() {
                           <option value="customer">Customer</option>
                           <option value="vendor">Vendor</option>
                           <option value="rider">Rider</option>
-                          <option value="admin">Admin</option>
+                          <option value="marketing">Marketing</option>
+                          <option value="admin">Moderator Admin</option>
+                          {hasFullAdminPrivileges && <option value="super-sub-admin">Super Admin (Sub)</option>}
                         </select>
                       </div>
                       <div className="space-y-2">
@@ -1941,8 +2125,98 @@ export default function AdminDashboard() {
                   </motion.div>
                 </div>
               )}
-            </AnimatePresence>
+              {/* Wallet History Modal */}
+              {historyModal.open && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center p-6">
+                  <motion.div 
+                    initial={{ opacity: 0 }} 
+                    animate={{ opacity: 1 }}
+                    className="absolute inset-0 bg-surface/80 backdrop-blur-xl"
+                    onClick={() => setHistoryModal({ ...historyModal, open: false })}
+                  />
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    className="relative w-full max-w-2xl bg-surface-container-low rounded-[3rem] p-10 border border-primary/10 shadow-2xl overflow-hidden flex flex-col max-h-[80vh]"
+                  >
+                    <div className="flex justify-between items-center mb-8">
+                      <div>
+                        <h2 className="text-3xl font-headline font-black text-on-surface tracking-tighter uppercase italic">
+                          {historyModal.type === 'payout' ? 'Payouts' : 'Withdrawals'} History
+                        </h2>
+                        <p className="text-on-surface-variant font-medium text-sm">Archived log of platform {historyModal.type}s.</p>
+                      </div>
+                      <button 
+                        onClick={() => setHistoryModal({ ...historyModal, open: false })}
+                        className="w-12 h-12 rounded-2xl bg-surface-container-highest flex items-center justify-center text-on-surface active:scale-90 transition-transform"
+                      >
+                        <X className="w-6 h-6" />
+                      </button>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto space-y-4 pr-4 custom-scrollbar">
+                      {allTransactions
+                        .filter(t => historyModal.type === 'payout' ? t.type === 'payout' : t.type === 'withdrawal')
+                        .map((t) => (
+                        <div key={t._id} className="p-6 bg-surface-container-lowest rounded-3xl border border-primary/5 flex justify-between items-center">
+                          <div className="flex items-center gap-4">
+                            <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center", historyModal.type === 'payout' ? "bg-primary/10 text-primary" : "bg-warning/10 text-warning")}>
+                              <History className="w-6 h-6" />
+                            </div>
+                            <div>
+                              <p className="font-headline font-bold text-lg">{t.desc}</p>
+                              <p className="text-xs text-on-surface-variant">{new Date(t.date).toLocaleDateString()} • {new Date(t.date).toLocaleTimeString()}</p>
+                              <p className="text-[10px] font-bold text-primary truncate max-w-[150px]">Ref: {t.reference || 'N/A'}</p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xl font-headline font-black">₦{t.amount.toLocaleString()}</p>
+                            <span className={cn(
+                              "text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-md",
+                              t.status === 'completed' ? "text-success bg-success/10" : 
+                              t.status === 'pending' ? "text-warning bg-warning/10" : "text-error bg-error/10"
+                            )}>{t.status}</span>
+                          </div>
+                        </div>
+                      ))}
+                      {allTransactions.filter(t => historyModal.type === 'payout' ? t.type === 'payout' : t.type === 'withdrawal').length === 0 && (
+                        <div className="text-center py-20 bg-surface-container-lowest rounded-3xl border border-dashed border-primary/20">
+                          <p className="font-headline font-bold text-on-surface-variant">No {historyModal.type} history found.</p>
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="mt-8 pt-8 border-t border-primary/10 text-center">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Showing latest records from database</p>
+                    </div>
+                  </motion.div>
+                </div>
+              )}
       </div>
+      {/* Notifications */}
+      <AnimatePresence>
+        {notification && (
+          <motion.div 
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 50, scale: 0.9 }}
+            className={cn(
+              "fixed bottom-8 left-1/2 -translate-x-1/2 z-[200] px-8 py-4 rounded-2xl font-headline font-black text-sm shadow-2xl flex items-center gap-3 min-w-[320px]",
+              notification.type === 'success' ? "bg-success text-white" :
+              notification.type === 'error' ? "bg-error text-white" :
+              "bg-primary text-white"
+            )}
+          >
+            {notification.type === 'success' ? <CheckCircle className="w-5 h-5" /> : 
+             notification.type === 'error' ? <ShieldAlert className="w-5 h-5" /> : 
+             <Zap className="w-5 h-5" />}
+            {notification.message}
+            <button onClick={() => setNotification(null)} className="ml-auto opacity-70 hover:opacity-100">
+              <XIcon className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

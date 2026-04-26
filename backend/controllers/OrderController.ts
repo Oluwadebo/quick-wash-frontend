@@ -81,9 +81,51 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
       }
     }
 
-    if (status === 'washing') order.washingAt = new Date();
+    if (status === 'washing' && !order.isPayout80Released) {
+      order.washingAt = new Date();
+      if (order.vendorId) {
+        const vendor = await User.findOne({ uid: order.vendorId });
+        if (vendor) {
+          const payoutAmount = (order.itemsPrice || 0) * 0.8;
+          vendor.walletBalance = (vendor.walletBalance || 0) + payoutAmount;
+          await vendor.save();
+          
+          const trans = new Transaction({
+            id: Math.random().toString(36).substr(2, 9),
+            uid: vendor.uid,
+            type: 'deposit',
+            amount: payoutAmount,
+            desc: `Order #${order.id} - 80% Payout (Washing Started)`
+          });
+          await trans.save();
+          order.isPayout80Released = true;
+        }
+      }
+    }
+
     if (status === 'ready') order.readyAt = new Date();
-    if (status === 'completed') order.completedAt = new Date();
+    
+    if (status === 'completed' && !order.isPayout20Released) {
+      order.completedAt = new Date();
+      if (order.vendorId) {
+        const vendor = await User.findOne({ uid: order.vendorId });
+        if (vendor) {
+          const payoutAmount = (order.itemsPrice || 0) * 0.2;
+          vendor.walletBalance = (vendor.walletBalance || 0) + payoutAmount;
+          await vendor.save();
+          
+          const trans = new Transaction({
+            id: Math.random().toString(36).substr(2, 9),
+            uid: vendor.uid,
+            type: 'deposit',
+            amount: payoutAmount,
+            desc: `Order #${order.id} - 20% Final Payout`
+          });
+          await trans.save();
+          order.isPayout20Released = true;
+        }
+      }
+    }
 
     order.status = status;
     order.color = color;

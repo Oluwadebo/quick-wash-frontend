@@ -522,12 +522,16 @@ function AuthContent() {
             </AnimatePresence>
 
             <div className="relative">
-              <Phone className="absolute left-5 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5" />
+              {isLogin ? (
+                <User className="absolute left-5 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5" />
+              ) : (
+                <Phone className="absolute left-5 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5" />
+              )}
               <input 
-                type="tel" 
-                placeholder={isLogin ? "Phone Number" : "Login Phone Number (11 Digits)"}
+                type={isLogin ? "text" : "tel"} 
+                placeholder={isLogin ? "Email or Phone Number" : "Login Phone Number (11 Digits)"}
                 required
-                maxLength={11}
+                maxLength={isLogin ? undefined : 11}
                 value={formData.phoneNumber}
                 onChange={(e) => setFormData({...formData, phoneNumber: e.target.value})}
                 className="w-full h-16 bg-surface-container-low rounded-2xl pl-14 pr-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"

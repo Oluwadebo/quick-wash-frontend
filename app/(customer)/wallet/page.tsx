@@ -254,7 +254,7 @@ export default function WalletPage() {
           <div className="space-y-3">
             {filteredHistory.map((item) => (
               <motion.div 
-                key={item.id}
+                key={item.id || item._id}
                 whileHover={{ scale: 1.01 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => setSelectedTransaction(item)}

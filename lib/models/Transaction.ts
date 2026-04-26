@@ -1,8 +1,8 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
 export interface ITransaction extends Document {
-  uid: string;
-  type: 'deposit' | 'withdrawal' | 'refund' | 'payout' | 'commission';
+  userId: string;
+  type: 'deposit' | 'withdrawal' | 'refund' | 'payout' | 'commission' | 'payment';
   amount: number;
   desc: string;
   method?: string;
@@ -14,7 +14,7 @@ export interface ITransaction extends Document {
 
 const TransactionSchema: Schema = new Schema({
   userId: { type: String, required: true, index: true },
-  type: { type: String, enum: ['deposit', 'withdrawal', 'refund', 'payout', 'commission'], required: true, index: true },
+  type: { type: String, enum: ['deposit', 'withdrawal', 'refund', 'payout', 'commission', 'payment'], required: true, index: true },
   amount: { type: Number, required: true },
   desc: { type: String, required: true },
   method: { type: String },

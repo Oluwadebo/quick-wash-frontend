@@ -1,14 +1,42 @@
-import express from 'express';
-import { getVendors, getUserProfile, getVendorPriceList } from '../controllers/UserController.js';
-import { auth } from '../middleware/auth.js';
+import express from "express";
+import User from "../models/User";
 
 const router = express.Router();
 
-// Public route to list vendors for customers
-router.get('/vendors', getVendors);
-router.get('/vendors/:vendorUid/prices', getVendorPriceList);
+// Get all users
+router.get("/", async (req, res) => {
+  try {
+    const users = await User.find().select("-password");
+    res.json(users);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
 
-// Auth required for specific profile access
-router.get('/profile/:uid', auth, getUserProfile);
+// Get single user
+router.get("/:uid", async (req, res) => {
+  try {
+    const user = await User.findOne({ uid: req.params.uid }).select("-password");
+    if (!user) return res.status(404).json({ message: "User not found" });
+    res.json(user);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Update user
+router.patch("/:uid", async (req, res) => {
+  try {
+    const user = await User.findOneAndUpdate(
+      { uid: req.params.uid },
+      { $set: req.body },
+      { new: true }
+    ).select("-password");
+    if (!user) return res.status(404).json({ message: "User not found" });
+    res.json(user);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
 
 export default router;

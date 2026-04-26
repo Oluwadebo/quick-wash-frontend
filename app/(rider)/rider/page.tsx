@@ -50,6 +50,7 @@ export default function RiderDashboard() {
   const [timeRange, setTimeRange] = React.useState<'today' | '7d' | '14d' | '30d' | '2m' | 'custom'>('30d');
   const [customRange, setCustomRange] = React.useState({ start: '', end: '' });
   const [earningsData, setEarningsData] = React.useState<any[]>([]);
+  const [walletHistory, setWalletHistory] = React.useState<any[]>([]);
 
   React.useEffect(() => {
     const refreshData = async () => {
@@ -88,6 +89,24 @@ export default function RiderDashboard() {
         // Mock earnings history for chart
         const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
         setEarningsData(days.map(d => ({ name: d, earnings: Math.floor(Math.random() * 3000) + 500 })));
+
+        // Real wallet history from API
+        try {
+          const token = localStorage.getItem('qw_token');
+          const res = await fetch(`/api/wallet/history?userId=${currentUser.uid}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setWalletHistory(data.transactions || []);
+          } else {
+            const localHistory = JSON.parse(localStorage.getItem(`qw_wallet_history_${currentUser.uid}`) || '[]');
+            setWalletHistory(localHistory);
+          }
+        } catch (e) {
+          const localHistory = JSON.parse(localStorage.getItem(`qw_wallet_history_${currentUser.uid}`) || '[]');
+          setWalletHistory(localHistory);
+        }
       }
     };
 
@@ -183,38 +202,20 @@ export default function RiderDashboard() {
   const handleVerifyPickup = React.useCallback(async (order: Order) => {
     const input = handoverInput[order.id];
     if (input === order.code1) {
-      // First 50% rider fee to rider on pickup
-      const riderFee = order.riderFee || 1000;
-      const firstHalf = riderFee * 0.5;
+      // Backend API handles 50% rider fee on 'picked_up' status change
       
-      if (currentUser?.uid) {
-        const me = await db.getUser(currentUser.uid);
-        if (me) {
-          await db.updateUser(me.uid, { walletBalance: (me.walletBalance || 0) + firstHalf });
-          await db.recordTransaction(me.uid, {
-            type: 'deposit',
-            amount: firstHalf,
-            desc: `Rider Fee (50%) - Order #${order.id}`
-          });
-        }
-      }
-
       // Generate Code 2 (Rider sees, Vendor enters)
       const code2 = Math.floor(1000 + Math.random() * 9000).toString();
 
-      // Update order status
-      const updatedOrder = { 
-        ...order, 
-        status: 'picked_up', 
-        code2,
-        color: 'bg-secondary text-on-secondary',
-        pickedUpAt: new Date().toISOString()
-      };
-      await db.saveOrder(updatedOrder);
+      // Update order status via PATCH API
+      await db.updateOrderStatus(order.id, 'picked_up', 'bg-secondary text-on-secondary', { code2, pickedUpAt: new Date().toISOString() });
       
       setNotification({ message: 'Pickup confirmed! Head to the vendor.', type: 'success' });
       setTimeout(() => setNotification(null), 3000);
       setHandoverInput(prev => ({ ...prev, [order.id]: '' }));
+
+      const allOrders = await db.getOrders();
+      setTasks(allOrders.filter((o: Order) => o.riderUid === currentUser?.uid && !['delivered', 'cancelled', 'completed'].includes((o.status || '').toLowerCase())));
       window.dispatchEvent(new Event('storage'));
     }
   }, [currentUser, handoverInput]);
@@ -226,21 +227,20 @@ export default function RiderDashboard() {
       const code4 = Math.floor(1000 + Math.random() * 9000).toString();
 
       // Update order status
-      const updatedOrder = { 
-        ...order, 
-        status: 'picked_up_delivery', 
+      await db.updateOrderStatus(order.id, 'picked_up_delivery', 'bg-tertiary text-on-tertiary', {
         code4,
-        color: 'bg-tertiary text-on-tertiary',
         pickedUpDeliveryAt: new Date().toISOString()
-      };
-      await db.saveOrder(updatedOrder);
+      });
       
       setNotification({ message: 'Delivery pickup confirmed! Head to the customer.', type: 'success' });
       setTimeout(() => setNotification(null), 3000);
       setHandoverInput(prev => ({ ...prev, [order.id]: '' }));
+
+      const allOrders = await db.getOrders();
+      setTasks(allOrders.filter((o: Order) => o.riderUid === currentUser?.uid && !['delivered', 'cancelled', 'completed'].includes((o.status || '').toLowerCase())));
       window.dispatchEvent(new Event('storage'));
     }
-  }, [handoverInput]);
+  }, [currentUser, handoverInput]);
 
   // Handover Code Auto-Check
   React.useEffect(() => {
@@ -390,7 +390,12 @@ export default function RiderDashboard() {
                               <div className="space-y-2">
                                 <div className="flex items-center gap-2 text-primary">
                                   <MapPin className="w-3 h-3" />
-                                  <p className="text-[10px] font-black uppercase tracking-widest">Pickup: {order.customerLandmark}</p>
+                                    <div className="flex flex-col">
+                                      <p className="text-[10px] font-black uppercase tracking-widest leading-tight">Pickup: {order.customerLandmark}</p>
+                                      {order.customerAddress && (
+                                        <p className="text-[8px] font-medium text-on-surface-variant truncate max-w-[200px]">{order.customerAddress}</p>
+                                      )}
+                                    </div>
                                 </div>
                                 <div className="flex items-center gap-2 text-tertiary">
                                   <Package className="w-3 h-3" />
@@ -470,6 +475,8 @@ export default function RiderDashboard() {
                       const destinationName = isGoingToCustomer ? order.customerName : order.vendorName;
                       const destinationPhone = isGoingToCustomer ? order.customerPhone : order.vendorPhone;
                       
+                      const destinationAddress = isGoingToCustomer ? order.customerAddress : (order.vendorAddress || order.shopAddress);
+                      
                       return (
                         <div key={order.id} className="bg-surface-container-low p-8 rounded-[2.5rem] border border-primary/5 shadow-sm">
                           <div className="flex justify-between items-start mb-6">
@@ -488,7 +495,12 @@ export default function RiderDashboard() {
                                   {isPickup ? 'Pickup from' : isDelivery ? 'Deliver to' : 'Heading to'} {destinationName}
                                 </h4>
                                 <p className="text-xs font-bold text-on-surface-variant">{destinationLandmark} • {destinationPhone}</p>
-                                {order.customerAddress && <p className="text-[10px] font-medium text-primary mt-1">Address: {order.customerAddress}</p>}
+                                {destinationAddress && (
+                                  <div className="mt-1 flex items-center gap-1">
+                                    <MapPin className="w-3 h-3 text-primary" />
+                                    <p className="text-[10px] font-medium text-primary">Address: {destinationAddress}</p>
+                                  </div>
+                                )}
                               </div>
                             </div>
                             <div className="flex flex-col items-end gap-2">
@@ -873,6 +885,41 @@ export default function RiderDashboard() {
                       Direct to your bank account
                     </li>
                   </ul>
+                </div>
+
+                <div className="bg-surface-container-low p-8 rounded-[2.5rem] border border-primary/5 shadow-sm">
+                  <h3 className="text-2xl font-headline font-black mb-6">Wallet Transactions</h3>
+                  <div className="space-y-4">
+                    {walletHistory.length > 0 ? (
+                      walletHistory.slice(0, 5).map((tx) => (
+                        <div key={tx.id} className="p-6 bg-white rounded-3xl border border-primary/5 flex justify-between items-center transition-all hover:border-primary/20">
+                          <div className="flex items-center gap-4">
+                            <div className={cn(
+                              "w-12 h-12 rounded-xl flex items-center justify-center",
+                              tx.type === 'deposit' ? "bg-success/10 text-success" : "bg-error/10 text-error"
+                            )}>
+                              {tx.type === 'deposit' ? <ArrowDownLeft className="w-6 h-6" /> : <ArrowUpRight className="w-6 h-6" />}
+                            </div>
+                            <div>
+                              <p className="font-headline font-bold text-on-surface text-sm">{tx.desc}</p>
+                              <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">{new Date(tx.createdAt || tx.date).toLocaleDateString()}</p>
+                            </div>
+                          </div>
+                          <p className={cn(
+                            "font-headline font-black text-lg",
+                            tx.type === 'deposit' ? "text-success" : "text-error"
+                          )}>
+                            {tx.type === 'deposit' ? '+' : '-'}₦{Math.abs(tx.amount).toLocaleString()}
+                          </p>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-10 opacity-50">
+                         <History className="w-12 h-12 mx-auto mb-2 opacity-20" />
+                         <p className="text-sm font-bold tracking-widest uppercase">No transactions yet</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </motion.section>
             )}

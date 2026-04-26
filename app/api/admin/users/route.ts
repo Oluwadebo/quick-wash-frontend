@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
     if (!token) return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     
     const decoded = verifyToken(token);
-    if (!decoded || (decoded.role !== 'admin')) {
+    if (!decoded || (decoded.role !== 'admin' && decoded.role !== 'super-sub-admin')) {
       return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
     }
 

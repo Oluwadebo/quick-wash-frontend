@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
 import { formatRelativeTime } from '@/lib/time';
-import { X, History, Wallet, ShoppingBag, Volume2, TrendingUp, Star, ShieldCheck, Clock, Package, ArrowRight, Play, AlertTriangle, Edit3, Trash2, Plus, Shirt, ArrowUpRight, ArrowDownLeft, Eye, EyeOff, CheckCircle2, CloudRain, Droplets, Camera, Info, BarChart3, WashingMachine } from 'lucide-react';
+import { X, History, Wallet, ShoppingBag, Volume2, TrendingUp, Star, ShieldCheck, Clock, Package, ArrowRight, Play, AlertTriangle, Edit3, Trash2, Plus, Shirt, ArrowUpRight, ArrowDownLeft, Eye, EyeOff, CheckCircle2, CloudRain, Droplets, Camera, Info, BarChart3, WashingMachine, Lock } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { db, Order, UserData } from '@/lib/DatabaseService';
 import { Toast } from '@/components/shared/Toast';
@@ -42,6 +42,11 @@ export default function VendorDashboard() {
   const [timeRange, setTimeRange] = React.useState<'today' | '7d' | '14d' | '30d' | '2m' | 'custom'>('30d');
   const [customRange, setCustomRange] = React.useState({ start: '', end: '' });
   const [revenueData, setRevenueData] = React.useState<any[]>([]);
+  const [isClosingShop, setIsClosingShop] = React.useState(false);
+  const [returnTimeInput, setReturnTimeInput] = React.useState('');
+  const [complaintOrder, setComplaintOrder] = React.useState<Order | null>(null);
+  const [complaintMsg, setComplaintMsg] = React.useState('');
+  const [walletHistory, setWalletHistory] = React.useState<any[]>([]);
 
   const [stats, setStats] = React.useState({
     totalEarnings: 0,
@@ -103,6 +108,41 @@ export default function VendorDashboard() {
         // Generate analytics
         const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
         setRevenueData(days.map(d => ({ name: d, revenue: Math.floor(Math.random() * 5000) + 1500 })));
+
+        // Real wallet history from API
+        try {
+          const token = localStorage.getItem('qw_token');
+          const res = await fetch(`/api/wallet/history?userId=${currentUser.uid}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setWalletHistory(data.transactions || []);
+            if (data.balance !== undefined) {
+               setStats(prev => ({ ...prev, totalEarnings: data.balance }));
+            }
+          }
+        } catch (e) {
+          console.error('Failed to fetch wallet history:', e);
+        }
+
+        // Wallet history
+        try {
+          const token = localStorage.getItem('qw_token');
+          const res = await fetch(`/api/wallet/history?userId=${currentUser.uid}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setWalletHistory(data.transactions || []);
+          } else {
+            const localHistory = JSON.parse(localStorage.getItem(`qw_wallet_history_${currentUser.uid}`) || '[]');
+            setWalletHistory(localHistory);
+          }
+        } catch (e) {
+          const localHistory = JSON.parse(localStorage.getItem(`qw_wallet_history_${currentUser.uid}`) || '[]');
+          setWalletHistory(localHistory);
+        }
       }
     };
     init();
@@ -126,25 +166,7 @@ export default function VendorDashboard() {
   const handleVerifyHandover = async (order: Order) => {
     const input = handoverInput[order.id];
     if (input === order.code2) {
-      const itemsPrice = order.itemsPrice || 0;
-      const vendorShare = itemsPrice * 0.8;
-      const vendorPending = itemsPrice * 0.2;
-      
-      if (currentUser?.uid) {
-        const me = await db.getUser(currentUser.uid);
-        if (me) {
-          await db.updateUser(me.uid, { 
-            walletBalance: (me.walletBalance || 0) + vendorShare,
-            pendingBalance: (me.pendingBalance || 0) + vendorPending
-          });
-          await db.recordTransaction(me.uid, {
-            type: 'deposit',
-            amount: vendorShare,
-            desc: `Order Payout (80%) - Order #${order.id}`
-          });
-        }
-      }
-
+      // Backend API handles the 80% payout on 'washing' status change
       await handleStatusUpdate(order.id, 'washing', 'bg-primary text-on-primary');
       setHandoverInput(prev => ({ ...prev, [order.id]: '' }));
       window.dispatchEvent(new Event('storage'));
@@ -313,10 +335,31 @@ export default function VendorDashboard() {
                 <div className="bg-surface-container-low rounded-[2rem] px-6 h-24 flex items-center gap-4 border border-primary/10">
                   <div className="text-right">
                     <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Shop Status</p>
-                    <p className="font-headline font-black text-success">OPEN</p>
+                    <p className={cn("font-headline font-black", (currentUser?.isShopClosed ? "text-error" : "text-success"))}>
+                      {currentUser?.isShopClosed ? 'CLOSED' : 'OPEN'}
+                    </p>
+                    {currentUser?.isShopClosed && currentUser?.returnTime && (
+                      <p className="text-[8px] font-bold text-on-surface-variant">Back at: {currentUser.returnTime}</p>
+                    )}
                   </div>
-                  <button className="w-12 h-6 bg-success/20 rounded-full relative p-1 transition-colors">
-                    <div className="w-4 h-4 bg-success rounded-full ml-auto shadow-sm" />
+                  <button 
+                    onClick={async () => {
+                      if (!currentUser?.isShopClosed) {
+                        setIsClosingShop(true);
+                      } else {
+                        await db.updateUser(currentUser.uid, { isShopClosed: false, returnTime: null });
+                        window.dispatchEvent(new Event('storage'));
+                      }
+                    }}
+                    className={cn(
+                      "w-12 h-6 rounded-full relative p-1 transition-colors",
+                      currentUser?.isShopClosed ? "bg-error/20" : "bg-success/20"
+                    )}
+                  >
+                    <div className={cn(
+                      "w-4 h-4 rounded-full shadow-sm transition-all",
+                      currentUser?.isShopClosed ? "bg-error ml-0" : "bg-success ml-auto"
+                    )} />
                   </button>
                 </div>
 
@@ -555,6 +598,14 @@ export default function VendorDashboard() {
                     </p>
 
                     <div className="flex gap-4">
+                      {order.status.toLowerCase() === 'rider_assign_pickup' && (
+                        <button 
+                          onClick={() => setComplaintOrder(order)}
+                          className="h-14 px-6 bg-error/10 text-error rounded-xl font-headline font-black text-[10px] uppercase tracking-widest active:scale-95 transition-transform"
+                        >
+                          Make Complaint
+                        </button>
+                      )}
                       {order.status.toLowerCase() === 'picked_up' && (
                         <div className="flex-1 flex flex-col gap-3">
                           <div className="flex gap-3">
@@ -601,6 +652,16 @@ export default function VendorDashboard() {
                             NOT READY (BACK TO WASH)
                           </button>
                         </div>
+                      )}
+                    </div>
+                    <div className="flex gap-4">
+                      {order.status === 'picked_up' && (
+                        <button 
+                          onClick={() => setComplaintOrder(order)}
+                          className="h-14 px-6 bg-error/10 text-error rounded-xl font-headline font-black text-[10px] uppercase tracking-widest active:scale-95 transition-transform border border-error/5 hover:bg-error/20"
+                        >
+                          REPORT ISSUE
+                        </button>
                       )}
                       <button 
                         onClick={() => setSelectedOrder(order)}
@@ -911,38 +972,34 @@ export default function VendorDashboard() {
                 <div>
                   <h3 className="font-headline font-black text-xl mb-6">Recent Transactions</h3>
                   <div className="space-y-4">
-                    {(() => {
-                      const transactions = JSON.parse(localStorage.getItem(`qw_transactions_${currentUser?.uid}`) || '[]');
-                      if (transactions.length > 0) {
-                        return transactions.sort((a: any, b: any) => new Date(b.time).getTime() - new Date(a.time).getTime()).map((tx: any) => (
-                          <div key={tx.id} className="bg-surface-container-low p-6 rounded-3xl border border-primary/5 flex justify-between items-center group hover:bg-white transition-colors">
-                            <div className="flex items-center gap-4">
-                              <div className={cn(
-                                "w-12 h-12 rounded-xl flex items-center justify-center",
-                                tx.type === 'deposit' ? "bg-success/10 text-success" : "bg-error/10 text-error"
-                              )}>
-                                {tx.type === 'deposit' ? <ArrowDownLeft className="w-6 h-6" /> : <ArrowUpRight className="w-6 h-6" />}
-                              </div>
-                              <div>
-                                <h4 className="font-headline font-black text-on-surface">{tx.desc}</h4>
-                                <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">{formatRelativeTime(tx.time)} • {tx.type}</p>
-                              </div>
-                            </div>
-                            <span className={cn(
-                              "text-lg font-headline font-black",
-                              tx.type === 'deposit' ? "text-success" : "text-error"
+                    {walletHistory.length > 0 ? (
+                      walletHistory.map((tx) => (
+                        <div key={tx._id || tx.id} className="bg-surface-container-low p-6 rounded-3xl border border-primary/5 flex justify-between items-center group hover:bg-white transition-colors">
+                          <div className="flex items-center gap-4">
+                            <div className={cn(
+                              "w-12 h-12 rounded-xl flex items-center justify-center",
+                              tx.type === 'deposit' ? "bg-success/10 text-success" : "bg-error/10 text-error"
                             )}>
-                              {tx.type === 'deposit' ? '+' : '-'}₦{tx.amount.toLocaleString()}
-                            </span>
+                              {tx.type === 'deposit' ? <ArrowDownLeft className="w-6 h-6" /> : <ArrowUpRight className="w-6 h-6" />}
+                            </div>
+                            <div>
+                              <h4 className="font-headline font-black text-on-surface">{tx.desc}</h4>
+                              <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">{formatRelativeTime(tx.createdAt || tx.time)} • {tx.type}</p>
+                            </div>
                           </div>
-                        ));
-                      }
-                      return (
-                        <div className="py-20 text-center border-2 border-dashed border-primary/10 rounded-[2.5rem]">
-                          <p className="text-on-surface-variant font-medium">No transactions yet.</p>
+                          <span className={cn(
+                            "text-lg font-headline font-black",
+                            tx.type === 'deposit' ? "text-success" : "text-error"
+                          )}>
+                            {tx.type === 'deposit' ? '+' : '-'}₦{tx.amount.toLocaleString()}
+                          </span>
                         </div>
-                      );
-                    })()}
+                      ))
+                    ) : (
+                      <div className="py-20 text-center border-2 border-dashed border-primary/10 rounded-[2.5rem]">
+                        <p className="text-on-surface-variant font-medium">No transactions yet.</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </motion.section>
@@ -971,6 +1028,22 @@ export default function VendorDashboard() {
                     <div className="flex justify-between items-center mb-6">
                       <h3 className="text-2xl font-headline font-black">Shop Info</h3>
                       <div className="flex gap-2">
+                        <button 
+                          onClick={() => {
+                            if (currentUser?.isShopClosed) {
+                              db.updateUser(currentUser.uid, { isShopClosed: false, returnTime: '' });
+                              window.dispatchEvent(new Event('storage'));
+                            } else {
+                              setIsClosingShop(true);
+                            }
+                          }}
+                          className={cn(
+                            "px-4 py-2 rounded-xl font-headline font-black text-[10px] uppercase tracking-widest flex items-center gap-2 transition-all",
+                            currentUser?.isShopClosed ? "bg-success/10 text-success hover:bg-success/20" : "bg-error/10 text-error hover:bg-error/20"
+                          )}
+                        >
+                          <Lock className="w-3 h-3" /> {currentUser?.isShopClosed ? 'OPEN SHOP' : 'CLOSE SHOP'}
+                        </button>
                         <Link 
                           href="/vendor/price-list"
                           className="px-4 py-2 bg-primary/10 text-primary rounded-xl font-headline font-black text-[10px] uppercase tracking-widest flex items-center gap-2 hover:bg-primary/20"
@@ -1000,6 +1073,12 @@ export default function VendorDashboard() {
                       </div>
                     </div>
                     <div className="space-y-4">
+                      {currentUser?.isShopClosed && (
+                        <div className="p-4 bg-error/5 rounded-2xl border border-error/10 flex items-center gap-3">
+                           <div className="w-2 h-2 rounded-full bg-error animate-pulse" />
+                           <p className="text-[10px] font-black uppercase tracking-widest text-error">Shop is currently Closed • Back at: {currentUser.returnTime}</p>
+                        </div>
+                      )}
                       <div className="p-4 bg-white rounded-2xl border border-primary/5">
                         <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">Landmark</p>
                         <p className="font-headline font-bold text-on-surface">{currentUser?.landmark || 'Not set'}</p>
@@ -1084,19 +1163,34 @@ export default function VendorDashboard() {
                 
                 <div className="space-y-6">
                   <div className="p-6 bg-surface-container-lowest rounded-3xl border border-primary/5">
-                    <p className="font-label text-[10px] font-black uppercase tracking-widest text-primary mb-2">Items</p>
-                    <p className="font-medium text-on-surface leading-relaxed">{selectedOrder.items}</p>
+                    <p className="font-label text-[10px] font-black uppercase tracking-widest text-primary mb-2">Items & Pricing</p>
+                    <div className="space-y-3">
+                      {selectedOrder.items.split(',').map((item: string, i: number) => {
+                        const parts = item.trim().split(' - ');
+                        const itemName = parts[0];
+                        const itemPrice = parts[1];
+                        return (
+                          <div key={i} className="flex justify-between items-start gap-4 pb-2 border-b border-primary/5 last:border-0">
+                            <p className="font-medium text-on-surface leading-tight text-sm">{itemName}</p>
+                            {itemPrice && (
+                              <p className="font-headline font-black text-primary text-sm shrink-0">{itemPrice}</p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                   
                   <div className="grid grid-cols-2 gap-4">
                     <div className="p-6 bg-surface-container-lowest rounded-3xl border border-primary/5">
                       <p className="font-label text-[10px] font-black uppercase tracking-widest text-primary mb-2">Customer</p>
                       <p className="font-headline font-black text-on-surface">{selectedOrder.customerName}</p>
-                      <p className="text-xs font-bold text-on-surface-variant">{selectedOrder.customerPhone}</p>
+                      <p className="text-xs font-bold text-on-surface-variant">{selectedOrder.customerPhone || 'N/A'}</p>
                     </div>
                     <div className="p-6 bg-surface-container-lowest rounded-3xl border border-primary/5">
-                      <p className="font-label text-[10px] font-black uppercase tracking-widest text-primary mb-2">Total Price</p>
-                      <p className="font-headline font-black text-2xl text-primary">₦{(selectedOrder.totalPrice || 0).toLocaleString()}</p>
+                      <p className="font-label text-[10px] font-black uppercase tracking-widest text-primary mb-2">Your Earnings</p>
+                      <p className="font-headline font-black text-2xl text-primary">₦{(selectedOrder.itemsPrice || 0).toLocaleString()}</p>
+                      <p className="text-[8px] font-bold text-on-surface-variant">Excludes ₦{(selectedOrder.riderFee || 0).toLocaleString()} Rider Fee</p>
                     </div>
                   </div>
 
@@ -1107,6 +1201,131 @@ export default function VendorDashboard() {
                     </div>
                     <p className="text-3xl font-headline font-black tracking-[0.5em] text-on-surface">{selectedOrder.handoverCode}</p>
                     <p className="text-[10px] font-bold text-on-surface-variant mt-2">Ask the rider for this code to start washing.</p>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Closing Shop Modal */}
+        <AnimatePresence>
+          {isClosingShop && (
+            <div className="fixed inset-0 z-[110] flex items-center justify-center p-6">
+              <motion.div 
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                onClick={() => setIsClosingShop(false)}
+                className="absolute inset-0 bg-surface/80 backdrop-blur-xl"
+              />
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                className="relative w-full max-w-md bg-surface-container-low rounded-[3rem] p-10 shadow-2xl border border-primary/10"
+              >
+                <h3 className="text-3xl font-headline font-black text-on-surface mb-4">Close Shop</h3>
+                <p className="text-on-surface-variant font-medium mb-8">Set a time when you will be back. Customers will see this before selecting you.</p>
+                
+                <div className="space-y-6">
+                  <div className="p-6 bg-surface-container-lowest rounded-3xl border border-primary/5">
+                    <p className="font-label text-[10px] font-black uppercase tracking-widest text-primary mb-2">Back at (e.g. 2:00 PM, Tomorrow)</p>
+                    <input 
+                      type="text"
+                      placeholder="e.g. 5:00 PM"
+                      value={returnTimeInput}
+                      onChange={(e) => setReturnTimeInput(e.target.value)}
+                      className="w-full bg-transparent font-headline font-black text-2xl text-on-surface outline-none"
+                    />
+                  </div>
+
+                  <div className="flex gap-4">
+                    <button 
+                      onClick={() => setIsClosingShop(false)}
+                      className="flex-1 h-14 bg-surface-container-highest text-on-surface rounded-2xl font-headline font-black text-sm"
+                    >
+                      CANCEL
+                    </button>
+                    <button 
+                      onClick={async () => {
+                        if (!returnTimeInput) {
+                          alert("Please set a return time.");
+                          return;
+                        }
+                        await db.updateUser(currentUser.uid, { isShopClosed: true, returnTime: returnTimeInput });
+                        setIsClosingShop(false);
+                        setReturnTimeInput('');
+                        window.dispatchEvent(new Event('storage'));
+                      }}
+                      className="flex-1 h-14 bg-error text-white rounded-2xl font-headline font-black text-sm shadow-lg shadow-error/20"
+                    >
+                      CLOSE SHOP
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Complaint Modal */}
+        <AnimatePresence>
+          {complaintOrder && (
+            <div className="fixed inset-0 z-[110] flex items-center justify-center p-6">
+              <motion.div 
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                onClick={() => setComplaintOrder(null)}
+                className="absolute inset-0 bg-surface/80 backdrop-blur-xl"
+              />
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                className="relative w-full max-w-md bg-surface-container-low rounded-[3rem] p-10 shadow-2xl border border-primary/10"
+              >
+                <h3 className="text-3xl font-headline font-black text-on-surface mb-4">Report Issue</h3>
+                <p className="text-on-surface-variant font-medium mb-8">Something wrong with the order items or customer before you start washing? Report it here.</p>
+                
+                <div className="space-y-6">
+                  <div className="p-6 bg-surface-container-lowest rounded-3xl border border-primary/5">
+                    <p className="font-label text-[10px] font-black uppercase tracking-widest text-primary mb-2">Detailed Complaint</p>
+                    <textarea 
+                      placeholder="e.g. Missing items, damaged clothes, etc."
+                      value={complaintMsg}
+                      onChange={(e) => setComplaintMsg(e.target.value)}
+                      className="w-full bg-transparent font-medium text-sm text-on-surface outline-none min-h-[120px] resize-none"
+                    />
+                  </div>
+
+                  <div className="flex gap-4">
+                    <button 
+                      onClick={() => setComplaintOrder(null)}
+                      className="flex-1 h-14 bg-surface-container-highest text-on-surface rounded-2xl font-headline font-black text-sm"
+                    >
+                      CANCEL
+                    </button>
+                    <button 
+                      onClick={async () => {
+                        if (!complaintMsg) return;
+                        const order = await db.getOrder(complaintOrder.id);
+                        if (order) {
+                          const updatedOrder = {
+                            ...order,
+                            status: 'complaint_raised',
+                            complaintMsg: complaintMsg,
+                            complaintBy: 'vendor',
+                            complaintAt: new Date().toISOString()
+                          };
+                          await db.saveOrder(updatedOrder);
+                          setComplaintOrder(null);
+                          setComplaintMsg('');
+                          setNotification({ message: 'Complaint filed. Admin will review.', type: 'info' });
+                          setTimeout(() => setNotification(null), 3000);
+                        }
+                      }}
+                      className="flex-1 h-14 bg-error text-white rounded-2xl font-headline font-black text-sm shadow-lg shadow-error/20"
+                    >
+                      FILE COMPLAINT
+                    </button>
                   </div>
                 </div>
               </motion.div>

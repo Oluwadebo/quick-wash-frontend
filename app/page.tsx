@@ -7,7 +7,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import Footer from '@/components/shared/Footer';
 import { db, SiteSettings } from '@/lib/DatabaseService';
 
 const roles = [
@@ -115,8 +114,37 @@ export default function LandingPage() {
     { q: 'How fast is delivery?', a: 'Standard turnaround is 24-48 hours. Many vendors offer "Express" service for same-day delivery (within 6 hours).' }
   ];
 
+  const [showScrollTop, setShowScrollTop] = React.useState(false);
+
+  React.useEffect(() => {
+    const handleScroll = () => {
+      setShowScrollTop(window.scrollY > 500);
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   return (
     <div className="min-h-screen bg-surface">
+      {/* Scroll to Top Button */}
+      <AnimatePresence>
+        {showScrollTop && (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.5, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.5, y: 20 }}
+            onClick={scrollToTop}
+            className="fixed bottom-8 right-8 z-[100] w-14 h-14 bg-primary text-on-primary rounded-2xl shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all group"
+          >
+            <Zap className="w-6 h-6 group-hover:-translate-y-1 transition-transform" />
+          </motion.button>
+        )}
+      </AnimatePresence>
+
       {/* Hero Section */}
       <header className="relative pt-24 pb-32 px-6 overflow-hidden">
         {/* ... (existing login/signup buttons) */}
@@ -650,7 +678,7 @@ export default function LandingPage() {
               {/* Mock Dashboard Preview */}
               <div className="flex items-center gap-6 mb-12">
                 <div className="w-20 h-20 rounded-full bg-surface-variant overflow-hidden">
-                  <Image src="https://picsum.photos/seed/alex/200/200" alt="User" width={80} height={80} className="object-cover" referrerPolicy="no-referrer" />
+                  <Image src="https://picsum.photos/seed/alex/200/200" alt="Alex" width={80} height={80} className="object-cover" referrerPolicy="no-referrer" />
                 </div>
                 <div>
                   <h4 className="text-2xl font-headline font-black">Alex Thompson</h4>
@@ -687,8 +715,6 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
-
-      <Footer />
     </div>
   );
 }

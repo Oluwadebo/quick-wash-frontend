@@ -99,8 +99,6 @@ export default function InfoPage() {
           </motion.div>
         </div>
       </main>
-
-      <Footer />
     </div>
   );
 }

@@ -12,7 +12,7 @@ import { db, Order, UserData } from '@/lib/DatabaseService';
 export default function TrackListPage() {
   const [orders, setOrders] = React.useState<Order[]>([]);
   const [user, setUser] = React.useState<UserData | null>(null);
-  const [timeRange, setTimeRange] = React.useState<'today' | '7d' | '14d' | '30d' | '2m' | 'custom'>('30d');
+  const [timeRange, setTimeRange] = React.useState<'today' | '7d' | '14d' | '30d' | '2m' | 'all' | 'custom'>('all');
   const [customRange, setCustomRange] = React.useState({ start: '', end: '' });
 
   React.useEffect(() => {
@@ -24,9 +24,8 @@ export default function TrackListPage() {
       setUser(me);
 
       if (me?.uid) {
-        // Filter orders for current customer - STRICT UID FILTERING
-        const allOrders = await db.getOrders();
-        const customerOrders = allOrders.filter((o: Order) => o.customerUid === me.uid);
+        // Fetch orders for current customer
+        const customerOrders = await db.getOrders();
         setOrders(customerOrders.sort((a: Order, b: Order) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
       }
     };
@@ -62,6 +61,7 @@ export default function TrackListPage() {
                 { id: '14d', label: '14 Days' },
                 { id: '30d', label: '30 Days' },
                 { id: '2m', label: '2 Months' },
+                { id: 'all', label: 'All Time' },
                 { id: 'custom', label: 'Customize' }
               ].map(opt => (
                 <button
@@ -115,6 +115,7 @@ export default function TrackListPage() {
               const now = new Date();
               const filteredOrders = orders.filter((o: any) => {
                 const itemDate = new Date(o.createdAt);
+                if (timeRange === 'all') return true;
                 if (timeRange === 'today') return itemDate.toDateString() === now.toDateString();
                 if (timeRange === 'custom') {
                   if (!customRange.start || !customRange.end) return true;

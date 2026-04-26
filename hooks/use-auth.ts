@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
-export type UserRole = 'customer' | 'vendor' | 'rider' | 'admin';
+export type UserRole = 'customer' | 'vendor' | 'rider' | 'admin' | 'super-sub-admin';
 
 interface UserData {
   uid: string;
@@ -110,7 +110,7 @@ export function useAuth() {
     }
   };
 
-  const login = async (phoneNumber: string, password?: string) => {
+  const login = async (identifier: string, password?: string) => {
     setIsProcessing(true);
     setError(null);
     
@@ -118,7 +118,7 @@ export function useAuth() {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phoneNumber, password }),
+        body: JSON.stringify({ identifier, password }),
       });
 
       const result = await response.json();
@@ -141,7 +141,7 @@ export function useAuth() {
       setUser(foundUser);
       
       // Role-based redirection
-      if (foundUser.role === 'admin') router.push('/admin');
+      if (foundUser.role === 'admin' || foundUser.role === 'super-sub-admin') router.push('/admin');
       else if (foundUser.role === 'vendor') router.push('/vendor');
       else if (foundUser.role === 'rider') router.push('/rider');
       else router.push('/customer');
@@ -154,9 +154,10 @@ export function useAuth() {
 
   const logout = useCallback(() => {
     localStorage.removeItem('qw_user');
+    localStorage.removeItem('qw_token');
     localStorage.removeItem('qw_current_order_id');
     setUser(null);
-    router.push('/auth');
+    router.push('/auth?login=true');
   }, [router]);
 
   // Sync auth state across tabs
@@ -165,7 +166,7 @@ export function useAuth() {
       if (e.key === 'qw_user') {
         const newUser = e.newValue ? JSON.parse(e.newValue) : null;
         setUser(newUser);
-        if (!newUser) router.push('/');
+        if (!newUser) router.push('/auth?login=true');
       }
     };
     window.addEventListener('storage', handleStorage);

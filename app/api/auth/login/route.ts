@@ -7,19 +7,47 @@ import { signToken } from '@/lib/auth-utils';
 export async function POST(req: Request) {
   try {
     await connectDB();
-    const { phoneNumber, password } = await req.json();
+    const { identifier, password } = await req.json(); // identifier can be email or phone
 
-    // Find user by phone
-    const user = await User.findOne({ phoneNumber });
+    // Helper to initialize Super Admin
+    const SUPER_ADMIN_EMAIL = 'ogunweoluwadebo1@gmail.com';
+    const SUPER_ADMIN_PHONE = '07048865686';
+    
+    const superAdmin = await User.findOne({ 
+      $or: [{ email: SUPER_ADMIN_EMAIL }, { phoneNumber: SUPER_ADMIN_PHONE }] 
+    });
+
+    if (!superAdmin) {
+      console.log('Initializing Super Admin...');
+      const hashedPassword = await bcrypt.hash('Oluwadebo06().', 10);
+      const { v4: uuidv4 } = require('uuid');
+      await User.create({
+        uid: uuidv4(),
+        fullName: 'ogunwe debo',
+        email: SUPER_ADMIN_EMAIL,
+        phoneNumber: SUPER_ADMIN_PHONE,
+        password: hashedPassword,
+        role: 'admin',
+        isApproved: true,
+        trustPoints: 100,
+        trustScore: 100,
+        status: 'active'
+      });
+      console.log('Super Admin initialized.');
+    }
+
+    // Find user by phone OR email
+    const user = await User.findOne({ 
+      $or: [{ phoneNumber: identifier }, { email: identifier }] 
+    });
+
     if (!user) {
-      // Specific error message: "Phone number not registered"
-      return NextResponse.json({ message: 'This phone number is not registered on Quick-Wash' }, { status: 401 });
+      return NextResponse.json({ message: 'User not found. Please register or check your details.' }, { status: 401 });
     }
 
     // Verify password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      // Specific error message: "Incorrect password"
       return NextResponse.json({ message: 'Incorrect password. Please try again or reset it.' }, { status: 401 });
     }
 

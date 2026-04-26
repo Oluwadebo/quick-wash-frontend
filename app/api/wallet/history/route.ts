@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
     }
 
-    const transactions = await Transaction.find({ userId }).sort({ createdAt: -1 });
+    const transactions = await Transaction.find({ userId }).sort({ date: -1 });
     const user = await User.findOne({ uid: userId });
 
     return NextResponse.json({

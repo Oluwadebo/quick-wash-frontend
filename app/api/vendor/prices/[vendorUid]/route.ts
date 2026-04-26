@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import VendorPriceList from '@/lib/models/VendorPriceList';
 
-export async function GET(req: NextRequest, { params }: { params: { vendorUid: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ vendorUid: string }> }) {
   try {
     await connectDB();
-    const { vendorUid } = params;
+    const { vendorUid } = await params;
     
     // Check both vendorId and vendorUid because of inconsistency in models
     const priceList = await VendorPriceList.findOne({ 

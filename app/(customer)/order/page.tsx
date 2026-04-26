@@ -104,11 +104,13 @@ function OrderPageContent() {
   const [showLocationModal, setShowLocationModal] = React.useState(false);
   const [paymentMethod, setPaymentMethod] = React.useState<'wallet' | 'transfer' | 'card'>('wallet');
   const [isPaymentModalOpen, setIsPaymentModalOpen] = React.useState(false);
+  const [siteSettings, setSiteSettings] = React.useState<any>(null);
   const [isInitialized, setIsInitialized] = React.useState(false);
 
   React.useEffect(() => {
     const initPage = async () => {
       if (!vendorId) return;
+      db.getSiteSettings().then(setSiteSettings);
 
       const isNew = searchParams.get('new') === 'true';
 
@@ -148,8 +150,8 @@ function OrderPageContent() {
           ].filter(s => !s.disabled && s.price !== -1 && s.price !== undefined);
 
           return {
-            id: vs.id.toString(),
-            name: vs.name,
+            id: vs._id || vs.id,
+            name: vs.itemName || vs.name,
             desc: vs.category || 'Professional Cleaning',
             icon: vs.icon === 'Bed' ? Bed : (vs.icon === 'Shirt' ? Shirt : ShoppingBag),
             unit: 'unit',
@@ -317,11 +319,15 @@ function OrderPageContent() {
     await new Promise(resolve => setTimeout(resolve, delay));
     
     const itemsDescription = cart.filter(i => i.count > 0).map(i => {
+      const servicePrice = i.services.find((s: any) => s.name === i.selectedService)?.price || 0;
+      const itemTotalPrice = servicePrice * i.count;
+      
       if (i.subItems) {
-        const subDesc = i.subItems.filter(si => si.count > 0).map(si => `${si.count}x ${si.name}`).join(', ');
-        return `${subDesc} (${i.selectedService})`;
+        const activeSubs = i.subItems.filter((si: any) => si.count > 0);
+        const subDesc = activeSubs.map((si: any) => `${si.count}x ${si.name} (₦${(si.price * si.count).toLocaleString()})`).join(', ');
+        return `${subDesc} [${i.name} - ${i.selectedService}]`;
       }
-      return `${i.count}x ${i.name} (${i.selectedService})`;
+      return `${i.count}x ${i.name} [${i.selectedService}] - ₦${itemTotalPrice.toLocaleString()}`;
     }).join(', ');
 
     const newOrderId = generateId();
@@ -358,37 +364,36 @@ function OrderPageContent() {
     } as any;
 
     try {
-      if (paymentMethod === 'wallet') {
-        const newBalance = (Number(currentUserData.walletBalance) || 0) - totalPrice;
-        await db.updateUser(currentUserData.uid, { 
-          walletBalance: newBalance 
-        });
-
-        await db.recordTransaction(currentUserData.uid, {
-          type: 'payment',
-          amount: totalPrice,
-          desc: `Payment for Order #${newOrderId}`
-        });
-        setNotification({ message: `₦${totalPrice.toLocaleString()} deducted. Payment Successful!`, type: 'success' });
-      } else {
-        setNotification({ message: `Payment via ${paymentMethod} confirmed!`, type: 'success' });
-      }
-
-      await db.saveOrder(newOrder);
-      localStorage.setItem('qw_current_order_id', newOrderId);
-      setExistingOrderId(newOrderId);
+      // The API Handles wallet deduction and transaction recording
+      const result = await db.saveOrder(newOrder);
+      const serverOrderId = result.id;
+      
+      localStorage.setItem('qw_current_order_id', serverOrderId);
+      setExistingOrderId(serverOrderId);
       
       if (currentUser?.uid && vendorId) {
         localStorage.removeItem(`qw_pending_cart_${currentUser.uid}_${vendorId}`);
       }
       
+      setNotification({ message: `Payment via ${paymentMethod} successful!`, type: 'success' });
       setIsPaid(true);
       setIsPaying(false);
+
+      // Refresh user data to update balance in UI/Local Storage
+      if (currentUser?.uid) {
+        const updatedUser = await db.getUser(currentUser.uid);
+        if (updatedUser) {
+          localStorage.setItem('qw_user', JSON.stringify(updatedUser));
+          setCurrentUser(updatedUser);
+        }
+      }
+
       setTimeout(() => setNotification(null), 3000);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Payment failed:', error);
       setIsPaying(false);
-      setNotification({ message: "Payment failed. Please try again.", type: 'error' });
+      const errorMsg = error.message && error.message.startsWith('{') ? JSON.parse(error.message).error : error.message;
+      setNotification({ message: errorMsg || "Payment failed. Please try again.", type: 'error' });
     }
   }, [currentUser, totalPrice, itemsPrice, riderFee, vendorId, vendor, router, cart, pickupAddress, pickupLandmark, paymentMethod]);
 
@@ -950,18 +955,21 @@ function OrderPageContent() {
                 <div>
                   <label className="block font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-3">Select Landmark</label>
                   <div className="grid grid-cols-2 gap-3">
-                    {['Under-G', 'Adenike', 'Isale-General', 'Stadium', 'Bovina', 'LAUTECH Gate'].map((l) => (
-                      <button
-                        key={l}
-                        onClick={() => setPickupLandmark(l)}
-                        className={cn(
-                          "px-4 py-3 rounded-xl font-headline font-black text-xs transition-all border",
-                          pickupLandmark === l ? "bg-primary text-white border-primary shadow-lg" : "bg-surface-container border-primary/5 text-on-surface-variant"
-                        )}
-                      >
-                        {l}
-                      </button>
-                    ))}
+                    {(siteSettings?.landmarks || ['Under-G', 'Adenike', 'Isale-General', 'Stadium', 'Bovina', 'LAUTECH Gate']).filter((l: any) => typeof l === 'string' || l.active).map((l: any) => {
+                      const name = typeof l === 'string' ? l : l.name;
+                      return (
+                        <button
+                          key={name}
+                          onClick={() => setPickupLandmark(name)}
+                          className={cn(
+                            "px-4 py-3 rounded-xl font-headline font-black text-xs transition-all border",
+                            pickupLandmark === name ? "bg-primary text-white border-primary shadow-lg" : "bg-surface-container border-primary/5 text-on-surface-variant"
+                          )}
+                        >
+                          {name}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 

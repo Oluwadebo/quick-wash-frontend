@@ -95,9 +95,10 @@ export default function Sidebar() {
   } else if (user?.role === 'rider') {
     items = riderItems;
     roleLabel = 'Rider Station';
-  } else if (user?.role === 'admin') {
+  } else if (user?.role === 'admin' || user?.role === 'super-sub-admin') {
     items = adminItems;
-    roleLabel = user?.phoneNumber === '09012345678' ? 'Super Admin' : 'Moderator Admin';
+    const isSuperAdmin = user?.email === 'ogunweoluwadebo1@gmail.com' || user?.phoneNumber === '07048865686';
+    roleLabel = isSuperAdmin ? 'Super Admin' : (user?.role === 'super-sub-admin' ? 'Super Admin (Sub)' : 'Moderator Admin');
   }
 
   return (

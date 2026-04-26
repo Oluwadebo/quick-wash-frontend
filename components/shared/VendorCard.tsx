@@ -19,6 +19,8 @@ interface VendorCardProps {
   isStudentFriendly?: boolean;
   whatsappNumber?: string;
   isRaining?: boolean;
+  isShopClosed?: boolean;
+  returnTime?: string;
 }
 
 export default function VendorCard({
@@ -32,8 +34,12 @@ export default function VendorCard({
   turnaround,
   isStudentFriendly = true,
   whatsappNumber = '2348000000000',
-  isRaining = false
+  isRaining = false,
+  isShopClosed = false,
+  returnTime
 }: VendorCardProps) {
+  const isCurrentlyClosed = isRaining || isShopClosed;
+  
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -41,13 +47,18 @@ export default function VendorCard({
       viewport={{ once: true }}
       className={cn(
         "group bg-surface-container-low rounded-[2.5rem] overflow-hidden border border-primary/5 hover:border-primary/20 transition-all hover:shadow-2xl hover:shadow-primary/5 relative",
-        isRaining && "grayscale opacity-80"
+        isCurrentlyClosed && "grayscale opacity-80"
       )}
     >
-      {isRaining && (
+      {isCurrentlyClosed && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-surface/40 backdrop-blur-sm pointer-events-none">
-          <div className="bg-error text-white px-8 py-4 rounded-full font-headline font-black text-xs shadow-2xl rotate-[-5deg] border-4 border-white uppercase tracking-[0.2em] flex items-center gap-2">
-            <span className="animate-bounce">🌧️</span> CLOSED (RAINING)
+          <div className="bg-error text-white px-8 py-4 rounded-full font-headline font-black text-xs shadow-2xl rotate-[-5deg] border-4 border-white uppercase tracking-[0.2em] flex flex-col items-center gap-1">
+             <div className="flex items-center gap-2">
+                <span className="animate-bounce">🔒</span> CLOSED {isRaining ? '(RAINING)' : ''}
+             </div>
+             {!isRaining && returnTime && (
+                <span className="text-[10px] font-bold">Back at: {returnTime}</span>
+             )}
           </div>
         </div>
       )}
@@ -120,14 +131,14 @@ export default function VendorCard({
             WhatsApp
           </a>
           <Link
-            href={isRaining ? '#' : `/order?vendor=${id}&new=true`}
-            onClick={(e) => isRaining && e.preventDefault()}
+            href={isCurrentlyClosed ? '#' : `/order?vendor=${id}&new=true`}
+            onClick={(e) => isCurrentlyClosed && e.preventDefault()}
             className={cn(
               "signature-gradient text-white py-5 rounded-2xl font-headline font-black text-sm flex items-center justify-center gap-3 shadow-lg shadow-primary/20 active:scale-[0.98] transition-all",
-              isRaining && "bg-none bg-surface-container-high text-on-surface-variant shadow-none cursor-not-allowed"
+              isCurrentlyClosed && "bg-none bg-surface-container-high text-on-surface-variant shadow-none cursor-not-allowed"
             )}
           >
-            {isRaining ? 'Closed (Rain)' : 'Choose Vendor'}
+            {isCurrentlyClosed ? 'Closed' : 'Choose Vendor'}
             <ArrowRight className="w-5 h-5" />
           </Link>
         </div>

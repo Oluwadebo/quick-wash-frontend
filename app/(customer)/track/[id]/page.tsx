@@ -24,6 +24,8 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
   const [notification, setNotification] = React.useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
   const [handoverInput, setHandoverInput] = React.useState('');
   const [showIssueInput, setShowIssueInput] = React.useState(false);
+  const [showRatingModal, setShowRatingModal] = React.useState(false);
+  const [rating, setRating] = React.useState(5);
   const [issueDescription, setIssueDescription] = React.useState('');
 
   React.useEffect(() => {
@@ -161,9 +163,23 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
     }
 
     setOrder(updatedOrder);
-    setNotification({ message: 'Thank you for confirming! Your order is now completed.', type: 'success' });
+    setShowRatingModal(true);
+    setNotification({ message: 'Thank you for confirming! Please rate your experience.', type: 'success' });
     setTimeout(() => setNotification(null), 3000);
     window.dispatchEvent(new Event('storage'));
+  };
+
+  const handleSubmitRating = async () => {
+    if (!order) return;
+    
+    // Adjust vendor trust points based on rating
+    // 5 stars = +5, 4 stars = +2, 3 stars = 0, 2 stars = -5, 1 star = -10
+    const pointsMap: { [key: number]: number } = { 5: 5, 4: 2, 3: 0, 2: -5, 1: -10 };
+    await db.adjustTrustPoints(order.vendorId, pointsMap[rating] || 0);
+    
+    setShowRatingModal(false);
+    setNotification({ message: 'Thank you for your feedback!', type: 'success' });
+    setTimeout(() => setNotification(null), 3000);
   };
 
   const handleRaiseIssue = async () => {
@@ -464,6 +480,49 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
               }}
             />
           </div>
+        </div>
+      )}
+      {/* Rating Modal */}
+      {showRatingModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+          <motion.div 
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            className="absolute inset-0 bg-surface/80 backdrop-blur-xl"
+            onClick={() => setShowRatingModal(false)}
+          />
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="relative w-full max-w-sm bg-surface-container-low rounded-[3rem] p-10 border border-primary/10 shadow-2xl text-center"
+          >
+            <div className="w-20 h-20 bg-primary/10 text-primary rounded-full flex items-center justify-center mx-auto mb-6">
+              <ShieldCheck className="w-10 h-10" />
+            </div>
+            <h2 className="text-2xl font-headline font-black text-on-surface mb-2">Rate Experience</h2>
+            <p className="text-on-surface-variant text-sm font-medium mb-8">How was the laundry service?</p>
+            
+            <div className="flex justify-center gap-2 mb-10">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button 
+                  key={star}
+                  onClick={() => setRating(star)}
+                  className={cn(
+                    "w-12 h-12 rounded-xl flex items-center justify-center transition-all active:scale-95",
+                    rating >= star ? "bg-primary text-white" : "bg-surface-container-highest text-on-surface-variant"
+                  )}
+                >
+                  <Shield className="w-6 h-6 fill-current" />
+                </button>
+              ))}
+            </div>
+
+            <button 
+              onClick={handleSubmitRating}
+              className="w-full h-16 signature-gradient text-white rounded-2xl font-headline font-black text-sm shadow-lg active:scale-95 transition-transform"
+            >
+              SUBMIT RATING
+            </button>
+          </motion.div>
         </div>
       )}
     </div>

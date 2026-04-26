@@ -37,7 +37,9 @@ export default function VendorSelectionPage() {
             distance: 'Local',
             turnaround: u.turnaroundTime || '24h Standard',
             image: u.shopImage || `https://picsum.photos/seed/laundry-${u.phoneNumber}/800/600`,
-            isRaining: u.isRaining || false
+            isRaining: u.isRaining || false,
+            isShopClosed: u.isShopClosed || false,
+            returnTime: u.returnTime
           }));
           setVendors(approvedVendors);
         }

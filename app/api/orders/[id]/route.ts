@@ -5,9 +5,10 @@ import User from '@/lib/models/User';
 import Transaction from '@/lib/models/Transaction';
 import { verifyToken } from '@/lib/auth-utils';
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     await connectDB();
+    const { id } = await params;
     const token = req.headers.get('authorization')?.split(' ')[1];
     if (!token) return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     
@@ -15,7 +16,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (!decoded) return NextResponse.json({ message: 'Invalid token' }, { status: 401 });
 
     const data = await req.json();
-    const order = await Order.findOne({ id: params.id });
+    const order = await Order.findOne({ id });
     if (!order) return NextResponse.json({ message: 'Order not found' }, { status: 404 });
 
     const oldStatus = order.status;
@@ -25,7 +26,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (newStatus === 'washing' && !order.payoutReleased80) {
       const vendor = await User.findOne({ uid: order.vendorId });
       if (vendor) {
-        const payoutAmount = order.itemsPrice * 0.8;
+        const payoutAmount = Math.floor((order.itemsPrice || 0) * 0.8);
         vendor.walletBalance = (vendor.walletBalance || 0) + payoutAmount;
         await vendor.save();
         
@@ -42,11 +43,31 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       }
     }
 
+    // Rider Fee: 50% Release when status moves to 'picked_up'
+    if (newStatus === 'picked_up' && oldStatus !== 'picked_up') {
+      const rider = await User.findOne({ uid: order.riderUid || data.riderUid });
+      if (rider) {
+        const riderFee = order.riderFee || 1000;
+        const payoutAmount = Math.floor(riderFee * 0.5);
+        rider.walletBalance = (rider.walletBalance || 0) + payoutAmount;
+        await rider.save();
+
+        await Transaction.create({
+          userId: rider.uid,
+          amount: payoutAmount,
+          type: 'deposit',
+          desc: `Rider Fee (50%) - Order #${order.id}`,
+          status: 'completed'
+        });
+        order.pickedUpAt = new Date();
+      }
+    }
+
     // 20% Payout Logic: Release when status moves to 'completed'
     if (newStatus === 'completed' && !order.payoutReleased20) {
       const vendor = await User.findOne({ uid: order.vendorId });
       if (vendor) {
-        const payoutAmount = order.itemsPrice * 0.2;
+        const payoutAmount = (order.itemsPrice || 0) - Math.floor((order.itemsPrice || 0) * 0.8); // Remaining 20%
         vendor.walletBalance = (vendor.walletBalance || 0) + payoutAmount;
         await vendor.save();
         
@@ -60,6 +81,23 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         
         order.payoutReleased20 = true;
         order.completedAt = new Date();
+      }
+
+      // Remaining 50% Rider Fee on completion
+      const rider = await User.findOne({ uid: order.riderUid || data.riderUid });
+      if (rider) {
+        const riderFee = order.riderFee || 1000;
+        const payoutAmount = riderFee - Math.floor(riderFee * 0.5); // Remaining 50%
+        rider.walletBalance = (rider.walletBalance || 0) + payoutAmount;
+        await rider.save();
+
+        await Transaction.create({
+          userId: rider.uid,
+          amount: payoutAmount,
+          type: 'deposit',
+          desc: `Final Rider Fee (50%) - Order #${order.id}`,
+          status: 'completed'
+        });
       }
     }
 
@@ -98,7 +136,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     // Dispute Resolution (Admin only)
     if (data.action === 'resolve_dispute' && decoded.role === 'admin') {
       const { resolution, customAmount } = data;
-      const isSuper = decoded.email === 'ogunwedebo21@gmail.com';
+      const isSuper = decoded.email === 'ogunweoluwadebo1@gmail.com' || decoded.phoneNumber === '07048865686';
       
       if (resolution === 'refund' || resolution === 'partial') {
         const amountToRefund = resolution === 'refund' ? order.totalPrice : (customAmount || 0);
@@ -165,6 +203,28 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
             order.payoutReleased20 = true;
           }
         }
+      }
+    }
+
+    // Rider Penalty / Return logic
+    if (newStatus === 'rider_assign_pickup' && oldStatus !== 'rider_assign_pickup' && decoded.role === 'rider') {
+      const rider = await User.findOne({ uid: decoded.uid });
+      if (rider) {
+        const penalty = 200; // Penalty for returning order
+        rider.walletBalance = (rider.walletBalance || 0) - penalty;
+        await rider.save();
+        
+        await Transaction.create({
+          userId: rider.uid,
+          amount: penalty,
+          type: 'withdrawal',
+          desc: `Penalty: Order Return (#${order.id})`,
+          status: 'completed'
+        });
+        
+        order.riderUid = undefined;
+        order.riderName = undefined;
+        order.riderPhone = undefined;
       }
     }
 
