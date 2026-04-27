@@ -1,36 +1,27 @@
-import express from "express";
-import Order from "../models/Order";
+import express from 'express';
+import {
+  updateOrderStatus,
+  getOrders,
+  createOrder,
+  getOrderById,
+  claimOrder,
+  rateOrder,
+  returnOrder,
+  submitDispute,
+  autoCancelOrders
+} from '../controllers/OrderController.js';
+import { auth, checkRole } from '../middleware/auth.js';
 
 const router = express.Router();
 
-router.get("/", async (req, res) => {
-  try {
-    const { userId, role } = req.query;
-    let query = {};
-    
-    if (role === 'customer') query = { customerUid: userId };
-    else if (role === 'vendor') query = { vendorId: userId };
-    else if (role === 'rider') query = { riderUid: userId };
-
-    const orders = await Order.find(query).sort({ createdAt: -1 });
-    res.json(orders);
-  } catch (err: any) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-router.patch("/:id", async (req, res) => {
-  try {
-    const order = await Order.findOneAndUpdate(
-      { id: req.params.id },
-      { $set: req.body },
-      { new: true }
-    );
-    if (!order) return res.status(404).json({ message: "Order not found" });
-    res.json(order);
-  } catch (err: any) {
-    res.status(500).json({ message: err.message });
-  }
-});
+router.get('/', auth, getOrders);
+router.post('/', auth, checkRole(['customer']), createOrder);
+router.get('/:id', auth, getOrderById);
+router.patch('/:id/status', auth, updateOrderStatus);
+router.post('/:id/claim', auth, claimOrder);
+router.post('/:id/return', auth, returnOrder);
+router.post('/:id/rate', auth, rateOrder);
+router.post('/dispute', auth, submitDispute);
+router.post('/auto-cancel', autoCancelOrders);
 
 export default router;

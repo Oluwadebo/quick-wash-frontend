@@ -11,7 +11,6 @@ const ORDER_STATUS_STEPS = [
   'ready',
   'rider_assign_delivery',
   'out_for_delivery',
-  'delivered',
   'completed'
 ];
 
@@ -113,31 +112,6 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
       order.code4 = Math.floor(1000 + Math.random() * 9000).toString();
     }
 
-     if (status === 'delivered') {
-      if (!handoverCode || (handoverCode !== order.code4 && handoverCode !== '9999')) {
-        return res.status(400).json({ error: 'Invalid delivery code' });
-      }
-      order.deliveredAt = new Date();
-
-      // Rider gets second 50% fee
-      if (order.riderUid) {
-        const rider = await User.findOne({ uid: order.riderUid });
-        if (rider && !order.riderFeePaid2) {
-          const payout = order.riderFee * 0.5;
-          rider.walletBalance += payout;
-          await rider.save();
-          await Transaction.create({
-            uid: rider.uid,
-            type: 'deposit',
-            amount: payout,
-            desc: `Rider Delivery Fee (Final 50%) - Order #${order.id}`,
-            status: 'completed'
-          });
-          order.riderFeePaid2 = true;
-        }
-      }
-    }
-
     if (status === 'completed') {
       // Handover 4: Rider -> Customer (Code 4)
       if (!handoverCode || (handoverCode !== order.code4 && handoverCode !== '9999')) {
@@ -160,6 +134,24 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
           status: 'completed'
         });
         order.payoutReleased20 = true;
+      }
+
+      // Final 50% Rider Fee for Delivery Trip
+      if (order.riderUid) {
+        const rider = await User.findOne({ uid: order.riderUid });
+        if (rider && !order.riderFeePaid2) {
+          const payout = order.riderFee * 0.5;
+          rider.walletBalance += payout;
+          await rider.save();
+          await Transaction.create({
+            uid: rider.uid,
+            type: 'deposit',
+            amount: payout,
+            desc: `Rider Delivery Fee (Final 50%) - Order #${order.id}`,
+            status: 'completed'
+          });
+          order.riderFeePaid2 = true;
+        }
       }
     }
 
@@ -187,22 +179,14 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
 };
 
 export const getOrders = async (req: any, res: Response) => {
-  try {
-    const { userId, role } = req.query;
-    if (!userId || !role) {
-        return res.status(400).json({ message: "User ID and Role are required" });
-    }
+  const { role, uid } = req.user;
+  let query = {};
+  if (role === 'customer') query = { customerUid: uid };
+  if (role === 'vendor') query = { vendorId: uid };
+  if (role === 'rider') query = { riderUid: uid };
 
-    let query = {};
-    if (role === 'customer') query = { customerUid: userId };
-    else if (role === 'vendor') query = { vendorId: userId };
-    else if (role === 'rider') query = { riderUid: userId };
-
-    const orders = await Order.find(query).sort({ createdAt: -1 });
-    res.json(orders);
-} catch (err: any) {
-    res.status(500).json({ message: err.message });
-}
+  const orders = await Order.find(query).sort({ createdAt: -1 });
+  res.json(orders);
 };
 
 export const createOrder = async (req: Request, res: Response) => {

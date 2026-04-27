@@ -1,29 +1,12 @@
-import express from "express";
-import SiteSetting from "../models/SiteSetting";
+import express from 'express';
+import { getSiteSettings, updateSiteSettings, submitContactForm, getStats } from '../controllers/SystemController.js';
+import { auth, checkRole } from '../middleware/auth.js';
 
 const router = express.Router();
 
-router.get("/settings", async (req, res) => {
-  try {
-    let settings = await SiteSetting.findOne({ id: 'global' });
-    if (!settings) settings = await SiteSetting.create({ id: 'global' });
-    res.json(settings);
-  } catch (err: any) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-router.patch("/settings", async (req, res) => {
-  try {
-    const settings = await SiteSetting.findOneAndUpdate(
-      { id: 'global' },
-      { $set: req.body },
-      { new: true, upsert: true }
-    );
-    res.json(settings);
-  } catch (err: any) {
-    res.status(500).json({ message: err.message });
-  }
-});
+router.get('/settings', getSiteSettings);
+router.patch('/settings', auth, checkRole(['admin']), updateSiteSettings);
+router.post('/contact', submitContactForm);
+router.get('/stats', getStats);
 
 export default router;

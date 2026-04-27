@@ -1,42 +1,33 @@
-import express from "express";
-import User from "../models/User";
+import express from 'express';
+import { 
+  signup, 
+  login, 
+  getUserProfile, 
+  updateProfile, 
+  getAllUsers, 
+  getUserById,
+  updateUserById,
+  deleteUser,
+  approveUser,
+  processRecovery,
+  adjustTrust
+} from '../controllers/UserController.js';
+import { auth, checkRole } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// Get all users
-router.get("/", async (req, res) => {
-  try {
-    const users = await User.find().select("-password");
-    res.json(users);
-  } catch (err: any) {
-    res.status(500).json({ message: err.message });
-  }
-});
+router.post('/signup', signup);
+router.post('/login', login);
+router.get('/profile', auth, getUserProfile);
+router.patch('/profile', auth, updateProfile);
 
-// Get single user
-router.get("/:uid", async (req, res) => {
-  try {
-    const user = await User.findOne({ uid: req.params.uid }).select("-password");
-    if (!user) return res.status(404).json({ message: "User not found" });
-    res.json(user);
-  } catch (err: any) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-// Update user
-router.patch("/:uid", async (req, res) => {
-  try {
-    const user = await User.findOneAndUpdate(
-      { uid: req.params.uid },
-      { $set: req.body },
-      { new: true }
-    ).select("-password");
-    if (!user) return res.status(404).json({ message: "User not found" });
-    res.json(user);
-  } catch (err: any) {
-    res.status(500).json({ message: err.message });
-  }
-});
+// Admin routes
+router.get('/', auth, checkRole(['admin']), getAllUsers);
+router.get('/:uid', auth, checkRole(['admin']), getUserById);
+router.patch('/:uid', auth, checkRole(['admin']), updateUserById);
+router.delete('/:uid', auth, checkRole(['admin']), deleteUser);
+router.patch('/:uid/approve', auth, checkRole(['admin']), approveUser);
+router.post('/:uid/recovery', auth, processRecovery);
+router.post('/:uid/trust', auth, adjustTrust);
 
 export default router;

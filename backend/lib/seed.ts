@@ -1,11 +1,11 @@
-import User from "../models/User";
+import User from "../models/User.js";
 import bcrypt from "bcryptjs";
 
 export const seedAdmin = async () => {
   try {
     const adminEmail = "ogunwedebo21@gmail.com";
     const existingAdmin = await User.findOne({ email: adminEmail });
-    
+
     if (!existingAdmin) {
       const hashedPassword = await bcrypt.hash("admin123", 10);
       await User.create({
@@ -13,7 +13,7 @@ export const seedAdmin = async () => {
         email: adminEmail,
         phoneNumber: "09012345678",
         password: hashedPassword,
-        role: "admin",
+        role: "super admin",
         isApproved: true,
         status: "active",
         trustPoints: 100,

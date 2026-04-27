@@ -11,12 +11,12 @@ import mongoose from "mongoose";
 import morgan from "morgan";
 
 // Routes Imports
-import { seedAdmin } from "./lib/seed";
-import orderRoutes from "./routes/orderRoutes";
-import priceRoutes from "./routes/priceRoutes";
-import systemRoutes from "./routes/systemRoutes";
-import userRoutes from "./routes/userRoutes";
-import walletRoutes from "./routes/walletRoutes";
+import { seedAdmin } from "./lib/seed.js";
+import orderRoutes from "./routes/orderRoutes.js";
+import priceRoutes from "./routes/priceRoutes.js";
+import systemRoutes from "./routes/systemRoutes.js";
+import userRoutes from "./routes/userRoutes.js";
+import walletRoutes from "./routes/walletRoutes.js";
 
 dotenv.config();
 
@@ -78,7 +78,7 @@ const startServer = async () => {
 
     await seedAdmin();
 
-    console.log(`Starting backend server on port ${PORT}...`);
+    // console.log(`Starting backend server on port ${PORT}...`);
     app.listen(Number(PORT), "0.0.0.0", () => {
       console.log(
         `✅ Backend server successfully running on http://0.0.0.0:${PORT}`,

@@ -1,7 +1,7 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
-export interface ISiteSetting extends Document {
-  id: string; // 'global'
+export interface ISiteSettings extends Document {
+   id: string; // 'global'
   name: string;
   logo: string;
   primaryColor: string;
@@ -13,7 +13,7 @@ export interface ISiteSetting extends Document {
   landmarks: { id: string; name: string; active: boolean }[];
 }
 
-const SiteSettingSchema: Schema = new Schema({
+const SiteSettingsSchema: Schema = new Schema({
   id: { type: String, default: 'global', unique: true },
   name: { type: String, default: 'Quick-Wash' },
   logo: { type: String, default: '' },
@@ -30,4 +30,4 @@ const SiteSettingSchema: Schema = new Schema({
   }]
 }, { timestamps: true });
 
-export default mongoose.models.SiteSetting || mongoose.model<ISiteSetting>('SiteSetting', SiteSettingSchema);
+export default mongoose.models.SiteSettings || mongoose.model<ISiteSettings>('SiteSettings', SiteSettingsSchema);

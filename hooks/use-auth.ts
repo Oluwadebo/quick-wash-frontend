@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { API_URLS } from '@/lib/api';
 
 export type UserRole = 'customer' | 'vendor' | 'rider' | 'admin' | 'super-sub-admin';
 
@@ -57,7 +58,7 @@ export function useAuth() {
   const signup = async (data: Omit<UserData, 'uid'>) => {
     setIsProcessing(true);
     setError(null);
-    
+
     // Validation
     if (!data.phoneNumber || !/^\d{11}$/.test(data.phoneNumber)) {
       setError('Phone number must be exactly 11 digits!');
@@ -80,7 +81,7 @@ export function useAuth() {
     }
 
     try {
-      const response = await fetch('/api/auth/signup', {
+      const response = await fetch(API_URLS.signup, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -93,7 +94,7 @@ export function useAuth() {
       }
 
       const { user: newUser, token } = result;
-      
+
       if (token) localStorage.setItem('qw_token', token);
 
       if (!newUser.isApproved) {
@@ -113,9 +114,9 @@ export function useAuth() {
   const login = async (identifier: string, password?: string) => {
     setIsProcessing(true);
     setError(null);
-    
+
     try {
-      const response = await fetch('/api/auth/login', {
+      const response = await fetch(API_URLS.login, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ identifier, password }),
@@ -128,7 +129,7 @@ export function useAuth() {
       }
 
       const { user: foundUser, token } = result;
-      
+
       if (token) localStorage.setItem('qw_token', token);
 
       if (!foundUser.isApproved) {
@@ -139,7 +140,7 @@ export function useAuth() {
 
       localStorage.setItem('qw_user', JSON.stringify(foundUser));
       setUser(foundUser);
-      
+
       // Role-based redirection
       if (foundUser.role === 'admin' || foundUser.role === 'super-sub-admin') router.push('/admin');
       else if (foundUser.role === 'vendor') router.push('/vendor');
@@ -189,7 +190,7 @@ export function useAuth() {
 
     const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
     const handleActivity = () => resetTimer();
-    
+
     events.forEach(event => document.addEventListener(event, handleActivity));
 
     resetTimer();
@@ -202,7 +203,7 @@ export function useAuth() {
 
   const approveUser = (phoneNumber: string) => {
     const users = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
-    const updatedUsers = users.map((u: any) => 
+    const updatedUsers = users.map((u: any) =>
       u.phoneNumber === phoneNumber ? { ...u, isApproved: true } : u
     );
     localStorage.setItem('qw_all_users', JSON.stringify(updatedUsers));

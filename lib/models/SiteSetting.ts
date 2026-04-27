@@ -10,6 +10,8 @@ export interface ISiteSetting extends Document {
   emergencyAlert: string;
   maintenanceMode: boolean;
   announcement: string;
+  commissionRate: number;
+  serviceFee: number;
   landmarks: { id: string; name: string; active: boolean }[];
 }
 
@@ -23,6 +25,8 @@ const SiteSettingSchema: Schema = new Schema({
   emergencyAlert: { type: String, default: '' },
   maintenanceMode: { type: Boolean, default: false },
   announcement: { type: String, default: 'Welcome to Quick-Wash! Your campus laundry partner.' },
+  commissionRate: { type: Number, default: 20 },
+  serviceFee: { type: Number, default: 0 },
   landmarks: [{
     id: String,
     name: String,
@@ -31,3 +35,4 @@ const SiteSettingSchema: Schema = new Schema({
 }, { timestamps: true });
 
 export default mongoose.models.SiteSetting || mongoose.model<ISiteSetting>('SiteSetting', SiteSettingSchema);
+// export default mongoose.models.SiteSetting || mongoose.model('SiteSetting', SiteSettingSchema);
