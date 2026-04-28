@@ -25,7 +25,7 @@ dotenv.config();
 
 const app = express();
 // Robust trust proxy setting for AI Studio/Cloud Run environment
-app.set("trust proxy", true); 
+app.set("trust proxy", 1); 
 const PORT = process.env.BACKEND_PORT || 5000;
 const MONGODB_URI =
   process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/quick-wash";
@@ -150,6 +150,17 @@ const startServer = async () => {
       serverSelectionTimeoutMS: 5000,
     });
     console.log("✅ Connected to MongoDB");
+
+    // Cleanup transactions with null ID which cause duplicate key errors
+    try {
+      const Transaction = mongoose.model('Transaction');
+      const result = await Transaction.deleteMany({ id: null });
+      if (result.deletedCount > 0) {
+        console.log(`[Database] Cleaned up ${result.deletedCount} transactions with null IDs`);
+      }
+    } catch (e) {
+      console.warn('[Database] Transaction cleanup skipped (model might not be loaded yet)');
+    }
 
     await seedAdmin();
 

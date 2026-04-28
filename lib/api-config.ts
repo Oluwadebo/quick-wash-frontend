@@ -3,9 +3,9 @@ const isAISPreview = typeof window !== "undefined" && window.location.hostname.i
 
 // Use a relative path during development in AIS to trigger Next.js rewrites/proxies
 // or use the production URL if deployed.
-const API_BASE_URL = isAISPreview 
-    ? "" // Relative path handles proxying in AIS
-    : (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000");
+const API_BASE_URL = (typeof window !== "undefined" && (window.location.hostname.includes("ais-") || window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"))
+    ? "" // Use relative paths for local dev and AIS proxying
+    : (process.env.NEXT_PUBLIC_API_URL || ""); 
 
 export const API_URLS = {
   base: `${API_BASE_URL}/api`,

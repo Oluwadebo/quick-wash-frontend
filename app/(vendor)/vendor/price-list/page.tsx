@@ -31,9 +31,13 @@ interface Service {
   ironPrice: number;
   washIronPrice: number;
   whitePremium: number;
+  starchIronPrice: number;
+  starchWashIronPrice: number;
   washDisabled?: boolean;
   ironDisabled?: boolean;
   washIronDisabled?: boolean;
+  starchIronDisabled?: boolean;
+  starchWashIronDisabled?: boolean;
   subItems?: SubService[];
   icon: string;
   color: string;
@@ -45,6 +49,7 @@ const defaultServices: Service[] = [
     name: 'Shirts & Tops', 
     category: 'General', 
     washPrice: 200, ironPrice: 150, washIronPrice: 300, whitePremium: 100,
+    starchIronPrice: 250, starchWashIronPrice: 400,
     icon: 'Shirt', 
     color: 'bg-primary-container text-on-primary-container' 
   },
@@ -53,6 +58,7 @@ const defaultServices: Service[] = [
     name: 'Trousers & Jeans', 
     category: 'General', 
     washPrice: 250, ironPrice: 200, washIronPrice: 400, whitePremium: 150,
+    starchIronPrice: 300, starchWashIronPrice: 500,
     icon: 'ShoppingBag', 
     color: 'bg-secondary-container text-on-secondary-container' 
   },
@@ -61,6 +67,7 @@ const defaultServices: Service[] = [
     name: 'Beddings', 
     category: 'Special', 
     washPrice: 0, ironPrice: 0, washIronPrice: 0, whitePremium: 0,
+    starchIronPrice: 0, starchWashIronPrice: 0,
     subItems: [
       { id: 'bedsheet', name: 'Bedsheet', price: 400 },
       { id: 'duvet', name: 'Duvet', price: 1200 },
@@ -100,12 +107,14 @@ export default function PriceListPage() {
     }
   };
 
-  const handleToggleOption = (id: string, field: 'wash' | 'iron' | 'washIron') => {
+  const handleToggleOption = (id: string, field: 'wash' | 'iron' | 'washIron' | 'starchIron' | 'starchWashIron') => {
     const updated = services.map(s => {
       if (s.id === id) {
         if (field === 'wash') return { ...s, washDisabled: !s.washDisabled };
         if (field === 'iron') return { ...s, ironDisabled: !s.ironDisabled };
         if (field === 'washIron') return { ...s, washIronDisabled: !s.washIronDisabled };
+        if (field === 'starchIron') return { ...s, starchIronDisabled: !s.starchIronDisabled };
+        if (field === 'starchWashIron') return { ...s, starchWashIronDisabled: !s.starchWashIronDisabled };
       }
       return s;
     });
@@ -118,7 +127,7 @@ export default function PriceListPage() {
     }
   };
 
-  const handleUpdatePrice = (id: string, field: 'washPrice' | 'ironPrice' | 'washIronPrice' | 'whitePremium', value: number) => {
+  const handleUpdatePrice = (id: string, field: 'washPrice' | 'ironPrice' | 'washIronPrice' | 'starchIronPrice' | 'starchWashIronPrice' | 'whitePremium', value: number) => {
     const updated = services.map(s => {
       if (s.id === id) {
         return { ...s, [field]: value };
@@ -192,6 +201,8 @@ export default function PriceListPage() {
       washPrice: 0,
       ironPrice: 0,
       washIronPrice: 0,
+      starchIronPrice: 0,
+      starchWashIronPrice: 0,
       whitePremium: 0,
       icon: 'Droplets',
       color: 'bg-surface-container-highest text-on-surface'
@@ -303,6 +314,18 @@ export default function PriceListPage() {
                           <p className="text-lg font-headline font-black text-primary">₦{service.washIronPrice}</p>
                         </div>
                       )}
+                      {!service.starchIronDisabled && (
+                        <div className="bg-white p-4 rounded-2xl border border-primary/5 text-center">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">S+Iron</p>
+                          <p className="text-lg font-headline font-black text-primary">₦{service.starchIronPrice || 0}</p>
+                        </div>
+                      )}
+                      {!service.starchWashIronDisabled && (
+                        <div className="bg-white p-4 rounded-2xl border border-primary/5 text-center">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">S+W+I</p>
+                          <p className="text-lg font-headline font-black text-primary">₦{service.starchWashIronPrice || 0}</p>
+                        </div>
+                      )}
                       {service.whitePremium > 0 && (
                         <div className="bg-white p-4 rounded-2xl border border-primary/5 text-center">
                           <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">White</p>
@@ -361,6 +384,8 @@ export default function PriceListPage() {
                               { label: 'Wash', val: service.washPrice, field: 'washPrice', disabled: service.washDisabled, toggle: 'wash' },
                               { label: 'Iron', val: service.ironPrice, field: 'ironPrice', disabled: service.ironDisabled, toggle: 'iron' },
                               { label: 'Wash + Iron', val: service.washIronPrice, field: 'washIronPrice', disabled: service.washIronDisabled, toggle: 'washIron' },
+                              { label: 'Starch + Iron', val: service.starchIronPrice, field: 'starchIronPrice', disabled: service.starchIronDisabled, toggle: 'starchIron' },
+                              { label: 'Starch+Wash+Iron', val: service.starchWashIronPrice, field: 'starchWashIronPrice', disabled: service.starchWashIronDisabled, toggle: 'starchWashIron' },
                               { label: 'White Premium', val: service.whitePremium, field: 'whitePremium' }
                            ].map(item => (
                               <div key={item.field} className={cn(

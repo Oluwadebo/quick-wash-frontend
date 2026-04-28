@@ -1,5 +1,6 @@
 import express from "express";
 import mongoose from "mongoose";
+import { v4 as uuidv4 } from 'uuid';
 import Order from "../models/Order";
 import User from "../models/User";
 import Transaction from "../models/Transaction";
@@ -20,7 +21,7 @@ router.get("/", async (req, res) => {
     }
 
     const orders = await Order.find(query).sort({ createdAt: -1 });
-    res.json(orders);
+    res.json(orders.map(o => o.toObject ? o.toObject() : o));
   } catch (err: any) {
     res.status(500).json({ message: err.message });
   }
@@ -108,6 +109,7 @@ router.post("/", async (req, res) => {
     // Record Transaction
     if (isWalletPayment) {
       await Transaction.create({
+        id: uuidv4(),
         userId: customerUid,
         type: 'withdrawal',
         amount: price,
@@ -146,7 +148,7 @@ router.get("/:id", async (req, res) => {
       return res.status(404).json({ message: `Order not found with ID: ${id}` });
     }
     
-    res.json(order);
+    res.json(order.toObject());
   } catch (err: any) {
     console.error(`[Order] GET lookup error for ${req.params.id}:`, err);
     res.status(500).json({ message: err.message });
@@ -180,7 +182,7 @@ router.patch("/:id", async (req, res) => {
     }
     
     console.log(`[Order] PATCH success: ${order.id} status changed to ${order.status}`);
-    res.json(order);
+    res.json(order.toObject());
   } catch (err: any) {
     console.error(`[Order] PATCH error for ${req.params.id}:`, err);
     res.status(500).json({ message: err.message });
@@ -206,6 +208,7 @@ router.post("/dispute", async (req, res) => {
         customer.walletBalance = (customer.walletBalance || 0) + amountToRefund;
         await customer.save();
         await Transaction.create({
+          id: uuidv4(),
           userId: customer.uid,
           amount: amountToRefund,
           type: 'deposit',
@@ -224,6 +227,7 @@ router.post("/dispute", async (req, res) => {
             order.payoutReleased20 = true;
             await vendor.save();
             await Transaction.create({
+              id: uuidv4(),
               userId: vendor.uid,
               amount: remainingForVendor,
               type: 'deposit',
@@ -245,6 +249,7 @@ router.post("/dispute", async (req, res) => {
           vendor.walletBalance = (vendor.walletBalance || 0) + remaining20;
           await vendor.save();
           await Transaction.create({
+            id: uuidv4(),
             userId: vendor.uid,
             amount: remaining20,
             type: 'deposit',
@@ -258,8 +263,28 @@ router.post("/dispute", async (req, res) => {
     }
 
     await order.save();
-    res.json(order);
+    res.json(order.toObject());
   } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.delete("/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    console.log(`[Order] DELETE request for ID: ${id}`);
+    let order = await Order.findOneAndDelete({ id: id });
+    if (!order && mongoose.Types.ObjectId.isValid(id)) {
+      order = await Order.findByIdAndDelete(id);
+    }
+    if (!order) {
+      console.warn(`[Order] DELETE failed: Order not found for ID: ${id}`);
+      return res.status(404).json({ message: "Order not found" });
+    }
+    console.log(`[Order] DELETE success for ID: ${id}`);
+    res.json({ message: "Order deleted successfully" });
+  } catch (err: any) {
+    console.error(`[Order] DELETE error for ${req.params.id}:`, err);
     res.status(500).json({ message: err.message });
   }
 });

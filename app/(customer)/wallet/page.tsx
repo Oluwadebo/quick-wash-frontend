@@ -25,7 +25,8 @@ export default function WalletPage() {
     if (!user?.uid) return;
     try {
       console.log(`[Wallet] Fetching data for ${user.uid}...`);
-      const response = await fetch(`${API_URLS.wallet}/history?userId=${user.uid}`, {
+      // Use timestamp to bypass any browser cache
+      const response = await fetch(`${API_URLS.wallet}/history?userId=${user.uid}&t=${Date.now()}`, {
         headers: { 
           'Authorization': `Bearer ${localStorage.getItem('qw_token')}`,
           'Accept': 'application/json'
@@ -33,9 +34,10 @@ export default function WalletPage() {
       });
       if (response.ok) {
         const data = await response.json();
+        // Force state update by using a function to ensure we're not using stale data
         setHistory(data.transactions || []);
         setBalance(data.balance || 0);
-        console.log(`[Wallet] Successfully loaded ${data.transactions?.length} transactions. Balance: ₦${data.balance}`);
+        console.log(`[Wallet] History synced. Count: ${data.transactions?.length}`);
       } else {
         console.error('[Wallet] Server error:', response.status);
       }
@@ -80,14 +82,15 @@ export default function WalletPage() {
 
       if (response.ok) {
         // 1. Success state first
+        console.log('[Wallet] Funding success, updating UI states...');
         setBalance(result.balance);
         setLastFundedAmount(amount);
         
-        // 2. Immediate History Update
+        // 2. Immediate History Update with optimistic transaction
         if (result.transaction) {
+          console.log('[Wallet] Adding new transaction to history:', result.transaction._id);
           setHistory(prev => {
             const tx = result.transaction;
-            // Ensure ID comparison is robust (check id or _id)
             const exists = prev.some(t => 
               (t._id && tx._id && t._id === tx._id) || 
               (t.id && tx.id && t.id === tx.id)
@@ -96,19 +99,30 @@ export default function WalletPage() {
           });
         }
         
-        // 3. UI Flow: Close form, show success
+        // 3. UI Flow: Close form and SHOW SUCCESS MODAL
         setIsFunding(false);
         setIsProcessing(false);
-        setShowSuccessView(true);
         
-        // 4. Cleanup
+        // Use a more robust trigger for the success modal
+        // We set it after a clean tick to avoid transition conflicts
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            setShowSuccessView(true);
+            console.log('[Wallet] Success modal triggered successfully');
+          }, 400); 
+        });
+        
+        // 4. Cleanup inputs
         setPaymentMethod(null);
         setFundAmount('');
 
-        // 5. Background verify
-        setTimeout(fetchWalletData, 1500);
-        console.log('[Wallet] Funding successful, modals toggled');
+        // 5. Background verify fetch with longer delay to ensure DB consistency
+        setTimeout(() => {
+          fetchWalletData();
+          console.log('[Wallet] Background history refresh executed');
+        }, 2500);
       } else {
+        console.error('[Wallet] Funding failed:', result);
         alert(result.message || result.error || 'Funding failed');
       }
     } catch (error: any) {

@@ -92,8 +92,16 @@ export default function VendorDashboard() {
         const vendorPrices = await db.getVendorPriceList(currentUser.uid);
         setServices(vendorPrices);
         
-        const gServices = JSON.parse(localStorage.getItem('qw_global_services') || '["Shirt", "Jeans", "Native", "Suit", "Duvet", "Bedsheet"]');
-        setGlobalServices(gServices);
+        // Fetch global services from database
+        try {
+          const settings = await db.getSiteSettings();
+          const gServices = settings.globalServices && settings.globalServices.length > 0 
+            ? settings.globalServices 
+            : ["Shirt", "Jeans", "Native", "Suit", "Duvet", "Bedsheet"];
+          setGlobalServices(gServices);
+        } catch (e) {
+          setGlobalServices(["Shirt", "Jeans", "Native", "Suit", "Duvet", "Bedsheet"]);
+        }
 
         const me = await db.getUser(currentUser.uid);
         if (me) {
@@ -220,12 +228,10 @@ export default function VendorDashboard() {
     await db.saveVendorPriceList(currentUser.uid, updated);
     setServices(updated);
 
-    // Update global services if new
-    const gServices = JSON.parse(localStorage.getItem('qw_global_services') || '[]');
-    if (!gServices.includes(editingService.name)) {
-      const newGServices = [...gServices, editingService.name];
-      localStorage.setItem('qw_global_services', JSON.stringify(newGServices));
-      setGlobalServices(newGServices);
+    // We don't update global services in the database as a vendor for security,
+    // but we can update the local state for the current session if they added something new.
+    if (!globalServices.includes(editingService.name)) {
+      setGlobalServices(prev => [...prev, editingService.name]);
     }
 
     setIsPriceModalOpen(false);
@@ -530,6 +536,26 @@ export default function VendorDashboard() {
                           <span className={cn("text-[10px] font-black uppercase tracking-widest", service.washIronDisabled ? "text-on-surface-variant" : "text-primary")}>Wash + Iron</span>
                           <span className={cn("font-headline font-black", service.washIronDisabled ? "text-error" : "text-primary")}>
                             {service.washIronDisabled ? 'DISABLED' : `₦${service.washIronPrice}`}
+                          </span>
+                        </div>
+
+                        {/* New Starch Options */}
+                        <div className={cn(
+                          "flex justify-between items-center p-4 rounded-2xl border",
+                          service.starchIronDisabled ? "bg-surface-container-highest/50 border-error/10 opacity-60" : "bg-surface-container-lowest border-primary/5"
+                        )}>
+                          <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Starch + Iron Only</span>
+                          <span className={cn("font-headline font-black", service.starchIronDisabled ? "text-error" : "text-primary")}>
+                            {service.starchIronDisabled ? 'DISABLED' : `₦${service.starchIronPrice || 0}`}
+                          </span>
+                        </div>
+                        <div className={cn(
+                          "flex justify-between items-center p-4 rounded-2xl border",
+                          service.starchWashIronDisabled ? "bg-surface-container-highest/50 border-error/10 opacity-60" : "bg-surface-container-lowest border-primary/5"
+                        )}>
+                          <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Starch + Wash + Iron</span>
+                          <span className={cn("font-headline font-black", service.starchWashIronDisabled ? "text-error" : "text-primary")}>
+                            {service.starchWashIronDisabled ? 'DISABLED' : `₦${service.starchWashIronPrice || 0}`}
                           </span>
                         </div>
                         
@@ -1354,7 +1380,15 @@ export default function VendorDashboard() {
                     <button 
                       key={s}
                       onClick={() => {
-                        setEditingService({ name: s, washPrice: 0, ironPrice: 0, washIronPrice: 0, whitePremium: 0 });
+                        setEditingService({ 
+                          name: s, 
+                          washPrice: 0, 
+                          ironPrice: 0, 
+                          washIronPrice: 0, 
+                          whitePremium: 0,
+                          starchIronPrice: 0,
+                          starchWashIronPrice: 0
+                        });
                         setIsServicePickerOpen(false);
                         setIsPriceModalOpen(true);
                       }}
@@ -1366,7 +1400,15 @@ export default function VendorDashboard() {
                 </div>
                 <button 
                   onClick={() => {
-                    setEditingService({ name: '', washPrice: 0, ironPrice: 0, washIronPrice: 0, whitePremium: 0 });
+                    setEditingService({ 
+                      name: '', 
+                      washPrice: 0, 
+                      ironPrice: 0, 
+                      washIronPrice: 0, 
+                      whitePremium: 0,
+                      starchIronPrice: 0,
+                      starchWashIronPrice: 0
+                    });
                     setIsServicePickerOpen(false);
                     setIsPriceModalOpen(true);
                   }}
@@ -1506,6 +1548,61 @@ export default function VendorDashboard() {
                           className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
                         />
                       </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2 relative">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Starch + Iron Only (₦)</label>
+                      <div className="relative">
+                        <input 
+                          type="number" 
+                          disabled={editingService.starchIronDisabled}
+                          value={editingService.starchIronDisabled ? '' : (editingService.starchIronPrice || 0)}
+                          onChange={(e) => setEditingService({ ...editingService, starchIronPrice: parseInt(e.target.value) || 0 })}
+                          className={cn(
+                            "w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary",
+                            editingService.starchIronDisabled && "opacity-50 cursor-not-allowed bg-surface-container-highest"
+                          )}
+                          placeholder={editingService.starchIronDisabled ? "OFF" : "Price"}
+                        />
+                        <button 
+                          type="button"
+                          onClick={() => setEditingService({ ...editingService, starchIronDisabled: !editingService.starchIronDisabled })}
+                          className={cn(
+                            "absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-lg transition-colors",
+                            editingService.starchIronDisabled ? "text-error hover:bg-error/10" : "text-primary hover:bg-primary/10"
+                          )}
+                        >
+                          {editingService.starchIronDisabled ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+                      <div className="space-y-2 relative">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Starch + Wash + Ir (₦)</label>
+                        <div className="relative">
+                          <input 
+                            type="number" 
+                            disabled={editingService.starchWashIronDisabled}
+                            value={editingService.starchWashIronDisabled ? '' : (editingService.starchWashIronPrice || 0)}
+                            onChange={(e) => setEditingService({ ...editingService, starchWashIronPrice: parseInt(e.target.value) || 0 })}
+                            className={cn(
+                              "w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary",
+                              editingService.starchWashIronDisabled && "opacity-50 cursor-not-allowed bg-surface-container-highest"
+                            )}
+                            placeholder={editingService.starchWashIronDisabled ? "OFF" : "Price"}
+                          />
+                        <button 
+                          type="button"
+                          onClick={() => setEditingService({ ...editingService, starchWashIronDisabled: !editingService.starchWashIronDisabled })}
+                          className={cn(
+                            "absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-lg transition-colors",
+                            editingService.starchWashIronDisabled ? "text-error hover:bg-error/10" : "text-primary hover:bg-primary/10"
+                          )}
+                        >
+                          {editingService.starchWashIronDisabled ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Sub-items Section (Multi-Item) */}

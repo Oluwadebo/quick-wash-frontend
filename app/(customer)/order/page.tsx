@@ -150,7 +150,9 @@ function OrderPageContent() {
           const services = [
             { name: 'Wash', price: vs.washPrice, disabled: vs.washDisabled },
             { name: 'Iron', price: vs.ironPrice, disabled: vs.ironDisabled },
-            { name: 'Wash + Iron', price: vs.washIronPrice, disabled: vs.washIronDisabled }
+            { name: 'Wash + Iron', price: vs.washIronPrice, disabled: vs.washIronDisabled },
+            { name: 'S+Iron', price: vs.starchIronPrice, disabled: vs.starchIronDisabled },
+            { name: 'S+W+I', price: vs.starchWashIronPrice, disabled: vs.starchWashIronDisabled }
           ].filter(s => !s.disabled && s.price !== -1 && s.price !== undefined);
 
           return {
@@ -318,8 +320,8 @@ function OrderPageContent() {
 
     setIsPaying(true);
     
-    // Longer delay for external payments
-    const delay = paymentMethod === 'wallet' ? 2000 : 4000;
+    const isWalletPayment = paymentMethod === 'wallet';
+    const delay = isWalletPayment ? 2000 : 4000;
     await new Promise(resolve => setTimeout(resolve, delay));
     
     const itemsDescription = cart.filter(i => i.count > 0).map(i => {
@@ -370,7 +372,8 @@ function OrderPageContent() {
     try {
       // The API Handles wallet deduction and transaction recording
       const result = await db.saveOrder(newOrder);
-      const serverOrderId = result.id;
+      const serverOrderId = result.id || newOrderId;
+      console.log(`[Order] Payment successful. Server Order ID: ${serverOrderId}`);
       
       localStorage.setItem('qw_current_order_id', serverOrderId);
       setExistingOrderId(serverOrderId);
@@ -508,10 +511,8 @@ function OrderPageContent() {
         }
       }
 
-      // 2. Delete the order
-      const allOrders = await db.getOrders();
-      const filtered = allOrders.filter((o: Order) => o.id !== existingOrder.id);
-      localStorage.setItem('qw_orders', JSON.stringify(filtered));
+      // 2. Delete the order from backend
+      await db.deleteOrder(existingOrder.id);
 
       // 3. Reset state
       setExistingOrderId(null);

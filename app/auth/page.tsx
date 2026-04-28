@@ -119,6 +119,21 @@ function AuthContent() {
     if (isLogin) {
       login(formData.phoneNumber, formData.password);
     } else {
+      // Strict validation for NIN and Phone
+      const phoneRegex = /^[0-9]{11}$/;
+      if (!phoneRegex.test(formData.phoneNumber)) {
+        alert('Phone number must be exactly 11 digits');
+        return;
+      }
+      
+      if (role === 'rider') {
+        const ninRegex = /^[0-9]{11}$/;
+        if (!ninRegex.test(formData.nin)) {
+          alert('NIN must be exactly 11 digits');
+          return;
+        }
+      }
+
       signup({
         email: formData.email,
         fullName: formData.fullName,

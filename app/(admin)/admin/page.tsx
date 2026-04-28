@@ -363,13 +363,12 @@ export default function AdminDashboard() {
 
   const handleApprove = React.useCallback(async (userId: string) => {
     try {
-      const response = await fetch('/api/admin/approve-user', {
+      const response = await fetch(`/api/users/approve/${userId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('qw_token')}`
-        },
-        body: JSON.stringify({ userId, approve: true })
+        }
       });
 
       if (response.ok) {
@@ -801,10 +800,16 @@ export default function AdminDashboard() {
                           <button 
                             disabled={isSiteUpdating}
                             onClick={async () => {
-                              setIsSiteUpdating(true);
-                              await db.updateSiteSettings(siteSettings);
-                              setIsSiteUpdating(false);
-                              alert('Site settings propagated! All users will see the changes.');
+                              try {
+                                setIsSiteUpdating(true);
+                                await db.updateSiteSettings(siteSettings);
+                                alert('Site settings propagated! All users will see the changes.');
+                              } catch (error: any) {
+                                console.error('Failed to update settings:', error);
+                                alert(`Update failed: ${error.message}`);
+                              } finally {
+                                setIsSiteUpdating(false);
+                              }
                             }}
                             className="w-full h-20 signature-gradient text-white rounded-3xl font-headline font-black text-lg shadow-2xl shadow-primary/20 active:scale-[0.98] transition-all flex items-center justify-center gap-3"
                           >
@@ -1921,11 +1926,61 @@ export default function AdminDashboard() {
 
                         <div className="bg-surface-container-lowest p-6 rounded-3xl border border-primary/5">
                           <p className="text-[10px] font-black uppercase tracking-widest text-primary mb-4">Verification Documents</p>
-                          <div className="aspect-video bg-surface-container-highest rounded-2xl flex items-center justify-center border-2 border-dashed border-primary/10">
-                            <div className="text-center">
-                              <ShieldCheck className="w-10 h-10 text-primary/40 mx-auto mb-2" />
-                              <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">ID Document Preview</p>
-                            </div>
+                          <div className="space-y-4">
+                            {verifyingUser.ninImage && (
+                              <div className="space-y-2">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-2">NIN Document</p>
+                                <div className="aspect-video bg-surface-container-highest rounded-2xl relative overflow-hidden border-2 border-primary/10 group">
+                                  <Image 
+                                    src={verifyingUser.ninImage} 
+                                    alt="NIN" 
+                                    fill 
+                                    className="object-cover group-hover:scale-110 transition-transform duration-500" 
+                                    unoptimized 
+                                  />
+                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                    <button 
+                                      onClick={() => window.open(verifyingUser.ninImage, '_blank')}
+                                      className="bg-white/20 backdrop-blur-md text-white p-3 rounded-full hover:bg-white/40 transition-colors"
+                                    >
+                                      <ExternalLink className="w-6 h-6" />
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                            
+                            {verifyingUser.shopImage && (
+                              <div className="space-y-2">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-2">Shop/Storefront Photo</p>
+                                <div className="aspect-video bg-surface-container-highest rounded-2xl relative overflow-hidden border-2 border-primary/10 group">
+                                  <Image 
+                                    src={verifyingUser.shopImage} 
+                                    alt="Shop" 
+                                    fill 
+                                    className="object-cover group-hover:scale-110 transition-transform duration-500" 
+                                    unoptimized 
+                                  />
+                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                    <button 
+                                      onClick={() => window.open(verifyingUser.shopImage, '_blank')}
+                                      className="bg-white/20 backdrop-blur-md text-white p-3 rounded-full hover:bg-white/40 transition-colors"
+                                    >
+                                      <ExternalLink className="w-6 h-6" />
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {!verifyingUser.ninImage && !verifyingUser.shopImage && (
+                              <div className="aspect-video bg-surface-container-highest rounded-2xl flex items-center justify-center border-2 border-dashed border-primary/10">
+                                <div className="text-center">
+                                  <ShieldAlert className="w-10 h-10 text-error/40 mx-auto mb-2" />
+                                  <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">No Documents Uploaded</p>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>

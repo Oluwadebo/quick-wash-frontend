@@ -1,4 +1,5 @@
 import express from "express";
+import { v4 as uuidv4 } from 'uuid';
 import Transaction from "../models/Transaction";
 import User from "../models/User";
 
@@ -16,7 +17,7 @@ router.get("/history", async (req, res) => {
     console.log(`[Wallet] Fetched ${transactions.length} transactions for user ${userId}. Balance: ₦${user?.walletBalance || 0}`);
 
     res.json({
-      transactions,
+      transactions: transactions.map(t => t.toObject ? t.toObject() : t),
       balance: user?.walletBalance || 0
     });
   } catch (err: any) {
@@ -28,7 +29,7 @@ router.get("/history", async (req, res) => {
 router.get("/transactions/:userId", async (req, res) => {
   try {
     const transactions = await Transaction.find({ userId: req.params.userId }).sort({ date: -1 });
-    res.json(transactions);
+    res.json(transactions.map(t => t.toObject ? t.toObject() : t));
   } catch (err: any) {
     res.status(500).json({ message: err.message });
   }
@@ -64,6 +65,7 @@ router.post("/fund", async (req, res) => {
     console.log(`[Wallet] New balance for ${userId}: ₦${user.walletBalance}`);
 
     const transaction = await Transaction.create({
+      id: uuidv4(),
       userId,
       amount: numAmount,
       type: 'deposit',
@@ -77,7 +79,7 @@ router.post("/fund", async (req, res) => {
 
     res.json({ 
       balance: user.walletBalance, 
-      transaction,
+      transaction: transaction.toObject(),
       message: `Successfully funded ₦${numAmount}`
     });
   } catch (err: any) {
@@ -97,6 +99,7 @@ router.post("/deposit", async (req, res) => {
     await user.save();
 
     const transaction = await Transaction.create({
+      id: uuidv4(),
       userId,
       amount,
       type: 'deposit',

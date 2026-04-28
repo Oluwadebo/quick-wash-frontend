@@ -120,6 +120,7 @@ export interface SiteSettings {
   emergencyAlert: string;
   maintenanceMode: boolean;
   announcement: string;
+  globalServices: string[];
   landmarks: Landmark[];
 }
 
@@ -209,6 +210,22 @@ class DatabaseService {
 
   // --- ORDERS ---
 
+  async deleteOrder(id: string): Promise<void> {
+    try {
+      console.log(`[DB] Deleting order: ${id}`);
+      const resp = await fetch(`${API_URLS.base}/orders/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('qw_token')}` }
+      });
+      if (!resp.ok) {
+        throw new Error(`Failed to delete order ${id}`);
+      }
+    } catch (error) {
+      console.error(`[DB] Error deleting order ${id}:`, error);
+      throw error;
+    }
+  }
+
   async getOrders(): Promise<Order[]> {
     await this.delay();
     const currentUser = JSON.parse(localStorage.getItem('qw_user') || '{}');
@@ -277,8 +294,9 @@ class DatabaseService {
     if (typeof window !== 'undefined') {
       try {
         const token = localStorage.getItem('qw_token');
-        const isNew = !order._id && !order.id; 
-        const resp = await fetch(isNew ? API_URLS.orders : `${API_URLS.orders}/${order.id}`, {
+        // A new order from the frontend will have a local 'id' but NO '_id' (MongoDB ID)
+        const isNew = !order._id; 
+        const resp = await fetch(isNew ? API_URLS.orders : `${API_URLS.orders}/${order.id || order._id}`, {
           method: isNew ? 'POST' : 'PATCH',
           headers: { 
             'Authorization': `Bearer ${token}`,
@@ -446,15 +464,15 @@ class DatabaseService {
     let status = rider.status;
     let restrictionExpires = rider.restrictionExpires;
 
-    // 3. Check for 5 consecutive returns -> 2 day suspension
-    if (consecutiveReturns >= 5) {
+    // 3. Check for 3 consecutive returns -> 2 day suspension
+    if (consecutiveReturns >= 3) {
       status = 'suspended';
       restrictionExpires = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
     }
 
     await this.updateUser(riderUid, {
       walletBalance: newBalance,
-      consecutiveReturns: consecutiveReturns >= 5 ? 0 : consecutiveReturns, // Reset if suspended
+      consecutiveReturns: consecutiveReturns >= 3 ? 0 : consecutiveReturns, // Reset if suspended
       status,
       restrictionExpires
     });
@@ -633,7 +651,7 @@ class DatabaseService {
     if (typeof window !== 'undefined') {
       try {
         const token = localStorage.getItem('qw_token');
-        const resp = await fetch(`${API_URLS.base}/admin/settings`, {
+        const resp = await fetch(`${API_URLS.base}/settings`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (resp.ok) return await resp.json();
@@ -649,7 +667,9 @@ class DatabaseService {
       contactPhone: '+234 812 345 6789',
       emergencyAlert: '',
       maintenanceMode: false,
-      announcement: 'Welcome to the new Quick-Wash platform!'
+      announcement: 'Welcome to the new Quick-Wash platform!',
+      globalServices: ["Shirt", "Jeans", "Native", "Suit", "Duvet", "Bedsheet"],
+      landmarks: []
     };
     return defaults;
   }
@@ -659,7 +679,7 @@ class DatabaseService {
     if (typeof window !== 'undefined') {
       try {
         const token = localStorage.getItem('qw_token');
-        const resp = await fetch(`${API_URLS.base}/admin/settings`, {
+        const resp = await fetch(`${API_URLS.base}/settings`, {
           method: 'PATCH',
           headers: { 
             'Authorization': `Bearer ${token}`,

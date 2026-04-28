@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { v4 as uuidv4 } from 'uuid';
 import Order from '../models/Order';
 import User from '../models/User';
 import Transaction from '../models/Transaction';
@@ -29,6 +30,7 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
           await rider.save();
           
           await Transaction.create({
+            id: uuidv4(),
             userId: rider.uid,
             type: 'deposit',
             amount: firstHalf,
@@ -67,6 +69,7 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
           await rider.save();
           
           await Transaction.create({
+            id: uuidv4(),
             userId: rider.uid,
             type: 'deposit',
             amount: secondHalf,
@@ -88,6 +91,7 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
           await vendor.save();
           
           await Transaction.create({
+            id: uuidv4(),
             userId: vendor.uid,
             type: 'deposit',
             amount: payoutAmount,
@@ -112,6 +116,7 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
           await vendor.save();
           
           await Transaction.create({
+            id: uuidv4(),
             userId: vendor.uid,
             type: 'deposit',
             amount: payoutAmount,
@@ -128,7 +133,7 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
     order.color = color;
     await order.save();
 
-    res.json(order);
+    res.json(order.toObject());
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -142,7 +147,7 @@ export const getOrders = async (req: any, res: Response) => {
   if (role === 'rider') query = { riderUid: uid };
   
   const orders = await Order.find(query).sort({ createdAt: -1 });
-  res.json(orders);
+  res.json(orders.map(o => o.toObject ? o.toObject() : o));
 };
 
 export const createOrder = async (req: Request, res: Response) => {
@@ -150,7 +155,7 @@ export const createOrder = async (req: Request, res: Response) => {
     const orderData = req.body;
     const order = new Order(orderData);
     await order.save();
-    res.status(201).json(order);
+    res.status(201).json(order.toObject());
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }

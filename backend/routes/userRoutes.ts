@@ -4,14 +4,15 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
+import { uploadToCloudinary } from '../lib/cloudinary';
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
-// Register
-router.post("/register", async (req, res) => {
+// Register & Signup Alias
+router.post(["/register", "/signup"], async (req, res) => {
   try {
-    const { fullName, email, phoneNumber, password, role } = req.body;
+    const { fullName, email, phoneNumber, password, role, ninImage, shopImage } = req.body;
 
     const existingUser = await User.findOne({ 
       $or: [{ email }, { phoneNumber }] 
@@ -20,18 +21,33 @@ router.post("/register", async (req, res) => {
       return res.status(400).json({ message: "User with this email or phone already exists" });
     }
 
+    // Handle Image Uploads to Cloudinary
+    let ninUrl = ninImage;
+    if (ninImage && ninImage.startsWith('data:image')) {
+      ninUrl = await uploadToCloudinary(ninImage, 'riders');
+    }
+
+    let shopUrl = shopImage;
+    if (shopImage && shopImage.startsWith('data:image')) {
+      shopUrl = await uploadToCloudinary(shopImage, 'vendors');
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10);
+    // Generate a unique transfer reference
+    const transferReference = `QW-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+
     const user = await User.create({
+      ...req.body,
       uid: uuidv4(),
-      fullName,
-      email,
-      phoneNumber,
       password: hashedPassword,
+      transferReference,
       role: role || 'customer',
-      isApproved: role === 'vendor' || role === 'rider' ? false : true,
+      isApproved: (role === 'vendor' || role === 'rider') ? false : true,
       trustPoints: 100,
       trustScore: 100,
-      status: 'active'
+      status: 'active',
+      ninImage: ninUrl,
+      shopImage: shopUrl
     });
 
     const token = jwt.sign({ uid: user.uid, role: user.role, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
@@ -44,6 +60,8 @@ router.post("/register", async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
+
+// (Route removed as it's now handled by the multi-path register route)
 
 // Admin Create User
 router.post("/create", async (req, res) => {
@@ -165,7 +183,7 @@ router.get("/:uid", async (req, res) => {
   try {
     const user = await User.findOne({ uid: req.params.uid }).select("-password");
     if (!user) return res.status(404).json({ message: "User not found" });
-    res.json(user);
+    res.json(user.toObject());
   } catch (err: any) {
     res.status(500).json({ message: err.message });
   }
@@ -200,9 +218,19 @@ router.get("/stats/overview", async (req, res) => {
 // Update user
 router.patch("/:uid", async (req, res) => {
   try {
+    const updateData = { ...req.body };
+    
+    // Handle specific image uploads if present
+    if (updateData.shopImage && updateData.shopImage.startsWith('data:image')) {
+      updateData.shopImage = await uploadToCloudinary(updateData.shopImage, 'vendors');
+    }
+    if (updateData.ninImage && updateData.ninImage.startsWith('data:image')) {
+      updateData.ninImage = await uploadToCloudinary(updateData.ninImage, 'riders');
+    }
+
     const user = await User.findOneAndUpdate(
       { uid: req.params.uid },
-      { $set: req.body },
+      { $set: updateData },
       { new: true }
     ).select("-password");
     if (!user) return res.status(404).json({ message: "User not found" });
