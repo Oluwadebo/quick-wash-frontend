@@ -24,9 +24,18 @@ export default function TrackListPage() {
       setUser(me);
 
       if (me?.uid) {
-        // Fetch orders for current customer
-        const customerOrders = await db.getOrders();
-        setOrders(customerOrders.sort((a: Order, b: Order) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+        try {
+          // Fetch orders for current customer
+          const customerOrders = await db.getOrders();
+          setOrders(Array.isArray(customerOrders) ? customerOrders.sort((a: any, b: any) => {
+            const dateB = new Date(b.createdAt || b.time || 0).getTime();
+            const dateA = new Date(a.createdAt || a.time || 0).getTime();
+            return dateB - dateA;
+          }) : []);
+        } catch (err: any) {
+          console.error('[Track] Failed to load orders:', err.message || err);
+          setOrders([]);
+        }
       }
     };
     init();
@@ -114,7 +123,9 @@ export default function TrackListPage() {
             {(() => {
               const now = new Date();
               const filteredOrders = orders.filter((o: any) => {
-                const itemDate = new Date(o.createdAt);
+                const itemDate = new Date(o.createdAt || o.time);
+                if (isNaN(itemDate.getTime())) return true; // Show invalid dates for now
+                
                 if (timeRange === 'all') return true;
                 if (timeRange === 'today') return itemDate.toDateString() === now.toDateString();
                 if (timeRange === 'custom') {
@@ -153,7 +164,7 @@ export default function TrackListPage() {
                           <div>
                             <h3 className="font-headline font-black text-lg text-on-surface">Order #{order.id}</h3>
                             <p className="font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant">
-                              {new Date(order.createdAt).toLocaleDateString()} • {order.items.split(',')[0]}...
+                              {new Date(order.createdAt || order.time).toLocaleDateString()} • {order.items?.split(',')[0]}...
                             </p>
                           </div>
                         </div>
@@ -168,7 +179,9 @@ export default function TrackListPage() {
                       <div className="flex items-center justify-between pt-4 border-t border-primary/5">
                         <div className="flex items-center gap-2 text-on-surface-variant">
                           <Clock className="w-4 h-4" />
-                          <span className="text-xs font-bold">{order.time}</span>
+                          <span className="text-xs font-bold">
+                            {new Date(order.createdAt || order.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
                         </div>
                         <div className="flex items-center gap-1 text-primary font-headline font-black">
                           <span>Track Now</span>

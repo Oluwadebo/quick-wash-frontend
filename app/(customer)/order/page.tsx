@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import React from 'react';
 import { useRouter } from 'next/navigation';
 import TopAppBar from '@/components/shared/TopAppBar';
@@ -13,6 +15,7 @@ import { Toast } from '@/components/shared/Toast';
 import { formatRelativeTime } from '@/lib/time';
 import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
+import { useAuth } from '@/hooks/use-auth';
 
 const defaultItems = [
   {
@@ -89,6 +92,7 @@ export default function OrderPage() {
 }
 
 function OrderPageContent() {
+  const { updateUser } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const vendorId = searchParams.get('vendor');
@@ -379,12 +383,28 @@ function OrderPageContent() {
       setIsPaid(true);
       setIsPaying(false);
 
-      // Refresh user data to update balance in UI/Local Storage
-      if (currentUser?.uid) {
-        const updatedUser = await db.getUser(currentUser.uid);
-        if (updatedUser) {
-          localStorage.setItem('qw_user', JSON.stringify(updatedUser));
-          setCurrentUser(updatedUser);
+      if (isWalletPayment) {
+        // Use result from backend directly if available, otherwise refetch
+        if (result && result.updatedWalletBalance !== undefined) {
+          const updatedUserBalance = { walletBalance: result.updatedWalletBalance };
+          updateUser(updatedUserBalance);
+          setCurrentUser(prev => prev ? { ...prev, ...updatedUserBalance } : null);
+        } else {
+          // Fallback refetch
+          const updatedUser = await db.getUser(currentUser.uid);
+          if (updatedUser) {
+            updateUser(updatedUser);
+            setCurrentUser(updatedUser);
+          }
+        }
+      } else {
+        // For non-wallet payments, just double check user data
+        if (currentUser?.uid) {
+          const updatedUser = await db.getUser(currentUser.uid);
+          if (updatedUser) {
+            updateUser(updatedUser);
+            setCurrentUser(updatedUser);
+          }
         }
       }
 
@@ -395,7 +415,7 @@ function OrderPageContent() {
       const errorMsg = error.message && error.message.startsWith('{') ? JSON.parse(error.message).error : error.message;
       setNotification({ message: errorMsg || "Payment failed. Please try again.", type: 'error' });
     }
-  }, [currentUser, totalPrice, itemsPrice, riderFee, vendorId, vendor, router, cart, pickupAddress, pickupLandmark, paymentMethod]);
+  }, [currentUser, totalPrice, itemsPrice, riderFee, vendorId, vendor, router, cart, pickupAddress, pickupLandmark, paymentMethod, updateUser]);
 
   const handlePaymentClick = () => {
     if (!pickupLandmark) {
@@ -406,37 +426,66 @@ function OrderPageContent() {
   };
 
   const handlePickupRequest = React.useCallback(async () => {
-    const orderId = existingOrderId || localStorage.getItem('qw_current_order_id');
-    if (!orderId) return;
-
-    // Use state values if they exist, otherwise error
-    if (!pickupLandmark || !pickupAddress) {
-      setNotification({ message: "Pickup location is required to proceed.", type: 'error' });
-      setShowLocationModal(true);
-      setTimeout(() => setNotification(null), 3000);
+    let orderId = existingOrderId || localStorage.getItem('qw_current_order_id');
+    console.log(`[Order] Requesting pickup for Order ID: ${orderId}`);
+    
+    if (!orderId) {
+      setNotification({ message: "Order ID missing. Please refresh and try again.", type: 'error' });
       return;
     }
 
-    const order = await db.getOrder(orderId);
-    if (order) {
-      await db.saveOrder({
-        ...order,
-        status: 'rider_assign_pickup',
-        customerAddress: pickupAddress,
-        customerLandmark: pickupLandmark,
-        color: 'bg-primary-container text-on-primary-container',
-      });
-      
-      localStorage.removeItem('qw_current_order_id');
-      setNotification({ message: 'Order confirmed! Redirecting to tracking...', type: 'success' });
-      
-      // FEEDBACK LOOP: Mandatory 2000ms delay
-      setTimeout(() => {
-        setNotification(null);
-        router.push('/track');
-      }, 2000);
+    if (!pickupLandmark || !pickupAddress) {
+      setNotification({ message: "Pickup location is required.", type: 'error' });
+      setShowLocationModal(true);
+      return;
     }
-  }, [router, existingOrderId, pickupAddress, pickupLandmark]);
+
+    try {
+      let order = await db.getOrder(orderId);
+      
+      // If not found by ID, try finding a recent pending order as a fallback
+      if (!order && currentUser?.uid) {
+        console.warn(`[Order] Order ${orderId} not found, searching for user's most recent confirm order...`);
+        const allOrders = await db.getOrders();
+        const mostRecent = allOrders.find(o => 
+          o.customerUid === currentUser.uid && 
+          o.status === 'confirm' && 
+          o.vendorId === vendorId
+        );
+        if (mostRecent) {
+          console.log(`[Order] Found fallback order: ${mostRecent.id}`);
+          order = mostRecent;
+          orderId = mostRecent.id;
+          setExistingOrderId(orderId);
+          localStorage.setItem('qw_current_order_id', orderId);
+        }
+      }
+
+      if (order) {
+        await db.saveOrder({
+          ...order,
+          status: 'rider_assign_pickup',
+          customerAddress: pickupAddress,
+          customerLandmark: pickupLandmark,
+          color: 'bg-primary-container text-on-primary-container',
+        });
+        
+        localStorage.removeItem('qw_current_order_id');
+        setNotification({ message: 'Order confirmed! Redirecting to tracking...', type: 'success' });
+        
+        setTimeout(() => {
+          setNotification(null);
+          router.push('/track');
+        }, 2000);
+      } else {
+        throw new Error(`Order ${orderId} not found in database.`);
+      }
+    } catch (err: any) {
+      console.error('[Order] Pickup request failed:', err);
+      setNotification({ message: err.message || 'Pickup request failed. Please try again.', type: 'error' });
+      setTimeout(() => setNotification(null), 4000);
+    }
+  }, [router, existingOrderId, pickupAddress, pickupLandmark, currentUser, vendorId]);
 
   const handleCancelOrder = async () => {
     if (!existingOrder || !currentUser?.uid) return;

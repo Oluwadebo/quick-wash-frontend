@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
 import { db } from '@/lib/DatabaseService';
+import { API_URLS } from '@/lib/api-config';
 
 export default function WalletPage() {
   const { user } = useAuth();
@@ -20,25 +21,32 @@ export default function WalletPage() {
   const [fundAmount, setFundAmount] = React.useState('');
   const [isProcessing, setIsProcessing] = React.useState(false);
   const [showSuccessView, setShowSuccessView] = React.useState(false);
-  React.useEffect(() => {
-    if (user?.uid) {
-      const initWallet = async () => {
-        try {
-          const response = await fetch(`/api/wallet/history?userId=${user.uid}`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('qw_token')}` }
-          });
-          const data = await response.json();
-          if (response.ok) {
-            setHistory(data.transactions || []);
-            setBalance(data.balance || 0);
-          }
-        } catch (error) {
-          console.error('Failed to fetch wallet info:', error);
+  const fetchWalletData = React.useCallback(async () => {
+    if (!user?.uid) return;
+    try {
+      console.log(`[Wallet] Fetching data for ${user.uid}...`);
+      const response = await fetch(`${API_URLS.wallet}/history?userId=${user.uid}`, {
+        headers: { 
+          'Authorization': `Bearer ${localStorage.getItem('qw_token')}`,
+          'Accept': 'application/json'
         }
-      };
-      initWallet();
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setHistory(data.transactions || []);
+        setBalance(data.balance || 0);
+        console.log(`[Wallet] Successfully loaded ${data.transactions?.length} transactions. Balance: ₦${data.balance}`);
+      } else {
+        console.error('[Wallet] Server error:', response.status);
+      }
+    } catch (error) {
+      console.error('[Wallet] Failed to fetch wallet info:', error);
     }
   }, [user]);
+
+  React.useEffect(() => {
+    fetchWalletData();
+  }, [fetchWalletData]);
 
   const [lastFundedAmount, setLastFundedAmount] = React.useState(0);
 
@@ -52,35 +60,64 @@ export default function WalletPage() {
     const amount = Number(fundAmount);
 
     try {
-      const response = await fetch('/api/wallet/fund', {
+      const response = await fetch(`${API_URLS.wallet}/fund`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('qw_token')}`
         },
-        body: JSON.stringify({ amount, method: paymentMethod }),
+        body: JSON.stringify({ amount, method: paymentMethod, userId: user?.uid }),
       });
 
-      const result = await response.json();
+      const contentType = response.headers.get("content-type");
+      let result;
+      if (contentType && contentType.indexOf("application/json") !== -1) {
+        result = await response.json();
+      } else {
+        const text = await response.text();
+        throw new Error(text || 'Server returned an error');
+      }
 
       if (response.ok) {
+        // 1. Success state first
         setBalance(result.balance);
-        setHistory(prev => [result.transaction, ...prev]);
-        setShowSuccessView(true);
         setLastFundedAmount(amount);
+        
+        // 2. Immediate History Update
+        if (result.transaction) {
+          setHistory(prev => {
+            const tx = result.transaction;
+            // Ensure ID comparison is robust (check id or _id)
+            const exists = prev.some(t => 
+              (t._id && tx._id && t._id === tx._id) || 
+              (t.id && tx.id && t.id === tx.id)
+            );
+            return exists ? prev : [tx, ...prev];
+          });
+        }
+        
+        // 3. UI Flow: Close form, show success
         setIsFunding(false);
+        setIsProcessing(false);
+        setShowSuccessView(true);
+        
+        // 4. Cleanup
         setPaymentMethod(null);
         setFundAmount('');
+
+        // 5. Background verify
+        setTimeout(fetchWalletData, 1500);
+        console.log('[Wallet] Funding successful, modals toggled');
       } else {
-        alert(result.message || 'Funding failed');
+        alert(result.message || result.error || 'Funding failed');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Funding error:', error);
-      alert('An error occurred. Please try again.');
+      alert(error.message || 'An error occurred. Please try again.');
     } finally {
       setIsProcessing(false);
     }
-  }, [fundAmount, paymentMethod]);
+  }, [fundAmount, paymentMethod, user?.uid, fetchWalletData]);
 
   const filteredHistory = React.useMemo(() => {
     const now = new Date();
@@ -274,7 +311,13 @@ export default function WalletPage() {
                     )}
                   </div>
                   <p className="text-[10px] font-bold text-on-surface-variant">
-                    {new Date(item.date).toLocaleDateString()} • {new Date(item.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {(() => {
+                      const dateSrc = item.date || item.createdAt;
+                      if (!dateSrc) return 'Recently';
+                      const d = new Date(dateSrc);
+                      if (isNaN(d.getTime())) return 'Recently';
+                      return `${d.toLocaleDateString()} • ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+                    })()}
                   </p>
                 </div>
                 <div className="text-right flex flex-col items-end">
@@ -437,7 +480,7 @@ export default function WalletPage() {
                   onClick={() => setShowSuccessView(false)}
                   className="w-full h-16 signature-gradient text-white rounded-2xl font-headline font-black text-sm shadow-xl active:scale-95 transition-transform"
                 >
-                  CONTINUED TO WALLET
+                  CONTINUE TO WALLET
                 </button>
               </div>
 

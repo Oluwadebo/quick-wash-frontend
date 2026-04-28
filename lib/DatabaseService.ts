@@ -3,6 +3,8 @@
  * Abstracts localStorage to simulate a real asynchronous database with atomic transactions.
  */
 
+import { API_URLS } from './api-config';
+
 export type TrustAction = 
   | 'completed_order' 
   | 'five_star_review' 
@@ -49,6 +51,7 @@ export interface UserData {
 }
 
 export interface Order {
+  _id?: string;
   id: string;
   customerUid: string;
   customerName: string;
@@ -68,6 +71,7 @@ export interface Order {
   color: string;
   time: string;
   createdAt: string;
+  paymentMethod?: 'wallet' | 'transfer' | 'card';
   riderUid?: string;
   riderName?: string;
   riderPhone?: string;
@@ -133,7 +137,7 @@ class DatabaseService {
     if (typeof window !== 'undefined') {
       try {
         const token = localStorage.getItem('qw_token');
-        const resp = await fetch('/api/users', {
+        const resp = await fetch(`${API_URLS.base}/users`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (resp.ok) {
@@ -151,7 +155,7 @@ class DatabaseService {
     if (typeof window !== 'undefined') {
       try {
         const token = localStorage.getItem('qw_token');
-        const resp = await fetch(`/api/users/${uid}`, {
+        const resp = await fetch(`${API_URLS.base}/users/${uid}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (resp.ok) {
@@ -169,7 +173,7 @@ class DatabaseService {
     if (typeof window !== 'undefined') {
       try {
         const token = localStorage.getItem('qw_token');
-        const resp = await fetch(`/api/users/${uid}`, {
+        const resp = await fetch(`${API_URLS.base}/users/${uid}`, {
           method: 'PATCH',
           headers: { 
             'Authorization': `Bearer ${token}`,
@@ -195,7 +199,7 @@ class DatabaseService {
     if (typeof window !== 'undefined') {
       try {
         const token = localStorage.getItem('qw_token');
-        await fetch(`/api/users/${uid}`, {
+        await fetch(`${API_URLS.base}/users/${uid}`, {
           method: 'DELETE',
           headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -212,20 +216,31 @@ class DatabaseService {
     
     if (typeof window !== 'undefined' && currentUser.uid) {
       try {
-        const url = `/api/orders?userId=${currentUser.uid}&role=${currentUser.role}`;
-        console.log(`Fetching orders from: ${url}`);
+        const url = `${API_URLS.orders}?userId=${currentUser.uid}&role=${currentUser.role}`;
+        console.log(`[DB] Fetching orders for ${currentUser.uid} (${currentUser.role}) from: ${url}`);
+        
         const resp = await fetch(url, {
-          headers: { 'Authorization': `Bearer ${token}` }
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json'
+          }
         });
+        
         if (resp.ok) {
-          return await resp.json();
+          const data = await resp.json();
+          console.log(`[DB] Successfully fetched ${data.length} orders`);
+          return data;
         }
+        
         const errorText = await resp.text();
-        console.error('Failed to fetch orders (Response not OK):', errorText);
-      } catch (e) {
-        console.error('Failed to fetch orders (Network Error):', e);
+        console.error(`[DB] Failed to fetch orders (Status: ${resp.status}): ${errorText}`);
+        return []; // Return empty instead of throwing to prevent UI crash
+      } catch (e: any) {
+        console.error('[DB] Network Error during getOrders:', e.message || e);
+        return []; // Resilient fallback
       }
     }
+    console.warn('[DB] getOrders skipped: User UID or window undefined');
     return [];
   }
 
@@ -234,22 +249,36 @@ class DatabaseService {
     if (typeof window !== 'undefined') {
       try {
         const token = localStorage.getItem('qw_token');
-        const resp = await fetch(`/api/orders/${id}`, {
+        const url = `${API_URLS.orders}/${id}`;
+        console.log(`[DB] Fetching single order: ${url}`);
+        
+        const resp = await fetch(url, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
+        
         if (resp.ok) return await resp.json();
-      } catch (e) {}
+        
+        if (resp.status === 404) {
+          console.warn(`[DB] Order not found: ${id}`);
+          return null;
+        }
+        
+        const errText = await resp.text();
+        console.error(`[DB] Error fetching order ${id} (Status: ${resp.status}): ${errText}`);
+      } catch (e: any) {
+        console.error(`[DB] Network error fetching order ${id}:`, e.message || e);
+      }
     }
     return null;
   }
 
-  async saveOrder(order: Order): Promise<Order> {
+  async saveOrder(order: any): Promise<any> {
     await this.delay();
     if (typeof window !== 'undefined') {
       try {
         const token = localStorage.getItem('qw_token');
-        const isNew = !order._id; // Crude way to check if it's new or existing in Mongoose terms
-        const resp = await fetch(isNew ? '/api/orders' : `/api/orders/${order.id}`, {
+        const isNew = !order._id && !order.id; 
+        const resp = await fetch(isNew ? API_URLS.orders : `${API_URLS.orders}/${order.id}`, {
           method: isNew ? 'POST' : 'PATCH',
           headers: { 
             'Authorization': `Bearer ${token}`,
@@ -274,7 +303,7 @@ class DatabaseService {
     if (typeof window !== 'undefined') {
       try {
         const token = localStorage.getItem('qw_token');
-        const resp = await fetch(`/api/orders/${orderId}`, {
+        const resp = await fetch(`${API_URLS.orders}/${orderId}`, {
           method: 'PATCH',
           headers: { 
             'Authorization': `Bearer ${token}`,
@@ -300,7 +329,7 @@ class DatabaseService {
     if (typeof window !== 'undefined') {
       try {
         const token = localStorage.getItem('qw_token');
-        const resp = await fetch(`/api/orders/${orderId}`, {
+        const resp = await fetch(`${API_URLS.orders}/${orderId}`, {
           method: 'PATCH',
           headers: { 
             'Authorization': `Bearer ${token}`,
@@ -487,7 +516,7 @@ class DatabaseService {
     if (typeof window !== 'undefined') {
       try {
         const token = localStorage.getItem('qw_token');
-        const resp = await fetch('/api/transactions', {
+        const resp = await fetch(`${API_URLS.base}/transactions`, {
           method: 'POST',
           headers: { 
             'Authorization': `Bearer ${token}`,
@@ -520,7 +549,7 @@ class DatabaseService {
     if (typeof window !== 'undefined') {
       try {
         const token = localStorage.getItem('qw_token');
-        const resp = await fetch(`/api/orders/${orderId}`, {
+        const resp = await fetch(`${API_URLS.orders}/${orderId}`, {
           method: 'PATCH',
           headers: { 
             'Authorization': `Bearer ${token}`,
@@ -572,7 +601,7 @@ class DatabaseService {
     if (typeof window !== 'undefined') {
       try {
         const token = localStorage.getItem('qw_token');
-        const resp = await fetch(`/api/vendor/prices/${vendorUid}`, {
+        const resp = await fetch(`${API_URLS.base}/vendor/prices/${vendorUid}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (resp.ok) return await resp.json();
@@ -586,7 +615,7 @@ class DatabaseService {
     if (typeof window !== 'undefined') {
       try {
         const token = localStorage.getItem('qw_token');
-        await fetch(`/api/vendor/prices/${vendorUid}`, {
+        await fetch(`${API_URLS.base}/vendor/prices/${vendorUid}`, {
           method: 'POST',
           headers: { 
             'Authorization': `Bearer ${token}`,
@@ -604,7 +633,7 @@ class DatabaseService {
     if (typeof window !== 'undefined') {
       try {
         const token = localStorage.getItem('qw_token');
-        const resp = await fetch('/api/admin/settings', {
+        const resp = await fetch(`${API_URLS.base}/admin/settings`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (resp.ok) return await resp.json();
@@ -630,7 +659,7 @@ class DatabaseService {
     if (typeof window !== 'undefined') {
       try {
         const token = localStorage.getItem('qw_token');
-        const resp = await fetch('/api/admin/settings', {
+        const resp = await fetch(`${API_URLS.base}/admin/settings`, {
           method: 'PATCH',
           headers: { 
             'Authorization': `Bearer ${token}`,
