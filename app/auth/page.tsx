@@ -7,7 +7,7 @@ import { useAuth, UserRole } from '@/hooks/use-auth';
 import { Droplets, ArrowLeft, Phone, Lock, User, MapPin, ChevronRight, Sparkles, Store, Bike, Eye, EyeOff, Mail, Github, Globe } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
-import { db, SiteSettings } from '@/lib/DatabaseService';
+import { api, SiteSettings } from '@/lib/ApiService';
 
 function AuthContent() {
   const searchParams = useSearchParams();
@@ -23,7 +23,7 @@ function AuthContent() {
 
   // Load site settings
   React.useEffect(() => {
-    db.getSiteSettings().then(setSettings);
+    api.getSiteSettings().then(setSettings);
   }, []);
 
   // Keep state in sync with URL
@@ -119,6 +119,21 @@ function AuthContent() {
     if (isLogin) {
       login(formData.phoneNumber, formData.password);
     } else {
+      // Strict validation for NIN and Phone
+      const phoneRegex = /^[0-9]{11}$/;
+      if (!phoneRegex.test(formData.phoneNumber)) {
+        alert('Phone number must be exactly 11 digits');
+        return;
+      }
+      
+      if (role === 'rider') {
+        const ninRegex = /^[0-9]{11}$/;
+        if (!ninRegex.test(formData.nin)) {
+          alert('NIN must be exactly 11 digits');
+          return;
+        }
+      }
+
       signup({
         email: formData.email,
         fullName: formData.fullName,
@@ -302,12 +317,22 @@ function AuthContent() {
                         onChange={(e) => setFormData({...formData, landmark: e.target.value})}
                         className="w-full h-16 bg-surface-container-low rounded-2xl pl-14 pr-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all appearance-none"
                       >
-                        <option value="Under-G">Under-G (Campus Area)</option>
-                        <option value="Adenike">Adenike (Off-Campus)</option>
-                        <option value="Main Gate">Main Gate (Entrance)</option>
-                        <option value="Aroje">Aroje (Residential)</option>
-                        <option value="Stadium">Stadium Area</option>
-                        <option value="General">General Area</option>
+                        {settings?.landmarks && settings.landmarks.length > 0 ? (
+                          settings.landmarks.map((l: any) => (
+                            <option key={l.id || l.name || (typeof l === 'string' ? l : JSON.stringify(l))} value={l.name || l}>
+                              {l.name || l}
+                            </option>
+                          ))
+                        ) : (
+                          <>
+                            <option value="Under-G">Under-G (Campus Area)</option>
+                            <option value="Adenike">Adenike (Off-Campus)</option>
+                            <option value="Main Gate">Main Gate (Entrance)</option>
+                            <option value="Aroje">Aroje (Residential)</option>
+                            <option value="Stadium">Stadium Area</option>
+                            <option value="General">General Area</option>
+                          </>
+                        )}
                       </select>
                     </div>
                   )}

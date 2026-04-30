@@ -1,6 +1,7 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
 export interface ITransaction extends Document {
+  id: string; // Friendly ID
   userId: string;
   type: 'deposit' | 'withdrawal' | 'refund' | 'payout' | 'commission' | 'payment';
   amount: number;
@@ -13,6 +14,7 @@ export interface ITransaction extends Document {
 }
 
 const TransactionSchema: Schema = new Schema({
+  id: { type: String, required: true, unique: true, index: true },
   userId: { type: String, required: true, index: true },
   type: { type: String, enum: ['deposit', 'withdrawal', 'refund', 'payout', 'commission', 'payment'], required: true, index: true },
   amount: { type: Number, required: true },

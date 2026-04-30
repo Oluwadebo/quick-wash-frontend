@@ -6,52 +6,58 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { motion } from 'motion/react';
 import { cn } from '@/lib/utils';
-
-export const landmarks = [
-  {
-    id: 'lautech-gate',
-    name: 'LAUTECH Main Gate',
-    tag: 'Primary Hub',
-    image: 'https://picsum.photos/seed/lautech/800/400',
-    featured: true
-  },
-  {
-    id: 'under-g',
-    name: 'Under G',
-    info: '4 Wash Hubs nearby',
-    icon: 'school'
-  },
-  {
-    id: 'adenike',
-    name: 'Adenike',
-    info: '9 active vendors',
-    icon: 'apartment'
-  },
-  {
-    id: 'cele-area',
-    name: 'Cele Area',
-    info: 'Express pickup available',
-    icon: 'church',
-    fullWidth: true
-  },
-  {
-    id: 'fapote',
-    name: 'Fapote',
-    icon: 'science'
-  },
-  {
-    id: 'stadium',
-    name: 'Stadium',
-    icon: 'store'
-  }
-];
+import { api, SiteSettings, UserData } from '@/lib/ApiService';
 
 export default function LandmarkSelector() {
   const [search, setSearch] = React.useState('');
+  const [settings, setSettings] = React.useState<SiteSettings | null>(null);
+  const [vendors, setVendors] = React.useState<UserData[]>([]);
+  const [loading, setLoading] = React.useState(true);
 
-  const filtered = landmarks.filter(l => 
+  React.useEffect(() => {
+    const load = async () => {
+      try {
+        const [s, users] = await Promise.all([
+          api.getSiteSettings(),
+          api.getUsers()
+        ]);
+        setSettings(s);
+        setVendors(users.filter(u => u.role === 'vendor'));
+      } catch (e) {
+        console.error("Failed to load hotspots", e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
+
+  const availableLandmarks = settings?.landmarks || ["Under-G", "Adenike", "Main Gate", "Aroje", "Stadium"];
+
+  const landmarkData = availableLandmarks.map((l: any) => {
+    const name = typeof l === 'string' ? l : l.name;
+    const vendorCount = vendors.filter(v => v.landmark === name).length;
+    return {
+      id: (typeof l === 'string' ? l : l.id || l.name).toLowerCase().replace(/\s+/g, '-'),
+      name: name,
+      info: `${vendorCount} active vendor${vendorCount !== 1 ? 's' : ''}`,
+      featured: name === 'Main Gate' || name === 'LAUTECH Main Gate',
+      image: `https://picsum.photos/seed/${encodeURIComponent(name)}/800/400`
+    };
+  });
+
+  const filtered = landmarkData.filter(l => 
     l.name.toLowerCase().includes(search.toLowerCase())
   );
+
+  if (loading) {
+    return (
+      <div className="py-20 text-center">
+        <div className="w-10 h-10 border-4 border-primary/20 border-t-primary rounded-full animate-spin mx-auto mb-4" />
+        <p className="text-on-surface-variant font-bold">Scanning Hotspots...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -67,7 +73,12 @@ export default function LandmarkSelector() {
           />
         </div>
         
-        <button className="w-full h-16 bg-surface-container-lowest flex items-center justify-center gap-3 rounded-3xl shadow-sm active:scale-[0.98] transition-transform">
+        <button 
+          onClick={() => {
+            alert("Detecting GPS coordinates... Please select your specific landmark manually for precise fee calculation.");
+          }}
+          className="w-full h-16 bg-surface-container-lowest flex items-center justify-center gap-3 rounded-3xl shadow-sm active:scale-[0.98] transition-transform border border-primary/5"
+        >
           <MapPin className="text-primary w-5 h-5" />
           <span className="font-bold text-primary">Use Current Location</span>
         </button>
@@ -75,7 +86,7 @@ export default function LandmarkSelector() {
 
       <section className="space-y-6">
         <div className="flex items-center justify-between my-8">
-          <h3 className="font-label text-xs uppercase tracking-[0.2em] font-bold text-outline">Popular Landmarks</h3>
+          <h3 className="font-label text-xs uppercase tracking-[0.2em] font-black text-outline">Production Hotspots</h3>
           <span className="h-0.5 flex-1 bg-primary/10 ml-4"></span>
         </div>
 
@@ -83,16 +94,16 @@ export default function LandmarkSelector() {
           {filtered.map((landmark, idx) => (
             <Link 
               key={landmark.id} 
-              href="/vendors"
+              href={`/vendors?landmark=${encodeURIComponent(landmark.name)}`}
               className={cn(
                 "relative rounded-3xl overflow-hidden group cursor-pointer active:scale-[0.98] transition-transform",
-                landmark.featured ? "col-span-2 h-48" : landmark.fullWidth ? "col-span-2 flex items-center gap-6 bg-surface-container-low p-6" : "bg-surface-container-low p-6 flex flex-col justify-between aspect-square"
+                landmark.featured ? "col-span-2 h-48" : "bg-surface-container-low p-6 flex flex-col justify-between aspect-square"
               )}
             >
               {landmark.featured ? (
                 <>
                   <Image 
-                    src={landmark.image!} 
+                    src={landmark.image} 
                     alt={landmark.name}
                     fill
                     className="object-cover transition-transform duration-700 group-hover:scale-110"
@@ -102,23 +113,13 @@ export default function LandmarkSelector() {
                   <div className="absolute bottom-6 left-6 right-6 flex justify-between items-end">
                     <div>
                       <span className="bg-primary-container text-on-primary-container text-[10px] font-label font-bold px-3 py-1 rounded-full mb-2 inline-block uppercase">
-                        {landmark.tag}
+                        Featured Hub
                       </span>
                       <h4 className="text-2xl font-bold text-white">{landmark.name}</h4>
+                      <p className="text-xs font-medium text-white/80">{landmark.info}</p>
                     </div>
                     <ChevronRight className="text-white w-8 h-8" />
                   </div>
-                </>
-              ) : landmark.fullWidth ? (
-                <>
-                  <div className="w-14 h-14 bg-secondary-container/50 rounded-2xl flex items-center justify-center shrink-0">
-                    <MapPin className="text-secondary w-6 h-6" />
-                  </div>
-                  <div className="flex-1">
-                    <h4 className="text-xl font-bold text-on-surface">{landmark.name}</h4>
-                    <p className="text-sm font-label text-on-surface-variant font-medium">{landmark.info}</p>
-                  </div>
-                  <ChevronRight className="text-outline w-6 h-6" />
                 </>
               ) : (
                 <>
@@ -126,17 +127,23 @@ export default function LandmarkSelector() {
                     <MapPin className="text-primary w-5 h-5" />
                   </div>
                   <div>
-                    <h4 className="text-xl font-bold text-on-surface">{landmark.name}</h4>
+                    <h4 className="text-xl font-bold text-on-surface leading-tight mb-1">{landmark.name}</h4>
                     {landmark.info && (
-                      <p className="text-sm font-label text-on-surface-variant font-medium">{landmark.info}</p>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/60">{landmark.info}</p>
                     )}
                   </div>
                 </>
               )}
             </Link>
           ))}
+          {filtered.length === 0 && (
+            <div className="col-span-2 py-10 text-center opacity-50 italic">
+              No regions found matching your search.
+            </div>
+          )}
         </div>
       </section>
     </div>
   );
 }
+

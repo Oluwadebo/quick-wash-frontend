@@ -10,6 +10,7 @@ export interface ISiteSetting extends Document {
   emergencyAlert: string;
   maintenanceMode: boolean;
   announcement: string;
+  globalServices: string[];
   landmarks: { id: string; name: string; active: boolean }[];
 }
 
@@ -23,6 +24,7 @@ const SiteSettingSchema: Schema = new Schema({
   emergencyAlert: { type: String, default: '' },
   maintenanceMode: { type: Boolean, default: false },
   announcement: { type: String, default: 'Welcome to Quick-Wash! Your campus laundry partner.' },
+  globalServices: { type: [String], default: ["Shirt", "Jeans", "Native", "Suit", "Duvet", "Bedsheet"] },
   landmarks: [{
     id: String,
     name: String,

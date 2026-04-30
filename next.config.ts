@@ -15,7 +15,13 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: 'picsum.photos',
         port: '',
-        pathname: '/**', // This allows any path under the hostname
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'res.cloudinary.com',
+        port: '',
+        pathname: '/**',
       },
     ],
   },
@@ -25,9 +31,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: process.env.NODE_ENV === 'development' 
-          ? 'http://127.0.0.1:5000/api/:path*' 
-          : '/api/:path*', // Fallback to Next.js API in prod if not separate, or user can override
+        destination: 'http://127.0.0.1:5000/api/:path*', 
       },
     ]
   },

@@ -1,6 +1,6 @@
 "use client";
 
-import { db, SiteSettings } from "@/lib/DatabaseService";
+import { api, SiteSettings } from "@/lib/ApiService";
 import { Droplets } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -14,7 +14,7 @@ export default function Footer() {
   const [settings, setSettings] = React.useState<SiteSettings | null>(null);
 
   React.useEffect(() => {
-    db.getSiteSettings().then(setSettings);
+    api.getSiteSettings().then(setSettings);
   }, []);
 
   // Hide footer on dashbaords and auth pages to prevent double showing or cluttering

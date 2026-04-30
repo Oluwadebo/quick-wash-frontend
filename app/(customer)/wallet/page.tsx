@@ -6,7 +6,7 @@ import { Wallet, ArrowUpRight, ArrowDownLeft, Plus, History, CreditCard, Landmar
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
-import { db } from '@/lib/DatabaseService';
+import { api } from '@/lib/ApiService';
 import { API_URLS } from '@/lib/api-config';
 
 export default function WalletPage() {
@@ -25,7 +25,8 @@ export default function WalletPage() {
     if (!user?.uid) return;
     try {
       console.log(`[Wallet] Fetching data for ${user.uid}...`);
-      const response = await fetch(`${API_URLS.wallet}/history?userId=${user.uid}`, {
+      // Use timestamp to bypass any browser cache
+      const response = await fetch(`${API_URLS.wallet}/history?userId=${user.uid}&t=${Date.now()}`, {
         headers: { 
           'Authorization': `Bearer ${localStorage.getItem('qw_token')}`,
           'Accept': 'application/json'
@@ -33,9 +34,10 @@ export default function WalletPage() {
       });
       if (response.ok) {
         const data = await response.json();
+        // Force state update by using a function to ensure we're not using stale data
         setHistory(data.transactions || []);
         setBalance(data.balance || 0);
-        console.log(`[Wallet] Successfully loaded ${data.transactions?.length} transactions. Balance: ₦${data.balance}`);
+        console.log(`[Wallet] History synced. Count: ${data.transactions?.length}`);
       } else {
         console.error('[Wallet] Server error:', response.status);
       }
@@ -80,14 +82,15 @@ export default function WalletPage() {
 
       if (response.ok) {
         // 1. Success state first
+        console.log('[Wallet] Funding success, updating UI states...');
         setBalance(result.balance);
         setLastFundedAmount(amount);
         
-        // 2. Immediate History Update
+        // 2. Immediate History Update with optimistic transaction
         if (result.transaction) {
+          console.log('[Wallet] Adding new transaction to history:', result.transaction._id);
           setHistory(prev => {
             const tx = result.transaction;
-            // Ensure ID comparison is robust (check id or _id)
             const exists = prev.some(t => 
               (t._id && tx._id && t._id === tx._id) || 
               (t.id && tx.id && t.id === tx.id)
@@ -96,19 +99,30 @@ export default function WalletPage() {
           });
         }
         
-        // 3. UI Flow: Close form, show success
+        // 3. UI Flow: Close form and SHOW SUCCESS MODAL
         setIsFunding(false);
         setIsProcessing(false);
-        setShowSuccessView(true);
         
-        // 4. Cleanup
+        // Use a more robust trigger for the success modal
+        // We set it after a clean tick to avoid transition conflicts
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            setShowSuccessView(true);
+            console.log('[Wallet] Success modal triggered successfully');
+          }, 400); 
+        });
+        
+        // 4. Cleanup inputs
         setPaymentMethod(null);
         setFundAmount('');
 
-        // 5. Background verify
-        setTimeout(fetchWalletData, 1500);
-        console.log('[Wallet] Funding successful, modals toggled');
+        // 5. Background verify fetch with longer delay to ensure DB consistency
+        setTimeout(() => {
+          fetchWalletData();
+          console.log('[Wallet] Background history refresh executed');
+        }, 2500);
       } else {
+        console.error('[Wallet] Funding failed:', result);
         alert(result.message || result.error || 'Funding failed');
       }
     } catch (error: any) {
@@ -416,15 +430,31 @@ export default function WalletPage() {
               </button>
 
               <button 
-                onClick={() => {
+                onClick={async () => {
                   const issue = prompt('Please describe the issue with this transaction:');
                   if (issue && user?.uid) {
-                    const allHist = JSON.parse(localStorage.getItem(`qw_wallet_history_${user.uid}`) || '[]');
-                    const updated = allHist.map((h: any) => h.id === selectedTransaction.id ? { ...h, status: 'disputed', issueDescription: issue } : h);
-                    localStorage.setItem(`qw_wallet_history_${user.uid}`, JSON.stringify(updated));
-                    setHistory(updated.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-                    setSelectedTransaction(null);
-                    alert('Issue raised successfully. Our support team will review it.');
+                    try {
+                      const token = localStorage.getItem('qw_token');
+                      const resp = await fetch(`/api/transactions/${selectedTransaction.id}`, {
+                        method: 'PATCH',
+                        headers: {
+                          'Authorization': `Bearer ${token}`,
+                          'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ 
+                          status: 'disputed', 
+                          issueDescription: issue 
+                        })
+                      });
+                      if (resp.ok) {
+                        const updated = await resp.json();
+                        setHistory(prev => prev.map(t => (t.id === selectedTransaction.id || t._id === selectedTransaction.id) ? updated : t));
+                        setSelectedTransaction(null);
+                        alert('Issue raised successfully. Our support team will review it.');
+                      }
+                    } catch (err) {
+                      alert('Failed to raise issue.');
+                    }
                   }
                 }}
                 className="w-full h-12 bg-error/10 text-error mt-4 rounded-xl font-headline font-black text-[10px] uppercase tracking-widest active:scale-95 transition-transform border border-error/10"

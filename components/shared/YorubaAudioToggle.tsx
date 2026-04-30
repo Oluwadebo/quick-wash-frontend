@@ -4,18 +4,32 @@ import React from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+import { useAuth } from '@/hooks/use-auth';
+import { api } from '@/lib/ApiService';
+
 export default function YorubaAudioToggle() {
+  const { user, updateUser } = useAuth();
   const [isEnabled, setIsEnabled] = React.useState(false);
 
   React.useEffect(() => {
-    const stored = localStorage.getItem('yoruba-audio-enabled');
-    setIsEnabled(stored === 'true');
-  }, []);
+    if (user) {
+      setIsEnabled(user.yorubaAudioEnabled !== false);
+    } else {
+      const stored = localStorage.getItem('yoruba-audio-enabled');
+      setIsEnabled(stored === 'true');
+    }
+  }, [user]);
 
-  const toggle = () => {
+  const toggle = async () => {
     const newState = !isEnabled;
     setIsEnabled(newState);
-    localStorage.setItem('yoruba-audio-enabled', String(newState));
+    
+    if (user?.uid) {
+      await api.updateUser(user.uid, { yorubaAudioEnabled: newState });
+      updateUser({ yorubaAudioEnabled: newState });
+    } else {
+      localStorage.setItem('yoruba-audio-enabled', String(newState));
+    }
     
     // Play a small feedback sound if enabled
     if (newState) {

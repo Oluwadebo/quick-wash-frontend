@@ -6,7 +6,7 @@ import Link from 'next/link';
 import YorubaAudioToggle from './YorubaAudioToggle';
 import { useAuth } from '@/hooks/use-auth';
 import Image from 'next/image';
-import { db, SiteSettings } from '@/lib/DatabaseService';
+import { api, SiteSettings } from '@/lib/ApiService';
 
 interface TopAppBarProps {
   title?: string;
@@ -27,26 +27,27 @@ export default function TopAppBar({
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   
   useEffect(() => {
-    db.getSiteSettings().then(setSettings);
+    api.getSiteSettings().then(setSettings);
     // Run auto-cancel every minute
     const interval = setInterval(() => {
-      db.runAutoCancel();
+      api.runAutoCancel();
     }, 60000);
     
     // Run once on mount
-    db.runAutoCancel();
+    api.runAutoCancel();
     
     return () => clearInterval(interval);
   }, []);
 
-  const homeLink = user?.role === 'customer' ? '/customer' : (user?.role ? `/${user.role}` : '/');
+  const isAdmin = user?.role === 'admin' || user?.role === 'super-admin' || user?.role === 'super-sub-admin';
+  const homeLink = user?.role === 'customer' ? '/customer' : (isAdmin ? '/admin' : (user?.role ? `/${user.role}` : '/'));
   const profileLink = user?.role === 'customer' 
     ? '/profile' 
     : (user?.role === 'vendor' 
         ? '/vendor?tab=settings' 
         : (user?.role === 'rider' 
             ? '/rider?tab=settings' 
-            : '/profile'));
+            : (isAdmin ? '/admin?tab=settings' : '/profile')));
 
   return (
     <header className="sticky top-0 w-full z-50 bg-surface/80 backdrop-blur-2xl border-b-2 border-primary/10">

@@ -1,10 +1,11 @@
 import express from "express";
+import { v4 as uuidv4 } from 'uuid';
 import Transaction from "../models/Transaction";
 import User from "../models/User";
 
 const router = express.Router();
 
-// Record Transaction (this is what DatabaseService calls)
+// Record Transaction
 router.post("/", async (req, res) => {
   try {
     const { userId, type, amount, desc, method, reference, status } = req.body;
@@ -22,6 +23,7 @@ router.post("/", async (req, res) => {
     await user.save();
 
     const transaction = await Transaction.create({
+      id: uuidv4(),
       userId,
       type,
       amount: numAmount,
@@ -32,7 +34,7 @@ router.post("/", async (req, res) => {
       date: new Date()
     });
 
-    res.json({ balance: user.walletBalance, transaction });
+    res.json({ balance: user.walletBalance, transaction: transaction.toObject() });
   } catch (err: any) {
     res.status(500).json({ message: err.message });
   }
@@ -45,7 +47,21 @@ router.get("/", async (req, res) => {
     if (!userId) return res.status(400).json({ message: "userId required" });
 
     const transactions = await Transaction.find({ userId }).sort({ date: -1 });
-    res.json(transactions);
+    res.json(transactions.map(t => t.toObject ? t.toObject() : t));
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.patch("/:id", async (req, res) => {
+  try {
+    const transaction = await Transaction.findOneAndUpdate(
+      { id: req.params.id },
+      { $set: req.body },
+      { new: true }
+    );
+    if (!transaction) return res.status(404).json({ message: "Transaction not found" });
+    res.json(transaction.toObject());
   } catch (err: any) {
     res.status(500).json({ message: err.message });
   }

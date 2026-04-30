@@ -21,7 +21,11 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
         router.push('/suspended');
       } else if (allowedRoles && !allowedRoles.includes(user.role)) {
         // Redirect to their own dashboard if they try to access a wrong role page
-        router.push(`/${user.role === 'customer' ? 'customer' : user.role}`);
+        if (user.role === 'admin' || user.role === 'super-admin' || user.role === 'super-sub-admin') {
+          router.push('/admin');
+        } else {
+          router.push(`/${user.role === 'customer' ? 'customer' : user.role}`);
+        }
       }
     }
   }, [user, loading, allowedRoles, router]);

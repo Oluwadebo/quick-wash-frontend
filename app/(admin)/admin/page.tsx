@@ -16,7 +16,7 @@ import { useAuth } from '@/hooks/use-auth';
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
 import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
-import { db, SiteSettings } from '@/lib/DatabaseService';
+import { api, SiteSettings } from '@/lib/ApiService';
 
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -57,7 +57,7 @@ export default function AdminDashboard() {
     isApproved: true
   });
 
-  const isSuperAdmin = currentUser?.email === 'ogunweoluwadebo1@gmail.com' || currentUser?.email === 'ogunwedebo21@gmail.com' || currentUser?.phoneNumber === '07048865686';
+  const isSuperAdmin = currentUser?.role === 'super-admin' || currentUser?.email === 'ogunweoluwadebo1@gmail.com' || currentUser?.email === 'ogunwedebo21@gmail.com' || currentUser?.phoneNumber === '07048865686';
   const isSuperSubAdmin = currentUser?.role === 'super-sub-admin';
   const hasFullAdminPrivileges = isSuperAdmin || isSuperSubAdmin || currentUser?.role === 'admin';
 
@@ -109,7 +109,12 @@ export default function AdminDashboard() {
         
         if (resp.ok) {
           const data = await resp.json();
-          setInviteLink(data.inviteLink);
+          let finalLink = data.inviteLink;
+          // If the link is localhost but we are not on localhost, use current origin
+          if (finalLink && typeof window !== 'undefined' && finalLink.includes('localhost') && !window.location.hostname.includes('localhost')) {
+            finalLink = finalLink.replace(/^https?:\/\/[^\/]+/, window.location.origin);
+          }
+          setInviteLink(finalLink);
           setNotification({ message: 'Invite link generated successfully!', type: 'success' });
           return;
         } else {
@@ -157,23 +162,29 @@ export default function AdminDashboard() {
     const fetchData = async () => {
       try {
         const token = localStorage.getItem('qw_token');
-        const [usersRes, ordersRes, transRes, sysStats, site] = await Promise.all([
+        const [usersRes, ordersRes, transRes, campRes, auditRes, sysStats, site] = await Promise.all([
           fetch('/api/admin/users', { headers: { 'Authorization': `Bearer ${token}` } }),
           fetch('/api/orders', { headers: { 'Authorization': `Bearer ${token}` } }),
           fetch('/api/transactions', { headers: { 'Authorization': `Bearer ${token}` } }),
-          db.getSystemStats(),
-          db.getSiteSettings()
+          fetch('/api/campaigns', { headers: { 'Authorization': `Bearer ${token}` } }),
+          fetch('/api/audit-logs', { headers: { 'Authorization': `Bearer ${token}` } }),
+          api.getSystemStats(),
+          api.getSiteSettings()
         ]);
 
-        const [usersData, ordersData, transData] = await Promise.all([
+        const [usersData, ordersData, transData, campData, auditData] = await Promise.all([
           usersRes.ok ? usersRes.json() : Promise.resolve([]),
           ordersRes.ok ? ordersRes.json() : Promise.resolve([]),
-          transRes.ok ? transRes.json() : Promise.resolve([])
+          transRes.ok ? transRes.json() : Promise.resolve([]),
+          campRes.ok ? campRes.json() : Promise.resolve([]),
+          auditRes.ok ? auditRes.json() : Promise.resolve([])
         ]);
 
         setAllUsers(usersData);
         setOrders(ordersData);
         setAllTransactions(transData);
+        setCampaigns(campData);
+        setAuditLogs(auditData);
         setSystemStats(sysStats);
         setSiteSettings(site);
 
@@ -217,57 +228,89 @@ export default function AdminDashboard() {
     color: 'bg-primary'
   });
 
-  const handleAddCampaign = React.useCallback((e: React.FormEvent) => {
+  const [auditLogs, setAuditLogs] = React.useState<any[]>([]);
+  const handleAddCampaign = async (e: React.FormEvent) => {
     e.preventDefault();
-    const updated = editingCampaign 
-      ? campaigns.map(c => c.id === editingCampaign.id ? { ...campaignForm, id: c.id } : c)
-      : [...campaigns, { ...campaignForm, id: Date.now() }];
+    const token = localStorage.getItem('qw_token');
     
-    localStorage.setItem('qw_campaigns', JSON.stringify(updated));
-    setCampaigns(updated);
-    setIsCampaignModalOpen(false);
-    setEditingCampaign(null);
-    setCampaignForm({ name: '', status: 'Active', reach: '0', conversion: '0%', color: 'bg-primary' });
-    
-    // Audit Log
-    const logs = JSON.parse(localStorage.getItem('qw_audit_logs') || '[]');
-    // eslint-disable-next-line react-hooks/purity
-    const auditId = Date.now();
-    logs.push({
-      id: auditId,
-      action: editingCampaign ? 'Campaign Updated' : 'Campaign Created',
-      target: campaignForm.name,
-      admin: currentUser?.phoneNumber,
-      time: new Date().toISOString(),
-      details: `Admin ${currentUser?.fullName} ${editingCampaign ? 'updated' : 'created'} campaign: ${campaignForm.name}`
-    });
-    localStorage.setItem('qw_audit_logs', JSON.stringify(logs));
-  }, [campaigns, editingCampaign, campaignForm, currentUser]);
+    try {
+      let resp;
+      if (editingCampaign) {
+        resp = await fetch(`/api/campaigns/${editingCampaign.id}`, {
+          method: 'PATCH',
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json' 
+          },
+          body: JSON.stringify(campaignForm)
+        });
+      } else {
+        resp = await fetch('/api/campaigns', {
+          method: 'POST',
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json' 
+          },
+          body: JSON.stringify(campaignForm)
+        });
+      }
 
-  const handleDeleteCampaign = React.useCallback((id: number) => {
-    const updated = campaigns.filter(c => c.id !== id);
-    localStorage.setItem('qw_campaigns', JSON.stringify(updated));
-    setCampaigns(updated);
-    
-    // Audit Log
-    const logs = JSON.parse(localStorage.getItem('qw_audit_logs') || '[]');
-    // eslint-disable-next-line react-hooks/purity
-    const auditId = Date.now();
-    logs.push({
-      id: auditId,
-      action: 'Campaign Deleted',
-      target: id.toString(),
-      admin: currentUser?.phoneNumber,
-      time: new Date().toISOString()
-    });
-    localStorage.setItem('qw_audit_logs', JSON.stringify(logs));
+      if (resp.ok) {
+        const saved = await resp.json();
+        setCampaigns(prev => editingCampaign ? prev.map(c => c.id === editingCampaign.id ? saved : c) : [...prev, saved]);
+        setIsCampaignModalOpen(false);
+        setEditingCampaign(null);
+        setCampaignForm({ name: '', status: 'Active', reach: '0', conversion: '0%', color: 'bg-primary' });
+        
+        // Record Audit Log
+        await fetch('/api/audit-logs', {
+          method: 'POST',
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json' 
+          },
+          body: JSON.stringify({
+            action: editingCampaign ? 'Campaign Updated' : 'Campaign Created',
+            target: campaignForm.name,
+            admin: currentUser?.phoneNumber,
+            details: `Admin ${currentUser?.fullName} ${editingCampaign ? 'updated' : 'created'} campaign: ${campaignForm.name}`
+          })
+        });
+      }
+    } catch (err) {}
+  };
+
+  const handleDeleteCampaign = async (id: number) => {
+    const token = localStorage.getItem('qw_token');
+    try {
+      const resp = await fetch(`/api/campaigns/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (resp.ok) {
+        setCampaigns(prev => prev.filter(c => c.id !== id));
+        // Record Audit Log
+        await fetch('/api/audit-logs', {
+          method: 'POST',
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json' 
+          },
+          body: JSON.stringify({
+            action: 'Campaign Deleted',
+            target: id.toString(),
+            admin: currentUser?.phoneNumber,
+            details: `Admin ${currentUser?.fullName} deleted campaign ID: ${id}`
+          })
+        });
+      }
+    } catch (err) {}
     setCampaignToDelete(null);
-  }, [campaigns, currentUser]);
+  };
 
   const clearAlerts = () => {
-    localStorage.setItem('qw_alerts', JSON.stringify([]));
-    setAlerts([]);
-    alert('System alerts cleared.');
+    setNotification({ message: 'System alerts are managed by hardware nodes.', type: 'info' });
+    setTimeout(() => setNotification(null), 3000);
   };
 
   const handleEditUser = (user: any) => {
@@ -282,24 +325,26 @@ export default function AdminDashboard() {
     }
 
     if (confirm('Are you sure you want to delete this user?')) {
-      await db.deleteUser(uid);
-      const updated = await db.getUsers();
+      await api.deleteUser(uid);
+      const updated = await api.getUsers();
       setAllUsers(updated);
       setPendingUsers(updated.filter((u: any) => !u.isApproved));
 
       // Audit Log
-      const logs = JSON.parse(localStorage.getItem('qw_audit_logs') || '[]');
-      // eslint-disable-next-line react-hooks/purity
-      const auditId = Date.now();
-      logs.push({
-        id: auditId,
-        action: 'User Deleted',
-        target: uid,
-        admin: currentUser?.phoneNumber,
-        time: new Date().toISOString(),
-        details: `Super Admin deleted user with UID: ${uid}`
+      const token = localStorage.getItem('qw_token');
+      await fetch('/api/audit-logs', {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json' 
+        },
+        body: JSON.stringify({
+          action: 'User Deleted',
+          target: uid,
+          admin: currentUser?.phoneNumber,
+          details: `Super Admin ${currentUser?.fullName} deleted user with UID: ${uid}`
+        })
       });
-      localStorage.setItem('qw_audit_logs', JSON.stringify(logs));
       
       alert('User deleted successfully.');
     }
@@ -308,7 +353,7 @@ export default function AdminDashboard() {
   const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const updated = await db.updateUser(editingUser.uid, editingUser);
+      const updated = await api.updateUser(editingUser.uid, editingUser);
       setAllUsers(prev => prev.map(u => u.uid === updated.uid ? updated : u));
       setIsUserModalOpen(false);
       alert('User updated successfully!');
@@ -317,17 +362,23 @@ export default function AdminDashboard() {
     }
   };
 
-  const assignRider = (orderId: string, riderPhone: string) => {
-    const allOrders = JSON.parse(localStorage.getItem('qw_orders') || '[]');
-    const updated = allOrders.map((o: any) => {
-      if (o.id === orderId) {
-        return { ...o, riderPhone, status: o.status === 'Pending Pickup' ? 'Pending Pickup' : o.status };
+  const assignRider = async (orderId: string, riderPhone: string) => {
+    try {
+      const token = localStorage.getItem('qw_token');
+      const resp = await fetch(`/api/orders/${orderId}`, {
+        method: 'PATCH',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json' 
+        },
+        body: JSON.stringify({ riderPhone })
+      });
+      if (resp.ok) {
+        const updated = await resp.json();
+        setOrders(prev => prev.map(o => o.id === orderId ? updated : o));
+        alert('Rider assigned successfully!');
       }
-      return o;
-    });
-    localStorage.setItem('qw_orders', JSON.stringify(updated));
-    setOrders(updated);
-    alert('Rider assigned successfully!');
+    } catch (err) {}
   };
 
   const [isRefundModalOpen, setIsRefundModalOpen] = React.useState(false);
@@ -363,13 +414,12 @@ export default function AdminDashboard() {
 
   const handleApprove = React.useCallback(async (userId: string) => {
     try {
-      const response = await fetch('/api/admin/approve-user', {
+      const response = await fetch(`/api/users/approve/${userId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('qw_token')}`
-        },
-        body: JSON.stringify({ userId, approve: true })
+        }
       });
 
       if (response.ok) {
@@ -686,7 +736,7 @@ export default function AdminDashboard() {
                               onClick={() => {
                                 if (!siteSettings || !hasFullAdminPrivileges) return;
                                 const updated = siteSettings.landmarks.map(l => l.id === lm.id ? { ...l, active: !l.active } : l);
-                                db.updateSiteSettings({ landmarks: updated }).then(setSiteSettings);
+                                api.updateSiteSettings({ landmarks: updated }).then(setSiteSettings);
                               }}
                               className="p-2 rounded-lg bg-surface-container-highest text-on-surface-variant hover:text-primary transition-colors disabled:opacity-50"
                               disabled={!hasFullAdminPrivileges}
@@ -698,7 +748,7 @@ export default function AdminDashboard() {
                                 if (!siteSettings || !hasFullAdminPrivileges) return;
                                 if (confirm('Delete hotspot?')) {
                                   const updated = siteSettings.landmarks.filter(l => l.id !== lm.id);
-                                  db.updateSiteSettings({ landmarks: updated }).then(setSiteSettings);
+                                  api.updateSiteSettings({ landmarks: updated }).then(setSiteSettings);
                                 }
                               }}
                               className="p-2 rounded-lg bg-surface-container-highest text-on-surface-variant hover:text-error transition-colors disabled:opacity-50"
@@ -801,10 +851,16 @@ export default function AdminDashboard() {
                           <button 
                             disabled={isSiteUpdating}
                             onClick={async () => {
-                              setIsSiteUpdating(true);
-                              await db.updateSiteSettings(siteSettings);
-                              setIsSiteUpdating(false);
-                              alert('Site settings propagated! All users will see the changes.');
+                              try {
+                                setIsSiteUpdating(true);
+                                await api.updateSiteSettings(siteSettings);
+                                alert('Site settings propagated! All users will see the changes.');
+                              } catch (error: any) {
+                                console.error('Failed to update settings:', error);
+                                alert(`Update failed: ${error.message}`);
+                              } finally {
+                                setIsSiteUpdating(false);
+                              }
                             }}
                             className="w-full h-20 signature-gradient text-white rounded-3xl font-headline font-black text-lg shadow-2xl shadow-primary/20 active:scale-[0.98] transition-all flex items-center justify-center gap-3"
                           >
@@ -1038,7 +1094,7 @@ export default function AdminDashboard() {
                 >
                   <h2 className="text-2xl font-headline font-black text-on-surface mb-8">System Audit Log</h2>
                   <div className="space-y-4">
-                    {(JSON.parse(localStorage.getItem('qw_audit_logs') || '[]')).reverse().map((log: any) => (
+                    {[...auditLogs].reverse().map((log: any) => (
                       <div 
                         key={log.id} 
                         onClick={() => {
@@ -1059,7 +1115,7 @@ export default function AdminDashboard() {
                         <span className="text-[10px] font-bold text-on-surface-variant">{new Date(log.time).toLocaleString()}</span>
                       </div>
                     ))}
-                    {(JSON.parse(localStorage.getItem('qw_audit_logs') || '[]')).length === 0 && (
+                    {auditLogs.length === 0 && (
                       <div className="py-20 text-center border-2 border-dashed border-primary/10 rounded-3xl">
                         <p className="text-on-surface-variant font-medium">No audit logs found.</p>
                       </div>
@@ -1537,7 +1593,7 @@ export default function AdminDashboard() {
                             const newLandmark = { id: Date.now().toString(), name: newLandmarkName, active: true };
                             const updatedLandmarks = [...(siteSettings.landmarks || []), newLandmark];
                             
-                            db.updateSiteSettings({ landmarks: updatedLandmarks }).then(updated => {
+                            api.updateSiteSettings({ landmarks: updatedLandmarks }).then(updated => {
                               setSiteSettings(updated);
                               setIsLandmarkModalOpen(false);
                               setNewLandmarkName('');
@@ -1921,11 +1977,61 @@ export default function AdminDashboard() {
 
                         <div className="bg-surface-container-lowest p-6 rounded-3xl border border-primary/5">
                           <p className="text-[10px] font-black uppercase tracking-widest text-primary mb-4">Verification Documents</p>
-                          <div className="aspect-video bg-surface-container-highest rounded-2xl flex items-center justify-center border-2 border-dashed border-primary/10">
-                            <div className="text-center">
-                              <ShieldCheck className="w-10 h-10 text-primary/40 mx-auto mb-2" />
-                              <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">ID Document Preview</p>
-                            </div>
+                          <div className="space-y-4">
+                            {verifyingUser.ninImage && (
+                              <div className="space-y-2">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-2">NIN Document</p>
+                                <div className="aspect-video bg-surface-container-highest rounded-2xl relative overflow-hidden border-2 border-primary/10 group">
+                                  <Image 
+                                    src={verifyingUser.ninImage} 
+                                    alt="NIN" 
+                                    fill 
+                                    className="object-cover group-hover:scale-110 transition-transform duration-500" 
+                                    unoptimized 
+                                  />
+                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                    <button 
+                                      onClick={() => window.open(verifyingUser.ninImage, '_blank')}
+                                      className="bg-white/20 backdrop-blur-md text-white p-3 rounded-full hover:bg-white/40 transition-colors"
+                                    >
+                                      <ExternalLink className="w-6 h-6" />
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                            
+                            {verifyingUser.shopImage && (
+                              <div className="space-y-2">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-2">Shop/Storefront Photo</p>
+                                <div className="aspect-video bg-surface-container-highest rounded-2xl relative overflow-hidden border-2 border-primary/10 group">
+                                  <Image 
+                                    src={verifyingUser.shopImage} 
+                                    alt="Shop" 
+                                    fill 
+                                    className="object-cover group-hover:scale-110 transition-transform duration-500" 
+                                    unoptimized 
+                                  />
+                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                    <button 
+                                      onClick={() => window.open(verifyingUser.shopImage, '_blank')}
+                                      className="bg-white/20 backdrop-blur-md text-white p-3 rounded-full hover:bg-white/40 transition-colors"
+                                    >
+                                      <ExternalLink className="w-6 h-6" />
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {!verifyingUser.ninImage && !verifyingUser.shopImage && (
+                              <div className="aspect-video bg-surface-container-highest rounded-2xl flex items-center justify-center border-2 border-dashed border-primary/10">
+                                <div className="text-center">
+                                  <ShieldAlert className="w-10 h-10 text-error/40 mx-auto mb-2" />
+                                  <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">No Documents Uploaded</p>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -2041,14 +2147,32 @@ export default function AdminDashboard() {
                               Cancel
                             </button>
                             <button 
-                              onClick={() => {
+                              onClick={async () => {
                                 if (!overrideData.reason) return alert('Please provide a reason.');
-                                const logs = JSON.parse(localStorage.getItem('qw_audit_logs') || '[]');
-                                const updated = logs.map((l: any) => l.id === selectedDetail.id ? { ...l, action: overrideData.action, overrideReason: overrideData.reason, overridenBy: currentUser?.phoneNumber } : l);
-                                localStorage.setItem('qw_audit_logs', JSON.stringify(updated));
-                                alert('Audit log updated successfully.');
-                                setIsOverriding(false);
-                                setIsDetailModalOpen(false);
+                                try {
+                                  const token = localStorage.getItem('qw_token');
+                                  const resp = await fetch(`/api/audit-logs/${selectedDetail.id}`, {
+                                    method: 'PATCH',
+                                    headers: {
+                                      'Authorization': `Bearer ${token}`,
+                                      'Content-Type': 'application/json'
+                                    },
+                                    body: JSON.stringify({ 
+                                      action: overrideData.action, 
+                                      overrideReason: overrideData.reason, 
+                                      overridenBy: currentUser?.phoneNumber 
+                                    })
+                                  });
+                                  if (resp.ok) {
+                                    const updated = await resp.json();
+                                    setAuditLogs(prev => prev.map(l => l.id === selectedDetail.id ? updated : l));
+                                    alert('Audit log updated successfully.');
+                                    setIsOverriding(false);
+                                    setIsDetailModalOpen(false);
+                                  }
+                                } catch (err) {
+                                  alert('Failed to update audit log.');
+                                }
                               }}
                               className="flex-1 h-12 bg-primary text-on-primary rounded-xl font-bold text-xs"
                             >

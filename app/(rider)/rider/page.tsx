@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
 import { useAuth } from '@/hooks/use-auth';
 import { formatRelativeTime } from '@/lib/time';
-import { db, Order, UserData } from '@/lib/DatabaseService';
+import { api, Order, UserData } from '@/lib/ApiService';
 import { 
   X, History, Wallet, ShoppingBag, MapPin, Navigation, Package, CheckCircle, 
   Clock, Phone, ArrowRight, Bike, Zap, AlertTriangle, MessageCircle, ShieldAlert,
@@ -55,7 +55,7 @@ export default function RiderDashboard() {
   React.useEffect(() => {
     const refreshData = async () => {
       if (currentUser?.uid) {
-        const allOrders = await db.getOrders();
+        const allOrders = await api.getOrders();
         
         // My entire history sorted by time (latest first)
         const myAll = allOrders
@@ -78,7 +78,7 @@ export default function RiderDashboard() {
           .sort((a, b) => new Date(b.time || 0).getTime() - new Date(a.time || 0).getTime());
         setAvailableOrders(available);
 
-        const me = await db.getUser(currentUser.uid);
+        const me = await api.getUser(currentUser.uid);
         
         setStats({
           walletBalance: me?.walletBalance || 0,
@@ -100,12 +100,10 @@ export default function RiderDashboard() {
             const data = await res.json();
             setWalletHistory(data.transactions || []);
           } else {
-            const localHistory = JSON.parse(localStorage.getItem(`qw_wallet_history_${currentUser.uid}`) || '[]');
-            setWalletHistory(localHistory);
+            setWalletHistory([]);
           }
         } catch (e) {
-          const localHistory = JSON.parse(localStorage.getItem(`qw_wallet_history_${currentUser.uid}`) || '[]');
-          setWalletHistory(localHistory);
+          setWalletHistory([]);
         }
       }
     };
@@ -122,7 +120,7 @@ export default function RiderDashboard() {
     setNotification({ message: 'Claiming order... Please wait.', type: 'info' });
 
     // ATOMIC TRANSACTION: Claim Order
-    const success = await db.claimOrder(
+    const success = await api.claimOrder(
       orderId, 
       currentUser.uid, 
       currentUser.fullName || 'Rider', 
@@ -148,9 +146,9 @@ export default function RiderDashboard() {
 
   const handleRejectOrder = async (orderId: string) => {
     if (!currentUser) return;
-    const order = await db.getOrder(orderId);
+    const order = await api.getOrder(orderId);
     if (order && order.riderUid === currentUser.uid) {
-      await db.saveOrder({
+      await api.saveOrder({
         ...order,
         riderUid: undefined,
         riderName: undefined,
@@ -160,7 +158,7 @@ export default function RiderDashboard() {
       });
       setOrderToReject(null);
       setNotification({ message: 'Order rejected and returned to pool.', type: 'info' });
-      const allOrders = await db.getOrders();
+      const allOrders = await api.getOrders();
       setTasks(allOrders.filter((o: Order) => o.riderUid === currentUser.uid && !['delivered', 'cancelled', 'completed'].includes((o.status || '').toLowerCase())));
       window.dispatchEvent(new Event('storage'));
     }
@@ -169,7 +167,7 @@ export default function RiderDashboard() {
   const handleReturnOrder = async () => {
     if (!selectedOrderId || !returnReason || !currentUser) return;
     setIsProcessing(true);
-    const success = await db.returnOrder(selectedOrderId, currentUser.uid, returnReason);
+    const success = await api.returnOrder(selectedOrderId, currentUser.uid, returnReason);
     if (success) {
       setNotification({ message: 'Order returned. ₦200 deducted from wallet.', type: 'info' });
       setIsReturnModalOpen(false);
@@ -177,9 +175,9 @@ export default function RiderDashboard() {
       setSelectedOrderId(null);
       
       // Refresh data
-      const allOrders = await db.getOrders();
+      const allOrders = await api.getOrders();
       setTasks(allOrders.filter((o: Order) => o.riderUid === currentUser.uid && !['delivered', 'cancelled', 'completed'].includes((o.status || '').toLowerCase())));
-      const me = await db.getUser(currentUser.uid);
+      const me = await api.getUser(currentUser.uid);
       if (me) {
         setStats(prev => ({
           ...prev,
@@ -194,8 +192,8 @@ export default function RiderDashboard() {
   };
 
   const handleStatusUpdate = async (orderId: string, newStatus: string, color: string) => {
-    await db.updateOrderStatus(orderId, newStatus, color);
-    const allOrders = await db.getOrders();
+    await api.updateOrderStatus(orderId, newStatus, color);
+    const allOrders = await api.getOrders();
     setTasks(allOrders.filter((o: Order) => o.riderUid === currentUser?.uid && !['delivered', 'cancelled', 'completed'].includes((o.status || '').toLowerCase())));
   };
 
@@ -207,14 +205,18 @@ export default function RiderDashboard() {
       // Generate Code 2 (Rider sees, Vendor enters)
       const code2 = Math.floor(1000 + Math.random() * 9000).toString();
 
-      // Update order status via PATCH API
-      await db.updateOrderStatus(order.id, 'picked_up', 'bg-secondary text-on-secondary', { code2, pickedUpAt: new Date().toISOString() });
+      // Update order status via PATCH API - MANDATORY: Send handoverCode for validation
+      await api.updateOrderStatus(order.id, 'picked_up', 'bg-secondary text-on-secondary', { 
+        handoverCode: input,
+        code2, 
+        pickedUpAt: new Date().toISOString() 
+      });
       
       setNotification({ message: 'Pickup confirmed! Head to the vendor.', type: 'success' });
       setTimeout(() => setNotification(null), 3000);
       setHandoverInput(prev => ({ ...prev, [order.id]: '' }));
 
-      const allOrders = await db.getOrders();
+      const allOrders = await api.getOrders();
       setTasks(allOrders.filter((o: Order) => o.riderUid === currentUser?.uid && !['delivered', 'cancelled', 'completed'].includes((o.status || '').toLowerCase())));
       window.dispatchEvent(new Event('storage'));
     }
@@ -226,8 +228,9 @@ export default function RiderDashboard() {
       // Generate Code 4 (Rider sees, Customer enters)
       const code4 = Math.floor(1000 + Math.random() * 9000).toString();
 
-      // Update order status
-      await db.updateOrderStatus(order.id, 'picked_up_delivery', 'bg-tertiary text-on-tertiary', {
+      // Update order status - MANDATORY: Send handoverCode for validation
+      await api.updateOrderStatus(order.id, 'picked_up_delivery', 'bg-tertiary text-on-tertiary', {
+        handoverCode: input,
         code4,
         pickedUpDeliveryAt: new Date().toISOString()
       });
@@ -236,7 +239,7 @@ export default function RiderDashboard() {
       setTimeout(() => setNotification(null), 3000);
       setHandoverInput(prev => ({ ...prev, [order.id]: '' }));
 
-      const allOrders = await db.getOrders();
+      const allOrders = await api.getOrders();
       setTasks(allOrders.filter((o: Order) => o.riderUid === currentUser?.uid && !['delivered', 'cancelled', 'completed'].includes((o.status || '').toLowerCase())));
       window.dispatchEvent(new Event('storage'));
     }
@@ -248,9 +251,9 @@ export default function RiderDashboard() {
       for (const order of tasks) {
         const input = handoverInput[order.id];
         if (input) {
-          if (order.status === 'rider_assign_pickup' && input === order.code1) {
+          if ((order.status === 'rider_assign_pickup' || order.status === 'rider_accepted') && input === order.code1) {
             await handleVerifyPickup(order);
-          } else if (order.status === 'rider_assign_delivery' && input === order.code3) {
+          } else if ((order.status === 'rider_assign_delivery' || order.status === 'ready') && input === order.code3) {
             await handleVerifyPickupDelivery(order);
           }
         }
@@ -264,8 +267,8 @@ export default function RiderDashboard() {
     setIsProcessing(true);
     
     if (currentUser?.uid) {
-      await db.updateUser(currentUser.uid, { withdrawalRequested: true });
-      await db.recordTransaction(currentUser.uid, {
+      await api.updateUser(currentUser.uid, { withdrawalRequested: true });
+      await api.recordTransaction(currentUser.uid, {
         type: 'withdrawal',
         amount: stats.walletBalance,
         desc: 'Withdrawal Request'
@@ -284,18 +287,7 @@ export default function RiderDashboard() {
   };
 
   const handleReportRain = async () => {
-    const alerts = JSON.parse(localStorage.getItem('qw_alerts') || '[]');
-    const newAlert = {
-      id: Date.now(),
-      type: 'WEATHER ALERT',
-      msg: `Heavy rain reported by rider ${currentUser?.fullName}. Deliveries may be delayed.`,
-      color: 'bg-warning text-on-warning',
-      riderUid: currentUser?.uid,
-      time: new Date().toISOString()
-    };
-    alerts.push(newAlert);
-    localStorage.setItem('qw_alerts', JSON.stringify(alerts));
-    setNotification({ message: 'Rain reported! Customers and vendors have been notified.', type: 'info' });
+    setNotification({ message: 'Rain reporting is temporarily disabled. Please contact support.', type: 'info' });
     setTimeout(() => setNotification(null), 3000);
   };
 
@@ -467,9 +459,10 @@ export default function RiderDashboard() {
                   <h3 className="font-headline font-black text-xl mb-6">My Active Tasks</h3>
                   <div className="space-y-6">
                     {tasks.map((order) => {
-                      const isPickup = order.status === 'rider_assign_pickup';
-                      const isDelivery = order.status === 'rider_assign_delivery' || order.status === 'picked_up_delivery';
-                      const isGoingToCustomer = order.status === 'rider_assign_pickup' || order.status === 'picked_up_delivery';
+                      // Support both assigned states for showing code inputs
+                      const isPickup = order.status === 'rider_assign_pickup' || order.status === 'rider_accepted';
+                      const isDelivery = order.status === 'rider_assign_delivery' || order.status === 'picked_up_delivery' || order.status === 'ready';
+                      const isGoingToCustomer = order.status === 'rider_assign_pickup' || order.status === 'rider_accepted' || order.status === 'picked_up_delivery';
                       
                       const destinationLandmark = isGoingToCustomer ? order.customerLandmark : order.vendorLandmark;
                       const destinationName = isGoingToCustomer ? order.customerName : order.vendorName;
@@ -529,7 +522,7 @@ export default function RiderDashboard() {
                                 <Phone className="w-4 h-4 text-primary" /> CALL
                               </a>
 
-                              {order.status === 'rider_assign_pickup' && (
+                              {(order.status === 'rider_assign_pickup' || order.status === 'rider_accepted') && (
                                 <div className="flex-[2] flex gap-3">
                                   <input 
                                     type="text" 
@@ -538,7 +531,7 @@ export default function RiderDashboard() {
                                     onChange={(e) => {
                                       const val = e.target.value.replace(/\D/g, '');
                                       setHandoverInput(prev => ({ ...prev, [order.id]: val }));
-                                      if (val.length === 4) handleVerifyPickup(order);
+                                      if (val.length === 4) handleVerifyPickup({ ...order, status: 'rider_assign_pickup' });
                                     }}
                                     className="w-24 h-16 bg-surface-container-highest rounded-2xl px-4 text-center font-headline font-black text-xl outline-none focus:ring-4 ring-primary/20"
                                     maxLength={4}
@@ -555,7 +548,7 @@ export default function RiderDashboard() {
                                 </div>
                               )}
                               
-                              {order.status === 'rider_assign_delivery' && (
+                              {(order.status === 'rider_assign_delivery' || order.status === 'ready') && (
                                 <div className="flex-[2] flex gap-3">
                                   <input 
                                     type="text" 
@@ -564,7 +557,7 @@ export default function RiderDashboard() {
                                     onChange={(e) => {
                                       const val = e.target.value.replace(/\D/g, '');
                                       setHandoverInput(prev => ({ ...prev, [order.id]: val }));
-                                      if (val.length === 4) handleVerifyPickupDelivery(order);
+                                      if (val.length === 4) handleVerifyPickupDelivery({ ...order, status: 'rider_assign_delivery' });
                                     }}
                                     className="w-24 h-16 bg-surface-container-highest rounded-2xl px-4 text-center font-headline font-black text-xl outline-none focus:ring-4 ring-tertiary/20"
                                     maxLength={4}
@@ -751,7 +744,7 @@ export default function RiderDashboard() {
                         const address = prompt("Enter Home Address:", currentUser?.address);
 
                         if (currentUser?.uid) {
-                          await db.updateUser(currentUser.uid, {
+                          await api.updateUser(currentUser.uid, {
                             fullName: fullName || currentUser.fullName,
                             bankName: bankName || currentUser.bankName,
                             bankAccountNumber: bankAccountNumber || currentUser.bankAccountNumber,

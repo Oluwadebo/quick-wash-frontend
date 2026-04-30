@@ -9,7 +9,7 @@ import ReadyForPickupButton from '@/components/shared/ReadyForPickupButton';
 import { Minus, Plus, Sparkles, Shirt, ShoppingBag, Bed, CreditCard, Bolt, Info, ChevronRight, ShieldCheck, Check, MapPin, ShieldAlert, Wallet, History, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
-import { db, Order, UserData } from '@/lib/DatabaseService';
+import { api, Order, UserData } from '@/lib/ApiService';
 import { Toast } from '@/components/shared/Toast';
 
 import { formatRelativeTime } from '@/lib/time';
@@ -78,9 +78,17 @@ const defaultItems = [
 
 const generateId = () => Math.floor(1000 + Math.random() * 9000).toString();
 
-const calculateRiderFee = () => {
-  const distance = Math.floor(Math.random() * 5) + 1;
-  return 500 + (distance * 100);
+const calculateRiderFee = (landmark?: string) => {
+  const distances: { [key: string]: number } = {
+    'Under-G': 2,
+    'Adenike': 3,
+    'Isale-General': 5,
+    'Stadium': 4,
+    'Bovina': 6,
+    'LAUTECH Gate': 1
+  };
+  const dist = (landmark && distances[landmark]) || 3;
+  return 500 + (dist * 100);
 };
 
 export default function OrderPage() {
@@ -92,7 +100,7 @@ export default function OrderPage() {
 }
 
 function OrderPageContent() {
-  const { updateUser } = useAuth();
+  const { user: authUser, updateUser } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const vendorId = searchParams.get('vendor');
@@ -114,20 +122,17 @@ function OrderPageContent() {
   React.useEffect(() => {
     const initPage = async () => {
       if (!vendorId) return;
-      db.getSiteSettings().then(setSiteSettings);
+      api.getSiteSettings().then(setSiteSettings);
 
       const isNew = searchParams.get('new') === 'true';
 
       // 1. Load Auth & Existing Order
-      const storedUser = localStorage.getItem('qw_user');
-      let user = null;
-      if (storedUser) {
-        user = JSON.parse(storedUser);
-        setCurrentUser(user);
+      if (authUser) {
+        setCurrentUser(authUser);
         
-        const orders = await db.getOrders();
+        const orders = await api.getOrders();
         const existing = orders.find((o: Order) => 
-          o.customerUid === user.uid && 
+          o.customerUid === authUser.uid && 
           o.status === 'confirm' &&
           o.vendorId === vendorId
         );
@@ -138,11 +143,11 @@ function OrderPageContent() {
       }
 
       // 2. Load Vendor Info
-      const foundVendor = await db.getUser(vendorId);
+      const foundVendor = await api.getUser(vendorId);
       setVendor(foundVendor);
 
       // 3. Load Price List base structure
-      const myServices = await db.getVendorPriceList(vendorId);
+      const myServices = await api.getVendorPriceList(vendorId);
       let initialCart = [];
       
       if (myServices && myServices.length > 0) {
@@ -150,7 +155,9 @@ function OrderPageContent() {
           const services = [
             { name: 'Wash', price: vs.washPrice, disabled: vs.washDisabled },
             { name: 'Iron', price: vs.ironPrice, disabled: vs.ironDisabled },
-            { name: 'Wash + Iron', price: vs.washIronPrice, disabled: vs.washIronDisabled }
+            { name: 'Wash + Iron', price: vs.washIronPrice, disabled: vs.washIronDisabled },
+            { name: 'S+Iron', price: vs.starchIronPrice, disabled: vs.starchIronDisabled },
+            { name: 'S+W+I', price: vs.starchWashIronPrice, disabled: vs.starchWashIronDisabled }
           ].filter(s => !s.disabled && s.price !== -1 && s.price !== undefined);
 
           return {
@@ -174,13 +181,15 @@ function OrderPageContent() {
       }
 
       // 4. Restore Saved Count Data (Skip if isNew)
-      if (user?.uid && !isNew) {
-        const savedCartStr = localStorage.getItem(`qw_pending_cart_${user.uid}_${vendorId}`);
-        if (savedCartStr) {
-          try {
-            const savedCart = JSON.parse(savedCartStr);
+      if (authUser?.uid && !isNew) {
+        try {
+          const userDrafts = await api.getDrafts(authUser.uid);
+          const currentDraft = userDrafts.find(d => d.vendorId === vendorId);
+          
+          if (currentDraft && currentDraft.items) {
+            const savedCart = currentDraft.items;
             initialCart = initialCart.map(item => {
-              const savedItem = savedCart.find((p: any) => p.id === item.id);
+              const savedItem = savedCart.find((p: any) => p.id === item.id || p.name === item.name);
               if (savedItem) {
                 return { 
                   ...item, 
@@ -188,19 +197,19 @@ function OrderPageContent() {
                   selectedService: savedItem.selectedService || item.selectedService,
                   hasStainRemover: !!savedItem.hasStainRemover,
                   subItems: item.subItems ? item.subItems.map(si => {
-                    const savedSi = savedItem.subItems?.find((ssi: any) => ssi.id === si.id);
+                    const savedSi = savedItem.subItems?.find((ssi: any) => ssi.id === si.id || ssi.name === si.name);
                     return savedSi ? { ...si, count: savedSi.count || 0 } : si;
                   }) : undefined
                 };
               }
               return item;
             });
-          } catch (e) {
-            console.error('Failed to parse saved cart', e);
           }
+        } catch (e) {
+          console.error('Failed to fetch drafts', e);
         }
-      } else if (user?.uid && isNew) {
-        localStorage.removeItem(`qw_pending_cart_${user.uid}_${vendorId}`);
+      } else if (authUser?.uid && isNew) {
+        await api.deleteDraft(authUser.uid, vendorId || '');
       }
 
       setCart(initialCart);
@@ -208,12 +217,22 @@ function OrderPageContent() {
     };
 
     initPage();
-  }, [vendorId, searchParams]);
+  }, [vendorId, searchParams, authUser]);
 
-  // Save to localStorage whenever cart changes AFTER initialization
+  // Save to backend draft whenever cart changes AFTER initialization (debounced)
   React.useEffect(() => {
     if (isInitialized && currentUser?.uid && vendorId) {
-      localStorage.setItem(`qw_pending_cart_${currentUser.uid}_${vendorId}`, JSON.stringify(cart));
+      const activeItems = cart.filter(i => i.count > 0);
+      if (activeItems.length === 0) {
+        api.deleteDraft(currentUser.uid, vendorId);
+        return;
+      }
+
+      const timer = setTimeout(() => {
+        api.saveDraft(currentUser.uid, vendorId, cart);
+      }, 2000); // 2 second debounce
+
+      return () => clearTimeout(timer);
     }
   }, [cart, currentUser, vendorId, isInitialized]);
 
@@ -274,15 +293,22 @@ function OrderPageContent() {
 
   const totalItems = cart.reduce((acc, item) => acc + (Number(item.count) || 0), 0);
   const itemsPrice = cart.reduce((acc, item) => acc + (Number(getItemPrice(item)) || 0), 0);
-  const [riderFee] = React.useState(() => calculateRiderFee());
+  const [riderFee, setRiderFee] = React.useState(0);
   const totalPrice = totalItems > 0 ? (Number(itemsPrice) || 0) + (Number(riderFee) || 0) : 0;
+
+  // Update rider fee when landmark changes
+  React.useEffect(() => {
+    if (pickupLandmark) {
+      setRiderFee(calculateRiderFee(pickupLandmark));
+    }
+  }, [pickupLandmark]);
 
   // Load existing order details if any
   const [existingOrder, setExistingOrder] = React.useState<Order | null>(null);
   React.useEffect(() => {
     const loadOrder = async () => {
       if (existingOrderId) {
-        const found = await db.getOrder(existingOrderId);
+        const found = await api.getOrder(existingOrderId);
         setExistingOrder(found);
       }
     };
@@ -295,7 +321,7 @@ function OrderPageContent() {
       return;
     }
     
-    const currentUserData = await db.getUser(currentUser.uid);
+    const currentUserData = await api.getUser(currentUser.uid);
     if (!currentUserData) {
       setNotification({ message: "User session error. Please login again.", type: 'error' });
       return;
@@ -318,8 +344,8 @@ function OrderPageContent() {
 
     setIsPaying(true);
     
-    // Longer delay for external payments
-    const delay = paymentMethod === 'wallet' ? 2000 : 4000;
+    const isWalletPayment = paymentMethod === 'wallet';
+    const delay = isWalletPayment ? 2000 : 4000;
     await new Promise(resolve => setTimeout(resolve, delay));
     
     const itemsDescription = cart.filter(i => i.count > 0).map(i => {
@@ -369,14 +395,19 @@ function OrderPageContent() {
 
     try {
       // The API Handles wallet deduction and transaction recording
-      const result = await db.saveOrder(newOrder);
-      const serverOrderId = result.id;
+      const result = await api.saveOrder(newOrder);
+      const serverOrderId = result.id || newOrderId;
+      console.log(`[Order] Payment successful. Server Order ID: ${serverOrderId}`);
       
-      localStorage.setItem('qw_current_order_id', serverOrderId);
+      if (currentUser?.uid) {
+        api.updateUser(currentUser.uid, { currentOrderId: serverOrderId });
+        updateUser({ currentOrderId: serverOrderId });
+      }
+      
       setExistingOrderId(serverOrderId);
       
       if (currentUser?.uid && vendorId) {
-        localStorage.removeItem(`qw_pending_cart_${currentUser.uid}_${vendorId}`);
+        await api.deleteDraft(currentUser.uid, vendorId);
       }
       
       setNotification({ message: `Payment via ${paymentMethod} successful!`, type: 'success' });
@@ -391,7 +422,7 @@ function OrderPageContent() {
           setCurrentUser(prev => prev ? { ...prev, ...updatedUserBalance } : null);
         } else {
           // Fallback refetch
-          const updatedUser = await db.getUser(currentUser.uid);
+          const updatedUser = await api.getUser(currentUser.uid);
           if (updatedUser) {
             updateUser(updatedUser);
             setCurrentUser(updatedUser);
@@ -400,7 +431,7 @@ function OrderPageContent() {
       } else {
         // For non-wallet payments, just double check user data
         if (currentUser?.uid) {
-          const updatedUser = await db.getUser(currentUser.uid);
+          const updatedUser = await api.getUser(currentUser.uid);
           if (updatedUser) {
             updateUser(updatedUser);
             setCurrentUser(updatedUser);
@@ -426,7 +457,7 @@ function OrderPageContent() {
   };
 
   const handlePickupRequest = React.useCallback(async () => {
-    let orderId = existingOrderId || localStorage.getItem('qw_current_order_id');
+    let orderId = existingOrderId || currentUser?.currentOrderId;
     console.log(`[Order] Requesting pickup for Order ID: ${orderId}`);
     
     if (!orderId) {
@@ -441,12 +472,12 @@ function OrderPageContent() {
     }
 
     try {
-      let order = await db.getOrder(orderId);
+      let order = await api.getOrder(orderId);
       
       // If not found by ID, try finding a recent pending order as a fallback
       if (!order && currentUser?.uid) {
         console.warn(`[Order] Order ${orderId} not found, searching for user's most recent confirm order...`);
-        const allOrders = await db.getOrders();
+        const allOrders = await api.getOrders();
         const mostRecent = allOrders.find(o => 
           o.customerUid === currentUser.uid && 
           o.status === 'confirm' && 
@@ -457,12 +488,15 @@ function OrderPageContent() {
           order = mostRecent;
           orderId = mostRecent.id;
           setExistingOrderId(orderId);
-          localStorage.setItem('qw_current_order_id', orderId);
+          if (currentUser?.uid) {
+            api.updateUser(currentUser.uid, { currentOrderId: orderId });
+            updateUser({ currentOrderId: orderId });
+          }
         }
       }
 
       if (order) {
-        await db.saveOrder({
+        await api.saveOrder({
           ...order,
           status: 'rider_assign_pickup',
           customerAddress: pickupAddress,
@@ -470,7 +504,10 @@ function OrderPageContent() {
           color: 'bg-primary-container text-on-primary-container',
         });
         
-        localStorage.removeItem('qw_current_order_id');
+        if (currentUser?.uid) {
+          api.updateUser(currentUser.uid, { currentOrderId: undefined });
+          updateUser({ currentOrderId: undefined });
+        }
         setNotification({ message: 'Order confirmed! Redirecting to tracking...', type: 'success' });
         
         setTimeout(() => {
@@ -485,7 +522,9 @@ function OrderPageContent() {
       setNotification({ message: err.message || 'Pickup request failed. Please try again.', type: 'error' });
       setTimeout(() => setNotification(null), 4000);
     }
-  }, [router, existingOrderId, pickupAddress, pickupLandmark, currentUser, vendorId]);
+  }, [router, existingOrderId, pickupAddress, pickupLandmark, currentUser, vendorId, updateUser]);
+
+  const showActionRequired = existingOrder?.status === 'Action Required' || existingOrder?.status === 'rider_assign_pickup' || existingOrder?.status === 'confirm';
 
   const handleCancelOrder = async () => {
     if (!existingOrder || !currentUser?.uid) return;
@@ -493,63 +532,46 @@ function OrderPageContent() {
 
     try {
       setIsPaying(true);
-      // 1. Refund to wallet if it was a wallet payment
-      if (existingOrder.paymentMethod === 'wallet') {
-        const user = await db.getUser(currentUser.uid);
-        if (user) {
-          await db.updateUser(user.uid, {
-            walletBalance: (Number(user.walletBalance) || 0) + existingOrder.totalPrice
-          });
-          await db.recordTransaction(user.uid, {
-            type: 'deposit',
-            amount: existingOrder.totalPrice,
-            desc: `Refund for Cancelled Order #${existingOrder.id}`
-          });
-        }
+      const token = localStorage.getItem('qw_token');
+      const res = await fetch(`/api/orders/${existingOrder.id}/cancel`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ reason: 'User Cancelled' })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || 'Failed to cancel order');
       }
 
-      // 2. Delete the order
-      const allOrders = await db.getOrders();
-      const filtered = allOrders.filter((o: Order) => o.id !== existingOrder.id);
-      localStorage.setItem('qw_orders', JSON.stringify(filtered));
+      // Refresh user balance
+      const updatedUser = await api.getUser(currentUser.uid);
+      if (updatedUser) {
+        updateUser(updatedUser);
+        setCurrentUser(updatedUser);
+      }
 
-      // 3. Reset state
+      // Reset state
       setExistingOrderId(null);
       setExistingOrder(null);
       setIsPaid(false);
-      localStorage.removeItem('qw_current_order_id');
+      
+      if (currentUser?.uid) {
+        api.updateUser(currentUser.uid, { currentOrderId: undefined });
+        updateUser({ currentOrderId: undefined });
+      }
       
       setNotification({ message: "Order cancelled and refunded successfully.", type: 'success' });
       setIsPaying(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Cancellation failed", error);
       setIsPaying(false);
-      setNotification({ message: "Failed to cancel order. Please try again.", type: 'error' });
+      setNotification({ message: error.message || "Failed to cancel order. Please try again.", type: 'error' });
     }
   };
-
-  const showActionRequired = existingOrder?.status === 'Action Required' || existingOrder?.status === 'rider_assign_pickup' || existingOrder?.status === 'confirm';
-
-  // AUTO-READY TIMER: 30 Minutes after payment
-  React.useEffect(() => {
-    if (existingOrder && existingOrder.status === 'confirm' && existingOrder.paidAt) {
-      const paidAt = new Date(existingOrder.paidAt).getTime();
-      const now = new Date().getTime();
-      const thirtyMins = 30 * 60 * 1000;
-      const timeLeft = thirtyMins - (now - paidAt);
-
-      if (timeLeft <= 0) {
-        // Automatically trigger pickup request
-        handlePickupRequest();
-      } else {
-        // Set a timer for the remaining time
-        const timer = setTimeout(() => {
-          handlePickupRequest();
-        }, timeLeft);
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [existingOrder, handlePickupRequest]);
 
   if (vendorId && !isInitialized) {
     return (
@@ -730,7 +752,7 @@ function OrderPageContent() {
                         >
                           <div className="flex items-center gap-3">
                             <Sparkles className={cn("w-4 h-4", item.hasStainRemover ? "text-tertiary fill-current" : "text-on-surface-variant")} />
-                            <span className="font-headline font-black text-[10px] uppercase tracking-wider">Stain Remover</span>
+                            <span className="font-headline font-black text-[10px] uppercase tracking-wider">White</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <span className="text-[10px] font-bold text-on-surface-variant">+₦{item.stainRemoverPrice}</span>
@@ -775,7 +797,16 @@ function OrderPageContent() {
                           >
                             <Minus className="w-5 h-5" />
                           </button>
-                          <span className="font-headline font-black text-2xl px-2 min-w-[2ch] text-center">{item.count}</span>
+                          <input 
+                            type="number"
+                            value={item.count}
+                            onChange={(e) => {
+                              const val = Math.max(0, parseInt(e.target.value) || 0);
+                              updateCount(item.id, val - item.count);
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="font-headline font-black text-2xl px-2 w-20 text-center bg-transparent outline-none ring-0"
+                          />
                           <button 
                             onClick={(e) => { e.stopPropagation(); updateCount(item.id, 1); }}
                             className="w-12 h-12 flex items-center justify-center rounded-2xl bg-primary text-white hover:opacity-90 active:scale-90 transition-all shadow-lg shadow-primary/20"

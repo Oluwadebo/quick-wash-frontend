@@ -10,9 +10,11 @@ import { motion } from 'motion/react';
 import { cn } from '@/lib/utils';
 
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
-import { db, Order, UserData } from '@/lib/DatabaseService';
+import { api, Order, UserData } from '@/lib/ApiService';
+import { useAuth } from '@/hooks/use-auth';
 
 export default function LandmarkSelectionPage() {
+  const { user: authUser } = useAuth();
   const [recentOrders, setRecentOrders] = React.useState<Order[]>([]);
   const [user, setUser] = React.useState<UserData | null>(null);
   const [alerts, setAlerts] = React.useState<any[]>([]);
@@ -24,32 +26,23 @@ export default function LandmarkSelectionPage() {
 
   React.useEffect(() => {
     const init = async () => {
-      const currentUser = JSON.parse(localStorage.getItem('qw_user') || '{}');
-      if (!currentUser.uid) return;
+      if (!authUser?.uid) return;
       
-      const me = await db.getUser(currentUser.uid);
+      const me = await api.getUser(authUser.uid);
       setUser(me);
 
       if (me?.uid) {
-        await db.processAutoRecovery(me.uid);
+        await api.processAutoRecovery(me.uid);
         
-        const allKeys = Object.keys(localStorage);
-        const userCartKeys = allKeys.filter(k => k.startsWith(`qw_pending_cart_${me.uid}_`));
-        
-        let hasItems = false;
-          const prefix = `qw_pending_cart_${me.uid}_`;
-          for (const key of userCartKeys) {
-            const cartData = JSON.parse(localStorage.getItem(key) || '[]');
-            if (cartData.some((i: any) => i.count > 0)) {
-              hasItems = true;
-              setPendingCart(cartData);
-              // Extract the full vendorId correctly, even if it contains underscores
-              setPendingVendorId(key.replace(prefix, '') || null);
-              break;
-            }
-          }
+        // Fetch drafts from backend instead of localStorage
+        const userDrafts = await api.getDrafts(me.uid);
+        if (userDrafts.length > 0) {
+          const mainDraft = userDrafts[0];
+          setPendingCart(mainDraft.items);
+          setPendingVendorId(mainDraft.vendorId);
+        }
 
-        const allOrders = await db.getOrders();
+        const allOrders = await api.getOrders();
         
         // Multiple unconfirmed
         const unconfirmed = allOrders.filter((o: Order) => 
@@ -68,15 +61,11 @@ export default function LandmarkSelectionPage() {
         const filtered = allOrders.filter((o: Order) => o.customerUid === me.uid);
         setRecentOrders(filtered.sort((a: Order, b: Order) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
       }
-
-      const activeAlerts = JSON.parse(localStorage.getItem('qw_alerts') || '[]');
-      setAlerts(activeAlerts.filter((a: any) => a.type === 'Weather'));
     };
     init();
     
-    window.addEventListener('storage', init);
-    return () => window.removeEventListener('storage', init);
-  }, []);
+    // We don't really need a storage listener for qw_user anymore as useAuth handles it
+  }, [authUser]);
 
   const allBadges = [
     { 

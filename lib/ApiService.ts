@@ -1,6 +1,6 @@
 /**
- * DatabaseService.ts
- * Abstracts localStorage to simulate a real asynchronous database with atomic transactions.
+ * ApiService.ts
+ * Thin client wrapper for the backend API.
  */
 
 import { API_URLS } from './api-config';
@@ -24,7 +24,7 @@ export interface UserData {
   phoneNumber: string;
   email: string;
   password?: string;
-  role: 'customer' | 'vendor' | 'rider' | 'admin' | 'super-sub-admin';
+  role: 'customer' | 'vendor' | 'rider' | 'admin' | 'super-admin' | 'super-sub-admin';
   isApproved: boolean;
   walletBalance: number;
   pendingBalance: number;
@@ -48,6 +48,9 @@ export interface UserData {
   address?: string;
   shopAddress?: string;
   landmark?: string;
+  currentOrderId?: string;
+  yorubaAudioEnabled?: boolean;
+  alerts?: any[];
 }
 
 export interface Order {
@@ -120,12 +123,13 @@ export interface SiteSettings {
   emergencyAlert: string;
   maintenanceMode: boolean;
   announcement: string;
+  globalServices: string[];
   landmarks: Landmark[];
 }
 
 const DELAY = 300; // Simulate network latency
 
-class DatabaseService {
+class ApiService {
   private async delay() {
     return new Promise(resolve => setTimeout(resolve, DELAY));
   }
@@ -209,38 +213,43 @@ class DatabaseService {
 
   // --- ORDERS ---
 
+  async deleteOrder(id: string): Promise<void> {
+    try {
+      console.log(`[DB] Deleting order: ${id}`);
+      const resp = await fetch(`${API_URLS.base}/orders/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('qw_token')}` }
+      });
+      if (!resp.ok) {
+        throw new Error(`Failed to delete order ${id}`);
+      }
+    } catch (error) {
+      console.error(`[DB] Error deleting order ${id}:`, error);
+      throw error;
+    }
+  }
+
   async getOrders(): Promise<Order[]> {
     await this.delay();
-    const currentUser = JSON.parse(localStorage.getItem('qw_user') || '{}');
     const token = localStorage.getItem('qw_token');
     
-    if (typeof window !== 'undefined' && currentUser.uid) {
+    if (typeof window !== 'undefined' && token) {
       try {
-        const url = `${API_URLS.orders}?userId=${currentUser.uid}&role=${currentUser.role}`;
-        console.log(`[DB] Fetching orders for ${currentUser.uid} (${currentUser.role}) from: ${url}`);
-        
+        const url = `${API_URLS.orders}`; 
         const resp = await fetch(url, {
           headers: { 
             'Authorization': `Bearer ${token}`,
-            'Accept': 'application/json'
+            'Accept': 'application/json',
+            'Cache-Control': 'no-cache'
           }
         });
         
-        if (resp.ok) {
-          const data = await resp.json();
-          console.log(`[DB] Successfully fetched ${data.length} orders`);
-          return data;
-        }
-        
-        const errorText = await resp.text();
-        console.error(`[DB] Failed to fetch orders (Status: ${resp.status}): ${errorText}`);
-        return []; // Return empty instead of throwing to prevent UI crash
+        if (resp.ok) return await resp.json();
+        return [];
       } catch (e: any) {
-        console.error('[DB] Network Error during getOrders:', e.message || e);
-        return []; // Resilient fallback
+        return []; 
       }
     }
-    console.warn('[DB] getOrders skipped: User UID or window undefined');
     return [];
   }
 
@@ -277,8 +286,9 @@ class DatabaseService {
     if (typeof window !== 'undefined') {
       try {
         const token = localStorage.getItem('qw_token');
-        const isNew = !order._id && !order.id; 
-        const resp = await fetch(isNew ? API_URLS.orders : `${API_URLS.orders}/${order.id}`, {
+        // A new order from the frontend will have a local 'id' but NO '_id' (MongoDB ID)
+        const isNew = !order._id; 
+        const resp = await fetch(isNew ? API_URLS.orders : `${API_URLS.orders}/${order.id || order._id}`, {
           method: isNew ? 'POST' : 'PATCH',
           headers: { 
             'Authorization': `Bearer ${token}`,
@@ -324,18 +334,23 @@ class DatabaseService {
     return false;
   }
 
-  async updateOrderStatus(orderId: string, status: string, color: string, handoverCode?: string): Promise<Order> {
+  async updateOrderStatus(orderId: string, status: string, color: string, extraData: any = {}): Promise<Order> {
     await this.delay();
     if (typeof window !== 'undefined') {
       try {
         const token = localStorage.getItem('qw_token');
+        const body = { 
+          status, 
+          color, 
+          ...extraData 
+        };
         const resp = await fetch(`${API_URLS.orders}/${orderId}`, {
           method: 'PATCH',
           headers: { 
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ status, color, handoverCode })
+          body: JSON.stringify(body)
         });
         if (resp.ok) return await resp.json();
         throw new Error(await resp.text());
@@ -343,170 +358,69 @@ class DatabaseService {
         throw new Error(e.message);
       }
     }
-    throw new Error('Client mode enabled');
+    throw new Error('Action failed');
   }
 
   /**
-   * Auto-cancel orders unassigned for > 20 mins
+   * Auto-cancel orders unassigned for > 30 mins (Backend controlled)
    */
   async runAutoCancel(): Promise<void> {
-    const orders = await this.getOrders();
-    const now = new Date().getTime();
-    const twentyMins = 20 * 60 * 1000;
-    let changed = false;
-
-    // Filter unassigned orders older than 20 mins
-    const updatedOrders = await Promise.all(orders.map(async (o) => {
-      // unassigned implies rider_assign_pickup or rider_assign_delivery without a riderUid
-      const isUnassigned = (o.status === 'rider_assign_pickup' || o.status === 'rider_assign_delivery') && !o.riderUid;
-      if (isUnassigned && o.time) {
-        const orderTime = new Date(o.time).getTime();
-        if (now - orderTime > twentyMins && o.status !== 'cancelled') {
-          // Cancel and Refund
-          const customer = await this.getUser(o.customerUid);
-          if (customer) {
-            await this.updateUser(o.customerUid, {
-              walletBalance: (customer.walletBalance || 0) + (o.totalPrice || 0)
-            });
-            await this.recordTransaction(o.customerUid, {
-              type: 'deposit',
-              amount: o.totalPrice,
-              desc: `Order #${o.id} Refund - No rider available`
-            });
+    if (typeof window !== 'undefined') {
+      try {
+        const token = localStorage.getItem('qw_token');
+        await fetch(`${API_URLS.orders}/auto-cancel`, {
+          method: 'POST',
+          headers: { 
+            'Authorization': `Bearer ${token}`
           }
-          o.status = 'cancelled';
-          o.color = 'bg-error text-on-error';
-          changed = true;
-          console.log(`Auto-cancelled order ${o.id}`);
-        }
+        });
+      } catch (e) {
+        console.error('Auto-cancel failed:', e);
       }
-      return o;
-    }));
-
-    if (changed) {
-      localStorage.setItem('qw_orders', JSON.stringify(updatedOrders));
-      window.dispatchEvent(new Event('storage'));
     }
   }
 
   async adjustTrustPoints(uid: string, action: TrustAction): Promise<UserData> {
-    const user = await this.getUser(uid);
-    if (!user) throw new Error('User not found');
-
-    let change = 0;
-    let isPenalty = false;
-
-    switch (action) {
-      case 'completed_order': change = 5; break;
-      case 'five_star_review': change = 8; break;
-      case 'admin_good_performance': change = 10; break;
-      case 'cancel_after_ready': change = -10; isPenalty = true; break;
-      case 'customer_not_available': change = -8; isPenalty = true; break;
-      case 'late_delivery': change = -10; isPenalty = true; break;
-      case 'rider_abandon': change = -15; isPenalty = true; break;
-      case 'vendor_delay': change = -12; isPenalty = true; break;
-      case 'fake_dispute': change = -20; isPenalty = true; break;
-      case 'rider_return_order': change = -5; isPenalty = true; break;
-      case 'repeated_cancellation': 
-        change = -25; 
-        isPenalty = true;
-        // Also add a 2-day ban
-        const banExpiry = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
-        return await this.updateUser(uid, { 
-          trustPoints: user.trustPoints + change,
-          status: 'restricted',
-          restrictionExpires: banExpiry,
-          lastPenaltyAt: new Date().toISOString()
-        });
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('qw_token');
+      const resp = await fetch(`${API_URLS.base}/users/trust/adjust/${uid}`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ action })
+      });
+      if (resp.ok) return await resp.json();
     }
-
-    const update: Partial<UserData> = {
-      trustPoints: user.trustPoints + change
-    };
-
-    if (isPenalty) {
-      update.lastPenaltyAt = new Date().toISOString();
-    }
-
-    return await this.updateUser(uid, update);
+    throw new Error('Trust adjustment failed');
   }
 
   async returnOrder(orderId: string, riderUid: string, reason: string): Promise<boolean> {
-    const order = await this.getOrder(orderId);
-    const rider = await this.getUser(riderUid);
-    if (!order || !rider || order.riderUid !== riderUid) return false;
-
-    // 1. Deduct ₦200 from wallet
-    const penaltyFee = 200;
-    const newBalance = Math.max(0, (rider.walletBalance || 0) - penaltyFee);
-    
-    // 2. Track consecutive returns
-    const consecutiveReturns = (rider.consecutiveReturns || 0) + 1;
-    
-    let status = rider.status;
-    let restrictionExpires = rider.restrictionExpires;
-
-    // 3. Check for 5 consecutive returns -> 2 day suspension
-    if (consecutiveReturns >= 5) {
-      status = 'suspended';
-      restrictionExpires = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('qw_token');
+      const resp = await fetch(`${API_URLS.orders}/${orderId}/return`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ riderUid, reason })
+      });
+      return resp.ok;
     }
-
-    await this.updateUser(riderUid, {
-      walletBalance: newBalance,
-      consecutiveReturns: consecutiveReturns >= 5 ? 0 : consecutiveReturns, // Reset if suspended
-      status,
-      restrictionExpires
-    });
-
-    // 4. Deduct 5 trust points
-    await this.adjustTrustPoints(riderUid, 'rider_return_order');
-
-    // 5. Record transaction
-    await this.recordTransaction(riderUid, {
-      type: 'withdrawal',
-      amount: penaltyFee,
-      desc: `Order Return Penalty - Order #${orderId}`
-    });
-
-    // 6. Reset order status and codes
-    const updatedOrder: Order = {
-      ...order,
-      status: order.status === 'picked_up' ? 'rider_assign_pickup' : 
-              order.status === 'picked_up_delivery' ? 'rider_assign_delivery' : 
-              order.status,
-      riderUid: undefined,
-      riderName: undefined,
-      riderPhone: undefined,
-      returnReason: reason,
-      code2: null,
-      code4: null,
-      handoverCode: null,
-      color: 'bg-warning/20 text-warning'
-    };
-    await this.saveOrder(updatedOrder);
-
-    return true;
+    return false;
   }
 
   /**
    * Auto-recovery: +10 points every 27 days of good behavior (no penalties)
    */
   async processAutoRecovery(uid: string): Promise<void> {
-    const user = await this.getUser(uid);
-    if (!user || user.trustPoints >= 100) return;
-
-    const now = new Date().getTime();
-    const lastPenalty = user.lastPenaltyAt ? new Date(user.lastPenaltyAt).getTime() : 0;
-    const lastRecovery = user.lastRecoveryAt ? new Date(user.lastRecoveryAt).getTime() : 0;
-    
-    const daysSincePenalty = (now - lastPenalty) / (24 * 60 * 60 * 1000);
-    const daysSinceRecovery = (now - lastRecovery) / (24 * 60 * 60 * 1000);
-
-    if (daysSincePenalty >= 27 && daysSinceRecovery >= 27) {
-      await this.updateUser(uid, {
-        trustPoints: user.trustPoints + 10,
-        lastRecoveryAt: new Date().toISOString()
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('qw_token');
+      await fetch(`${API_URLS.base}/users/trust/auto-recovery/${uid}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
       });
     }
   }
@@ -516,7 +430,7 @@ class DatabaseService {
     if (typeof window !== 'undefined') {
       try {
         const token = localStorage.getItem('qw_token');
-        const resp = await fetch(`${API_URLS.base}/transactions`, {
+        await fetch(`${API_URLS.base}/transactions`, {
           method: 'POST',
           headers: { 
             'Authorization': `Bearer ${token}`,
@@ -524,23 +438,38 @@ class DatabaseService {
           },
           body: JSON.stringify({ ...transaction, userId: uid })
         });
-        if (resp.ok) {
-          const result = await resp.json();
-          const storedUser = localStorage.getItem('qw_user');
-          if (storedUser) {
-            const user = JSON.parse(storedUser);
-            if (user.uid === uid) {
-              user.walletBalance = result.balance;
-              localStorage.setItem('qw_user', JSON.stringify(user));
-            }
-          }
-        } else {
-          console.error('Transaction failed:', await resp.text());
-        }
       } catch (e) {
         console.error('Transaction API error:', e);
       }
     }
+  }
+
+  async getMe(): Promise<UserData | null> {
+    if (typeof window !== 'undefined') {
+      try {
+        const token = localStorage.getItem('qw_token');
+        if (!token) return null;
+        const resp = await fetch(`${API_URLS.base}/users/me`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (resp.ok) return await resp.json();
+      } catch (e) {}
+    }
+    return null;
+  }
+
+  async approveUser(uid: string): Promise<UserData> {
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('qw_token');
+      const resp = await fetch(`${API_URLS.base}/users/approve/${uid}`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (resp.ok) return await resp.json();
+    }
+    throw new Error('Approval failed');
   }
 
   // --- RATINGS ---
@@ -565,33 +494,16 @@ class DatabaseService {
 
   // --- ANALYTICS ---
   async getSystemStats() {
-    const users = await this.getUsers();
-    const orders = await this.getOrders();
-    const now = new Date();
-
-    const completed = orders.filter(o => o.status === 'completed' || o.status === 'delivered');
-    const revenue = completed.reduce((acc, o) => acc + (o.totalPrice || 0), 0);
-    const active = orders.filter(o => !['completed', 'cancelled', 'delivered'].includes(o.status.toLowerCase()));
-
-    const hourlyVelocity = Array.from({ length: 12 }, (_, i) => {
-      const h = new Date(now.getTime() - (11 - i) * 60 * 60 * 1000);
-      const hStr = h.getHours() + ':00';
-      const count = orders.filter(o => new Date(o.createdAt).getHours() === h.getHours()).length;
-      return { time: hStr, orders: count };
-    });
-
-    return {
-      totalUsers: users.length,
-      totalOrders: orders.length,
-      totalRevenue: revenue,
-      activeOrders: active.length,
-      hourlyVelocity,
-      userTypeDist: [
-        { name: 'Customer', value: users.filter(u => u.role === 'customer').length },
-        { name: 'Vendor', value: users.filter(u => u.role === 'vendor').length },
-        { name: 'Rider', value: users.filter(u => u.role === 'rider').length },
-      ]
-    };
+    if (typeof window !== 'undefined') {
+      try {
+        const token = localStorage.getItem('qw_token');
+        const resp = await fetch(API_URLS.stats, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (resp.ok) return await resp.json();
+      } catch (e) {}
+    }
+    return null;
   }
 
   // --- PRICE LISTS ---
@@ -633,7 +545,7 @@ class DatabaseService {
     if (typeof window !== 'undefined') {
       try {
         const token = localStorage.getItem('qw_token');
-        const resp = await fetch(`${API_URLS.base}/admin/settings`, {
+        const resp = await fetch(`${API_URLS.base}/settings`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (resp.ok) return await resp.json();
@@ -649,9 +561,53 @@ class DatabaseService {
       contactPhone: '+234 812 345 6789',
       emergencyAlert: '',
       maintenanceMode: false,
-      announcement: 'Welcome to the new Quick-Wash platform!'
+      announcement: 'Welcome to the new Quick-Wash platform!',
+      globalServices: ["Shirt", "Jeans", "Native", "Suit", "Duvet", "Bedsheet"],
+      landmarks: []
     };
     return defaults;
+  }
+
+  // --- DRAFTS ---
+  async getDrafts(userId: string): Promise<any[]> {
+    if (typeof window !== 'undefined') {
+      try {
+        const token = localStorage.getItem('qw_token');
+        const resp = await fetch(`${API_URLS.base}/drafts/${userId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (resp.ok) return await resp.json();
+      } catch (e) {}
+    }
+    return [];
+  }
+
+  async saveDraft(userId: string, vendorId: string, items: any[]): Promise<void> {
+    if (typeof window !== 'undefined') {
+      try {
+        const token = localStorage.getItem('qw_token');
+        await fetch(`${API_URLS.base}/drafts`, {
+          method: 'POST',
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json' 
+          },
+          body: JSON.stringify({ userId, vendorId, items })
+        });
+      } catch (e) {}
+    }
+  }
+
+  async deleteDraft(userId: string, vendorId: string): Promise<void> {
+    if (typeof window !== 'undefined') {
+      try {
+        const token = localStorage.getItem('qw_token');
+        await fetch(`${API_URLS.base}/drafts/${userId}/${vendorId}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+      } catch (e) {}
+    }
   }
 
   async updateSiteSettings(data: Partial<SiteSettings>): Promise<SiteSettings> {
@@ -659,7 +615,7 @@ class DatabaseService {
     if (typeof window !== 'undefined') {
       try {
         const token = localStorage.getItem('qw_token');
-        const resp = await fetch(`${API_URLS.base}/admin/settings`, {
+        const resp = await fetch(`${API_URLS.base}/settings`, {
           method: 'PATCH',
           headers: { 
             'Authorization': `Bearer ${token}`,
@@ -674,4 +630,4 @@ class DatabaseService {
   }
 }
 
-export const db = new DatabaseService();
+export const api = new ApiService();

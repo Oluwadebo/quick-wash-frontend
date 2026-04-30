@@ -15,7 +15,7 @@ export const getVendorPriceList = async (req: Request, res: Response) => {
   try {
     const { vendorUid } = req.params;
     const priceList = await VendorPriceList.findOne({ vendorUid });
-    res.json(priceList ? priceList.items : []);
+    res.json(priceList ? priceList.prices : []);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

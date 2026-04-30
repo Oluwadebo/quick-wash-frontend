@@ -10,7 +10,7 @@ import ProtectedRoute from '@/components/shared/ProtectedRoute';
 import { formatRelativeTime } from '@/lib/time';
 import { X, History, Wallet, ShoppingBag, Volume2, TrendingUp, Star, ShieldCheck, Clock, Package, ArrowRight, Play, AlertTriangle, Edit3, Trash2, Plus, Shirt, ArrowUpRight, ArrowDownLeft, Eye, EyeOff, CheckCircle2, CloudRain, Droplets, Camera, Info, BarChart3, WashingMachine, Lock } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { db, Order, UserData } from '@/lib/DatabaseService';
+import { api, Order, UserData } from '@/lib/ApiService';
 import { Toast } from '@/components/shared/Toast';
 
 const generateCode = () => Math.floor(1000 + Math.random() * 9000).toString();
@@ -58,7 +58,7 @@ export default function VendorDashboard() {
   React.useEffect(() => {
     const init = async () => {
       if (currentUser?.uid) {
-        const allOrders = await db.getOrders();
+        const allOrders = await api.getOrders();
         
         // Case-insensitive vendor filtering
         const vendorOrders = allOrders.filter((o: Order) => 
@@ -78,9 +78,9 @@ export default function VendorDashboard() {
               penaltyApplied = true;
               
               if (currentUser?.uid) {
-                await db.adjustTrustPoints(currentUser.uid, 'vendor_delay');
+                await api.adjustTrustPoints(currentUser.uid, 'vendor_delay');
               }
-              await db.saveOrder(o);
+              await api.saveOrder(o);
             }
           }
           return o;
@@ -88,14 +88,22 @@ export default function VendorDashboard() {
 
         setOrders(checkedOrders);
 
-        // Load Services using DatabaseService
-        const vendorPrices = await db.getVendorPriceList(currentUser.uid);
+        // Load Services using ApiService
+        const vendorPrices = await api.getVendorPriceList(currentUser.uid);
         setServices(vendorPrices);
         
-        const gServices = JSON.parse(localStorage.getItem('qw_global_services') || '["Shirt", "Jeans", "Native", "Suit", "Duvet", "Bedsheet"]');
-        setGlobalServices(gServices);
+        // Fetch global services from database
+        try {
+          const settings = await api.getSiteSettings();
+          const gServices = settings.globalServices && settings.globalServices.length > 0 
+            ? settings.globalServices 
+            : ["Shirt", "Jeans", "Native", "Suit", "Duvet", "Bedsheet"];
+          setGlobalServices(gServices);
+        } catch (e) {
+          setGlobalServices(["Shirt", "Jeans", "Native", "Suit", "Duvet", "Bedsheet"]);
+        }
 
-        const me = await db.getUser(currentUser.uid);
+        const me = await api.getUser(currentUser.uid);
         if (me) {
           setStats({
             totalEarnings: me.walletBalance || 0,
@@ -126,35 +134,18 @@ export default function VendorDashboard() {
           console.error('Failed to fetch wallet history:', e);
         }
 
-        // Wallet history
-        try {
-          const token = localStorage.getItem('qw_token');
-          const res = await fetch(`/api/wallet/history?userId=${currentUser.uid}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
-          if (res.ok) {
-            const data = await res.json();
-            setWalletHistory(data.transactions || []);
-          } else {
-            const localHistory = JSON.parse(localStorage.getItem(`qw_wallet_history_${currentUser.uid}`) || '[]');
-            setWalletHistory(localHistory);
-          }
-        } catch (e) {
-          const localHistory = JSON.parse(localStorage.getItem(`qw_wallet_history_${currentUser.uid}`) || '[]');
-          setWalletHistory(localHistory);
-        }
       }
     };
     init();
   }, [currentUser]);
 
   const handleStatusUpdate = async (orderId: string, newStatus: string, color: string) => {
-    const order = await db.getOrder(orderId);
+    const order = await api.getOrder(orderId);
     if (order) {
       const updatedOrder = { ...order, status: newStatus, color };
-      await db.saveOrder(updatedOrder);
+      await api.saveOrder(updatedOrder);
       
-      const allOrders = await db.getOrders();
+      const allOrders = await api.getOrders();
       setOrders(allOrders.filter((o: Order) => o.vendorId?.toLowerCase() === currentUser?.uid?.toLowerCase()));
       setSelectedOrder(null);
       
@@ -177,7 +168,7 @@ export default function VendorDashboard() {
   };
 
   const toggleReadyForDelivery = async (orderId: string, isReady: boolean) => {
-    const order = await db.getOrder(orderId);
+    const order = await api.getOrder(orderId);
     if (order) {
       const code3 = isReady ? generateCode() : null;
       const updatedOrder = { 
@@ -187,9 +178,9 @@ export default function VendorDashboard() {
         color: isReady ? 'bg-success text-on-success' : 'bg-primary text-on-primary',
         readyForDeliveryAt: isReady ? new Date().toISOString() : null
       };
-      await db.saveOrder(updatedOrder);
+      await api.saveOrder(updatedOrder);
       
-      const allOrders = await db.getOrders();
+      const allOrders = await api.getOrders();
       setOrders(allOrders.filter((o: Order) => o.vendorId?.toLowerCase() === currentUser?.uid?.toLowerCase()));
       setSelectedOrder(null);
       
@@ -217,15 +208,13 @@ export default function VendorDashboard() {
       updated = [...services, serviceToSave];
     }
     
-    await db.saveVendorPriceList(currentUser.uid, updated);
+    await api.saveVendorPriceList(currentUser.uid, updated);
     setServices(updated);
 
-    // Update global services if new
-    const gServices = JSON.parse(localStorage.getItem('qw_global_services') || '[]');
-    if (!gServices.includes(editingService.name)) {
-      const newGServices = [...gServices, editingService.name];
-      localStorage.setItem('qw_global_services', JSON.stringify(newGServices));
-      setGlobalServices(newGServices);
+    // We don't update global services in the database as a vendor for security,
+    // but we can update the local state for the current session if they added something new.
+    if (!globalServices.includes(editingService.name)) {
+      setGlobalServices(prev => [...prev, editingService.name]);
     }
 
     setIsPriceModalOpen(false);
@@ -238,7 +227,7 @@ export default function VendorDashboard() {
     if (confirm('Delete this entire service from your shop?')) {
       const updated = services.filter((s: any) => s.id !== id);
       if (currentUser?.uid) {
-        await db.saveVendorPriceList(currentUser.uid, updated);
+        await api.saveVendorPriceList(currentUser.uid, updated);
         setServices(updated);
         setNotification({ message: "Service removed from your list.", type: 'info' });
         setTimeout(() => setNotification(null), 2000);
@@ -246,20 +235,15 @@ export default function VendorDashboard() {
     }
   };
 
-  const handleReportRain = () => {
-    const alerts = JSON.parse(localStorage.getItem('qw_alerts') || '[]');
-    const newAlert = {
-      id: Date.now(),
-      type: 'WEATHER ALERT',
-      msg: `Heavy rain reported at ${currentUser?.shopName || 'a vendor shop'}. Deliveries may be delayed.`,
-      color: 'bg-warning text-on-warning',
-      vendorId: currentUser?.uid,
-      time: new Date().toISOString()
-    };
-    alerts.push(newAlert);
-    localStorage.setItem('qw_alerts', JSON.stringify(alerts));
-    setNotification({ message: "Rain reported! Customers and riders notified.", type: 'warning' as any });
-    setTimeout(() => setNotification(null), 2000);
+  const handleReportRain = async () => {
+    try {
+      const msg = `Heavy rain reported at ${currentUser?.shopName || 'a vendor shop'}. Deliveries may be delayed.`;
+      await api.updateSiteSettings({ emergencyAlert: msg });
+      setNotification({ message: "Rain reported! System-wide alert issued.", type: 'warning' as any });
+    } catch (e) {
+      setNotification({ message: "Failed to report rain.", type: 'error' });
+    }
+    setTimeout(() => setNotification(null), 3000);
   };
 
   const handleVendorEvidenceUpload = async (orderId: string, e: React.ChangeEvent<HTMLInputElement>) => {
@@ -269,14 +253,14 @@ export default function VendorDashboard() {
       reader.onloadend = async () => {
         const base64String = reader.result as string;
         try {
-          const allOrders = await db.getOrders();
+          const allOrders = await api.getOrders();
           const order = allOrders.find(o => o.id === orderId);
           if (order) {
-            await db.saveOrder({
+            await api.saveOrder({
               ...order,
               vendorEvidenceImage: base64String
             });
-            const updatedOrders = await db.getOrders();
+            const updatedOrders = await api.getOrders();
             setOrders(updatedOrders.filter((o: Order) => o.vendorId === currentUser?.uid));
             setNotification({ message: 'Evidence uploaded successfully!', type: 'success' });
             setTimeout(() => setNotification(null), 3000);
@@ -296,7 +280,7 @@ export default function VendorDashboard() {
     if (stats.totalEarnings < 8000) return;
     
     if (currentUser?.uid) {
-      await db.updateUser(currentUser.uid, { withdrawalRequested: true });
+      await api.updateUser(currentUser.uid, { withdrawalRequested: true });
       setNotification({ message: "Withdrawal request submitted!", type: 'success' });
       setTimeout(() => setNotification(null), 2000);
     }
@@ -347,7 +331,7 @@ export default function VendorDashboard() {
                       if (!currentUser?.isShopClosed) {
                         setIsClosingShop(true);
                       } else {
-                        await db.updateUser(currentUser.uid, { isShopClosed: false, returnTime: null });
+                        await api.updateUser(currentUser.uid, { isShopClosed: false, returnTime: null });
                         window.dispatchEvent(new Event('storage'));
                       }
                     }}
@@ -367,22 +351,24 @@ export default function VendorDashboard() {
                   onClick={async () => {
                     if (currentUser?.uid) {
                       const newRainState = !currentUser.isRaining;
-                      await db.updateUser(currentUser.uid, { isRaining: newRainState });
+                      await api.updateUser(currentUser.uid, { isRaining: newRainState });
                       
                       setNotification({ 
                         message: newRainState ? "Rain Reported! Shop hidden from customers." : "Rain Cleared! Shop is visible again.", 
                         type: newRainState ? 'info' : 'success' 
                       });
                       
-                      const alerts = JSON.parse(localStorage.getItem('qw_alerts') || '[]');
-                      alerts.push({
+                      const newAlert = {
                         id: Date.now(),
                         type: 'WEATHER',
                         msg: `Heavy rain reported at ${currentUser?.shopName || 'a vendor shop'}.`,
                         time: new Date().toISOString(),
                         vendorId: currentUser.uid
-                      });
-                      localStorage.setItem('qw_alerts', JSON.stringify(alerts));
+                      };
+                      
+                      const updatedAlerts = [...(currentUser.alerts || []), newAlert];
+                      await api.updateUser(currentUser.uid, { alerts: updatedAlerts });
+                      updateUser({ alerts: updatedAlerts });
                       
                       setTimeout(() => setNotification(null), 3000);
                       if (newRainState) window.dispatchEvent(new Event('qw_audio_rain'));
@@ -530,6 +516,26 @@ export default function VendorDashboard() {
                           <span className={cn("text-[10px] font-black uppercase tracking-widest", service.washIronDisabled ? "text-on-surface-variant" : "text-primary")}>Wash + Iron</span>
                           <span className={cn("font-headline font-black", service.washIronDisabled ? "text-error" : "text-primary")}>
                             {service.washIronDisabled ? 'DISABLED' : `₦${service.washIronPrice}`}
+                          </span>
+                        </div>
+
+                        {/* New Starch Options */}
+                        <div className={cn(
+                          "flex justify-between items-center p-4 rounded-2xl border",
+                          service.starchIronDisabled ? "bg-surface-container-highest/50 border-error/10 opacity-60" : "bg-surface-container-lowest border-primary/5"
+                        )}>
+                          <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Starch + Iron Only</span>
+                          <span className={cn("font-headline font-black", service.starchIronDisabled ? "text-error" : "text-primary")}>
+                            {service.starchIronDisabled ? 'DISABLED' : `₦${service.starchIronPrice || 0}`}
+                          </span>
+                        </div>
+                        <div className={cn(
+                          "flex justify-between items-center p-4 rounded-2xl border",
+                          service.starchWashIronDisabled ? "bg-surface-container-highest/50 border-error/10 opacity-60" : "bg-surface-container-lowest border-primary/5"
+                        )}>
+                          <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Starch + Wash + Iron</span>
+                          <span className={cn("font-headline font-black", service.starchWashIronDisabled ? "text-error" : "text-primary")}>
+                            {service.starchWashIronDisabled ? 'DISABLED' : `₦${service.starchWashIronPrice || 0}`}
                           </span>
                         </div>
                         
@@ -1031,7 +1037,7 @@ export default function VendorDashboard() {
                         <button 
                           onClick={() => {
                             if (currentUser?.isShopClosed) {
-                              db.updateUser(currentUser.uid, { isShopClosed: false, returnTime: '' });
+                              api.updateUser(currentUser.uid, { isShopClosed: false, returnTime: '' });
                               window.dispatchEvent(new Event('storage'));
                             } else {
                               setIsClosingShop(true);
@@ -1057,7 +1063,7 @@ export default function VendorDashboard() {
                             const landmark = prompt("Enter Area Landmark (e.g. Under-G):", currentUser?.landmark);
 
                             if (currentUser?.uid) {
-                              await db.updateUser(currentUser.uid, {
+                              await api.updateUser(currentUser.uid, {
                                 shopName: shopName || currentUser.shopName,
                                 whatsappNumber: whatsappNumber || currentUser.whatsappNumber,
                                 landmark: landmark || currentUser.landmark
@@ -1105,7 +1111,7 @@ export default function VendorDashboard() {
                         const bankAccountName = prompt("Enter Account Name:", currentUser?.bankAccountName);
 
                         if (currentUser?.uid) {
-                          await db.updateUser(currentUser.uid, {
+                          await api.updateUser(currentUser.uid, {
                             bankName: bankName || currentUser.bankName,
                             bankAccountNumber: bankAccountNumber || currentUser.bankAccountNumber,
                             bankAccountName: bankAccountName || currentUser.bankAccountName
@@ -1251,7 +1257,7 @@ export default function VendorDashboard() {
                           alert("Please set a return time.");
                           return;
                         }
-                        await db.updateUser(currentUser.uid, { isShopClosed: true, returnTime: returnTimeInput });
+                        await api.updateUser(currentUser.uid, { isShopClosed: true, returnTime: returnTimeInput });
                         setIsClosingShop(false);
                         setReturnTimeInput('');
                         window.dispatchEvent(new Event('storage'));
@@ -1306,7 +1312,7 @@ export default function VendorDashboard() {
                     <button 
                       onClick={async () => {
                         if (!complaintMsg) return;
-                        const order = await db.getOrder(complaintOrder.id);
+                        const order = await api.getOrder(complaintOrder.id);
                         if (order) {
                           const updatedOrder = {
                             ...order,
@@ -1315,7 +1321,7 @@ export default function VendorDashboard() {
                             complaintBy: 'vendor',
                             complaintAt: new Date().toISOString()
                           };
-                          await db.saveOrder(updatedOrder);
+                          await api.saveOrder(updatedOrder);
                           setComplaintOrder(null);
                           setComplaintMsg('');
                           setNotification({ message: 'Complaint filed. Admin will review.', type: 'info' });
@@ -1354,7 +1360,15 @@ export default function VendorDashboard() {
                     <button 
                       key={s}
                       onClick={() => {
-                        setEditingService({ name: s, washPrice: 0, ironPrice: 0, washIronPrice: 0, whitePremium: 0 });
+                        setEditingService({ 
+                          name: s, 
+                          washPrice: 0, 
+                          ironPrice: 0, 
+                          washIronPrice: 0, 
+                          whitePremium: 0,
+                          starchIronPrice: 0,
+                          starchWashIronPrice: 0
+                        });
                         setIsServicePickerOpen(false);
                         setIsPriceModalOpen(true);
                       }}
@@ -1366,7 +1380,15 @@ export default function VendorDashboard() {
                 </div>
                 <button 
                   onClick={() => {
-                    setEditingService({ name: '', washPrice: 0, ironPrice: 0, washIronPrice: 0, whitePremium: 0 });
+                    setEditingService({ 
+                      name: '', 
+                      washPrice: 0, 
+                      ironPrice: 0, 
+                      washIronPrice: 0, 
+                      whitePremium: 0,
+                      starchIronPrice: 0,
+                      starchWashIronPrice: 0
+                    });
                     setIsServicePickerOpen(false);
                     setIsPriceModalOpen(true);
                   }}
@@ -1506,6 +1528,61 @@ export default function VendorDashboard() {
                           className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary"
                         />
                       </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2 relative">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Starch + Iron Only (₦)</label>
+                      <div className="relative">
+                        <input 
+                          type="number" 
+                          disabled={editingService.starchIronDisabled}
+                          value={editingService.starchIronDisabled ? '' : (editingService.starchIronPrice || 0)}
+                          onChange={(e) => setEditingService({ ...editingService, starchIronPrice: parseInt(e.target.value) || 0 })}
+                          className={cn(
+                            "w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary",
+                            editingService.starchIronDisabled && "opacity-50 cursor-not-allowed bg-surface-container-highest"
+                          )}
+                          placeholder={editingService.starchIronDisabled ? "OFF" : "Price"}
+                        />
+                        <button 
+                          type="button"
+                          onClick={() => setEditingService({ ...editingService, starchIronDisabled: !editingService.starchIronDisabled })}
+                          className={cn(
+                            "absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-lg transition-colors",
+                            editingService.starchIronDisabled ? "text-error hover:bg-error/10" : "text-primary hover:bg-primary/10"
+                          )}
+                        >
+                          {editingService.starchIronDisabled ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+                      <div className="space-y-2 relative">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Starch + Wash + Ir (₦)</label>
+                        <div className="relative">
+                          <input 
+                            type="number" 
+                            disabled={editingService.starchWashIronDisabled}
+                            value={editingService.starchWashIronDisabled ? '' : (editingService.starchWashIronPrice || 0)}
+                            onChange={(e) => setEditingService({ ...editingService, starchWashIronPrice: parseInt(e.target.value) || 0 })}
+                            className={cn(
+                              "w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary",
+                              editingService.starchWashIronDisabled && "opacity-50 cursor-not-allowed bg-surface-container-highest"
+                            )}
+                            placeholder={editingService.starchWashIronDisabled ? "OFF" : "Price"}
+                          />
+                        <button 
+                          type="button"
+                          onClick={() => setEditingService({ ...editingService, starchWashIronDisabled: !editingService.starchWashIronDisabled })}
+                          className={cn(
+                            "absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-lg transition-colors",
+                            editingService.starchWashIronDisabled ? "text-error hover:bg-error/10" : "text-primary hover:bg-primary/10"
+                          )}
+                        >
+                          {editingService.starchWashIronDisabled ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Sub-items Section (Multi-Item) */}
