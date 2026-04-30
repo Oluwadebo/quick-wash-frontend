@@ -26,7 +26,7 @@ import walletRoutes from "./routes/walletRoutes.js";
 dotenv.config();
 
 const app = express();
-// Robust trust proxy setting for AI Studio/Cloud Run environment
+
 app.set("trust proxy", 1);
 const PORT = process.env.BACKEND_PORT || 5000;
 const MONGODB_URI =
@@ -128,7 +128,6 @@ app.get("/api/vendors", async (req, res) => {
 });
 
 app.get("/api/health", async (req, res) => {
-  // Opportunity to re-seed if database was cleared manually while server was running
   await seedAdmin();
   res.json({ status: "ok", timestamp: new Date() });
 });
@@ -202,7 +201,7 @@ const startServer = async () => {
                 idx.name !== "_id_" &&
                 idx.name !== "id_1" &&
                 idx.unique &&
-                !["customerUid_1", "vendorId_1", "status_1"].includes(idx.name)
+                !["customerUid_1", "vendorId_1", "status_1"].includes(idx.name ?? "")
               ) {
                 console.log(
                   `[Database] Possible problematic unique index found: ${idx.name}. Consider dropping if it causes E11000.`,
@@ -248,7 +247,6 @@ const startServer = async () => {
         const Order = mongoose.model("Order");
         const Transaction = mongoose.model("Transaction");
 
-        // Find orders in 'confirm' or 'rider_assign_pickup' that are older than 30 mins
         const pendingOrders = await mongoose.model("Order").find({
           status: { $in: ["confirm", "rider_assign_pickup"] },
           $or: [
@@ -333,7 +331,6 @@ const startServer = async () => {
       }
     };
     setInterval(checkOrderTimeouts, 5 * 60 * 1000);
-    // ---------------------------------------------------
 
     console.log(`Starting backend server on port ${PORT}...`);
     app.listen(Number(PORT), "0.0.0.0", () => {
@@ -346,8 +343,6 @@ const startServer = async () => {
     console.error(
       "Please verify that your database is running and the URI is correct. Continuing server start for proxy health...",
     );
-    // Do not exit, keep process alive so proxy doesn't ECONNREFUSED
-    // process.exit(1);
 
     console.log(`Starting backend server on port ${PORT} (DB OFFLINE)...`);
     app.listen(Number(PORT), "0.0.0.0", () => {
