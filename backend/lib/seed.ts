@@ -5,15 +5,16 @@ export const seedAdmin = async () => {
   try {
     const adminEmail = "ogunwedebo21@gmail.com";
     const existingAdmin = await User.findOne({ email: adminEmail });
-
+    
     if (!existingAdmin) {
       const hashedPassword = await bcrypt.hash("admin123", 10);
       await User.create({
+        uid: "admin-root-001",
         fullName: "Quick-Wash Admin",
         email: adminEmail,
         phoneNumber: "09012345678",
         password: hashedPassword,
-        role: "super admin",
+        role: "admin",
         isApproved: true,
         status: "active",
         trustPoints: 100,

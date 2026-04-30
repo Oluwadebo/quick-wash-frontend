@@ -1,7 +1,7 @@
-import mongoose, { Schema, Document } from 'mongoose';
+import { Schema, model, models, Document } from 'mongoose';
 
 export interface IWallet extends Document {
-  uid: string;
+  userId: string;
   balance: number;
   pendingBalance: number;
   totalEarnings: number;
@@ -11,8 +11,8 @@ export interface IWallet extends Document {
   updatedAt: Date;
 }
 
-const WalletSchema: Schema = new Schema({
-  uid: { type: String, required: true, unique: true, index: true },
+const WalletSchema = new Schema<IWallet>({
+  userId: { type: String, required: true, unique: true, index: true },
   balance: { type: Number, default: 0 },
   pendingBalance: { type: Number, default: 0 },
   totalEarnings: { type: Number, default: 0 },
@@ -20,4 +20,4 @@ const WalletSchema: Schema = new Schema({
   transferReference: { type: String, unique: true, sparse: true },
 }, { timestamps: true });
 
-export default mongoose.models.Wallet || mongoose.model<IWallet>('Wallet', WalletSchema);
+export default models.Wallet || model<IWallet>('Wallet', WalletSchema);

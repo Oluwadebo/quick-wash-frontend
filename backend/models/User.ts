@@ -4,9 +4,9 @@ export interface IUser extends Document {
   uid: string;
   fullName: string;
   phoneNumber: string;
-  email: string;
+  email: string; // New field
   password?: string;
- role: 'customer' | 'vendor' | 'rider' | 'admin' | 'super-sub-admin';
+  role: 'customer' | 'vendor' | 'rider' | 'admin' | 'super-sub-admin';
   isApproved: boolean;
   walletBalance: number;
   pendingBalance: number;
@@ -29,20 +29,19 @@ export interface IUser extends Document {
   address?: string;
   shopAddress?: string;
   landmark?: string;
-  isRaining?: boolean;
-  shopImage?: string;
-  ninImage?: string;
-  transferReference?: string;
+  shopImage?: string; // New field for vendors
+  isShopClosed?: boolean;
+  returnTime?: string;
+  ninImage?: string;  // New field for riders
+  transferReference?: string; // New field for identifying transfers
   resetPasswordToken?: string;
   resetPasswordExpires?: Date;
   createdAt: Date;
   updatedAt: Date;
-  isShopClosed?: boolean;
-  returnTime?: string;
 }
 
 const UserSchema: Schema = new Schema({
-   uid: { type: String, required: true, unique: true, index: true },
+  uid: { type: String, required: true, unique: true, index: true },
   fullName: { type: String, required: true },
   phoneNumber: { type: String, required: true, unique: true, index: true },
   email: { type: String, required: true, unique: true, index: true },
@@ -79,4 +78,5 @@ const UserSchema: Schema = new Schema({
   resetPasswordExpires: { type: Date },
 }, { timestamps: true });
 
+// Avoid model re-compilation in development
 export default mongoose.models.User || mongoose.model<IUser>('User', UserSchema);

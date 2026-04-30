@@ -6,8 +6,17 @@ import { motion } from 'motion/react';
 import { Droplets, ShieldCheck, User, Lock, Phone, Mail } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
+import { Suspense } from 'react';
 
 export default function AdminFinishPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-surface flex items-center justify-center font-headline font-black">Loading Setup...</div>}>
+      <AdminFinishPageContent />
+    </Suspense>
+  );
+}
+
+function AdminFinishPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const token = searchParams.get('token');
