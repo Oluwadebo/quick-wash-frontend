@@ -33,6 +33,9 @@ interface UserData {
   shopImage?: string;
   ninImage?: string;
   transferReference?: string;
+  currentOrderId?: string;
+  yorubaAudioEnabled?: boolean;
+  alerts?: any[];
 }
 
 interface AuthContextType {

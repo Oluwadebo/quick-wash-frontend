@@ -109,7 +109,12 @@ export default function AdminDashboard() {
         
         if (resp.ok) {
           const data = await resp.json();
-          setInviteLink(data.inviteLink);
+          let finalLink = data.inviteLink;
+          // If the link is localhost but we are not on localhost, use current origin
+          if (finalLink && typeof window !== 'undefined' && finalLink.includes('localhost') && !window.location.hostname.includes('localhost')) {
+            finalLink = finalLink.replace(/^https?:\/\/[^\/]+/, window.location.origin);
+          }
+          setInviteLink(finalLink);
           setNotification({ message: 'Invite link generated successfully!', type: 'success' });
           return;
         } else {
@@ -2142,14 +2147,32 @@ export default function AdminDashboard() {
                               Cancel
                             </button>
                             <button 
-                              onClick={() => {
+                              onClick={async () => {
                                 if (!overrideData.reason) return alert('Please provide a reason.');
-                                const logs = JSON.parse(localStorage.getItem('qw_audit_logs') || '[]');
-                                const updated = logs.map((l: any) => l.id === selectedDetail.id ? { ...l, action: overrideData.action, overrideReason: overrideData.reason, overridenBy: currentUser?.phoneNumber } : l);
-                                localStorage.setItem('qw_audit_logs', JSON.stringify(updated));
-                                alert('Audit log updated successfully.');
-                                setIsOverriding(false);
-                                setIsDetailModalOpen(false);
+                                try {
+                                  const token = localStorage.getItem('qw_token');
+                                  const resp = await fetch(`/api/audit-logs/${selectedDetail.id}`, {
+                                    method: 'PATCH',
+                                    headers: {
+                                      'Authorization': `Bearer ${token}`,
+                                      'Content-Type': 'application/json'
+                                    },
+                                    body: JSON.stringify({ 
+                                      action: overrideData.action, 
+                                      overrideReason: overrideData.reason, 
+                                      overridenBy: currentUser?.phoneNumber 
+                                    })
+                                  });
+                                  if (resp.ok) {
+                                    const updated = await resp.json();
+                                    setAuditLogs(prev => prev.map(l => l.id === selectedDetail.id ? updated : l));
+                                    alert('Audit log updated successfully.');
+                                    setIsOverriding(false);
+                                    setIsDetailModalOpen(false);
+                                  }
+                                } catch (err) {
+                                  alert('Failed to update audit log.');
+                                }
                               }}
                               className="flex-1 h-12 bg-primary text-on-primary rounded-xl font-bold text-xs"
                             >

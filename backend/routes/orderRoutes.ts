@@ -229,25 +229,47 @@ router.patch("/:id", async (req, res) => {
     console.log(`[Order] PATCH update for ID: ${id}, Payload:`, req.body);
 
     // Try finding by friendly ID first
-    let order = await Order.findOneAndUpdate(
-      { id: id },
-      { $set: req.body },
-      { new: true }
-    );
-
-    // Fallback to Mongoose _id if not found
+    let order = await Order.findOne({ id: id });
     if (!order && mongoose.Types.ObjectId.isValid(id)) {
-      order = await Order.findByIdAndUpdate(
-        id,
-        { $set: req.body },
-        { new: true }
-      );
+      order = await Order.findById(id);
     }
 
     if (!order) {
-      console.error(`[Order] PATCH failed: Order not found with ID: ${id}`);
+      console.error(`[Order] Update failed: Order not found with ID: ${id}`);
       return res.status(404).json({ message: `Order not found with ID: ${id}` });
     }
+
+    // Security: Validate handover codes if status is changing
+    const newStatus = (req.body.status || '').toLowerCase();
+    const currentStatus = (order.status || '').toLowerCase();
+    
+    if (newStatus !== currentStatus) {
+      if (newStatus === 'picked_up') {
+        const inputCode = req.body.handoverCode;
+        if (inputCode !== order.code1) {
+          return res.status(400).json({ message: 'Invalid Handover Code (Code 1) for Pickup.' });
+        }
+      } else if (newStatus === 'washing') {
+        const inputCode = req.body.handoverCode;
+        if (inputCode !== order.code2) {
+          return res.status(400).json({ message: 'Invalid Handover Code (Code 2) for Vendor Receipt.' });
+        }
+      } else if (newStatus === 'picked_up_delivery') {
+        const inputCode = req.body.handoverCode;
+        if (inputCode !== order.code3) {
+          return res.status(400).json({ message: 'Invalid Handover Code (Code 3) for Delivery Pickup.' });
+        }
+      } else if (newStatus === 'delivered') {
+        const inputCode = req.body.handoverCode;
+        if (inputCode !== order.code4) {
+          return res.status(400).json({ message: 'Invalid Handover Code (Code 4) for Customer Delivery.' });
+        }
+      }
+    }
+
+    // Perform the update
+    Object.assign(order, req.body);
+    await order.save();
     
     console.log(`[Order] PATCH success: ${order.id} status changed to ${order.status}`);
     res.json(order.toObject());

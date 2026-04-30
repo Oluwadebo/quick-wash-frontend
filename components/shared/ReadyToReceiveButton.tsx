@@ -5,11 +5,14 @@ import { DoorOpen, Volume2, Sparkles } from 'lucide-react';
 import { motion } from 'motion/react';
 import { cn } from '@/lib/utils';
 
+import { useAuth } from '@/hooks/use-auth';
+
 export default function ReadyToReceiveButton({ onClick }: { onClick?: () => void }) {
+  const { user } = useAuth();
   const [isPlaying, setIsPlaying] = React.useState(false);
 
   const handleAction = () => {
-    const audioEnabled = localStorage.getItem('yoruba-audio-enabled') === 'true';
+    const audioEnabled = user ? (user.yorubaAudioEnabled !== false) : (localStorage.getItem('yoruba-audio-enabled') === 'true');
     if (audioEnabled) {
       setIsPlaying(true);
       if ('speechSynthesis' in window) {

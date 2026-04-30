@@ -48,6 +48,9 @@ export interface UserData {
   address?: string;
   shopAddress?: string;
   landmark?: string;
+  currentOrderId?: string;
+  yorubaAudioEnabled?: boolean;
+  alerts?: any[];
 }
 
 export interface Order {
@@ -331,18 +334,23 @@ class ApiService {
     return false;
   }
 
-  async updateOrderStatus(orderId: string, status: string, color: string, handoverCode?: string): Promise<Order> {
+  async updateOrderStatus(orderId: string, status: string, color: string, extraData: any = {}): Promise<Order> {
     await this.delay();
     if (typeof window !== 'undefined') {
       try {
         const token = localStorage.getItem('qw_token');
+        const body = { 
+          status, 
+          color, 
+          ...extraData 
+        };
         const resp = await fetch(`${API_URLS.orders}/${orderId}`, {
           method: 'PATCH',
           headers: { 
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ status, color, handoverCode })
+          body: JSON.stringify(body)
         });
         if (resp.ok) return await resp.json();
         throw new Error(await resp.text());

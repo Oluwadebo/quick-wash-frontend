@@ -161,4 +161,17 @@ router.post("/audit-logs", async (req, res) => {
   }
 });
 
+router.patch("/audit-logs/:id", async (req, res) => {
+  try {
+    const log = await AuditLog.findOneAndUpdate(
+      { id: req.params.id },
+      { $set: req.body },
+      { new: true }
+    );
+    res.json(log);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 export default router;

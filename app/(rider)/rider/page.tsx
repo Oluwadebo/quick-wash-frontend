@@ -205,8 +205,12 @@ export default function RiderDashboard() {
       // Generate Code 2 (Rider sees, Vendor enters)
       const code2 = Math.floor(1000 + Math.random() * 9000).toString();
 
-      // Update order status via PATCH API
-      await api.updateOrderStatus(order.id, 'picked_up', 'bg-secondary text-on-secondary', { code2, pickedUpAt: new Date().toISOString() });
+      // Update order status via PATCH API - MANDATORY: Send handoverCode for validation
+      await api.updateOrderStatus(order.id, 'picked_up', 'bg-secondary text-on-secondary', { 
+        handoverCode: input,
+        code2, 
+        pickedUpAt: new Date().toISOString() 
+      });
       
       setNotification({ message: 'Pickup confirmed! Head to the vendor.', type: 'success' });
       setTimeout(() => setNotification(null), 3000);
@@ -224,8 +228,9 @@ export default function RiderDashboard() {
       // Generate Code 4 (Rider sees, Customer enters)
       const code4 = Math.floor(1000 + Math.random() * 9000).toString();
 
-      // Update order status
+      // Update order status - MANDATORY: Send handoverCode for validation
       await api.updateOrderStatus(order.id, 'picked_up_delivery', 'bg-tertiary text-on-tertiary', {
+        handoverCode: input,
         code4,
         pickedUpDeliveryAt: new Date().toISOString()
       });
@@ -246,9 +251,9 @@ export default function RiderDashboard() {
       for (const order of tasks) {
         const input = handoverInput[order.id];
         if (input) {
-          if (order.status === 'rider_assign_pickup' && input === order.code1) {
+          if ((order.status === 'rider_assign_pickup' || order.status === 'rider_accepted') && input === order.code1) {
             await handleVerifyPickup(order);
-          } else if (order.status === 'rider_assign_delivery' && input === order.code3) {
+          } else if ((order.status === 'rider_assign_delivery' || order.status === 'ready') && input === order.code3) {
             await handleVerifyPickupDelivery(order);
           }
         }
@@ -454,9 +459,10 @@ export default function RiderDashboard() {
                   <h3 className="font-headline font-black text-xl mb-6">My Active Tasks</h3>
                   <div className="space-y-6">
                     {tasks.map((order) => {
-                      const isPickup = order.status === 'rider_assign_pickup';
-                      const isDelivery = order.status === 'rider_assign_delivery' || order.status === 'picked_up_delivery';
-                      const isGoingToCustomer = order.status === 'rider_assign_pickup' || order.status === 'picked_up_delivery';
+                      // Support both assigned states for showing code inputs
+                      const isPickup = order.status === 'rider_assign_pickup' || order.status === 'rider_accepted';
+                      const isDelivery = order.status === 'rider_assign_delivery' || order.status === 'picked_up_delivery' || order.status === 'ready';
+                      const isGoingToCustomer = order.status === 'rider_assign_pickup' || order.status === 'rider_accepted' || order.status === 'picked_up_delivery';
                       
                       const destinationLandmark = isGoingToCustomer ? order.customerLandmark : order.vendorLandmark;
                       const destinationName = isGoingToCustomer ? order.customerName : order.vendorName;
@@ -516,7 +522,7 @@ export default function RiderDashboard() {
                                 <Phone className="w-4 h-4 text-primary" /> CALL
                               </a>
 
-                              {order.status === 'rider_assign_pickup' && (
+                              {(order.status === 'rider_assign_pickup' || order.status === 'rider_accepted') && (
                                 <div className="flex-[2] flex gap-3">
                                   <input 
                                     type="text" 
@@ -525,7 +531,7 @@ export default function RiderDashboard() {
                                     onChange={(e) => {
                                       const val = e.target.value.replace(/\D/g, '');
                                       setHandoverInput(prev => ({ ...prev, [order.id]: val }));
-                                      if (val.length === 4) handleVerifyPickup(order);
+                                      if (val.length === 4) handleVerifyPickup({ ...order, status: 'rider_assign_pickup' });
                                     }}
                                     className="w-24 h-16 bg-surface-container-highest rounded-2xl px-4 text-center font-headline font-black text-xl outline-none focus:ring-4 ring-primary/20"
                                     maxLength={4}
@@ -542,7 +548,7 @@ export default function RiderDashboard() {
                                 </div>
                               )}
                               
-                              {order.status === 'rider_assign_delivery' && (
+                              {(order.status === 'rider_assign_delivery' || order.status === 'ready') && (
                                 <div className="flex-[2] flex gap-3">
                                   <input 
                                     type="text" 
@@ -551,7 +557,7 @@ export default function RiderDashboard() {
                                     onChange={(e) => {
                                       const val = e.target.value.replace(/\D/g, '');
                                       setHandoverInput(prev => ({ ...prev, [order.id]: val }));
-                                      if (val.length === 4) handleVerifyPickupDelivery(order);
+                                      if (val.length === 4) handleVerifyPickupDelivery({ ...order, status: 'rider_assign_delivery' });
                                     }}
                                     className="w-24 h-16 bg-surface-container-highest rounded-2xl px-4 text-center font-headline font-black text-xl outline-none focus:ring-4 ring-tertiary/20"
                                     maxLength={4}

@@ -317,12 +317,22 @@ function AuthContent() {
                         onChange={(e) => setFormData({...formData, landmark: e.target.value})}
                         className="w-full h-16 bg-surface-container-low rounded-2xl pl-14 pr-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all appearance-none"
                       >
-                        <option value="Under-G">Under-G (Campus Area)</option>
-                        <option value="Adenike">Adenike (Off-Campus)</option>
-                        <option value="Main Gate">Main Gate (Entrance)</option>
-                        <option value="Aroje">Aroje (Residential)</option>
-                        <option value="Stadium">Stadium Area</option>
-                        <option value="General">General Area</option>
+                        {settings?.landmarks && settings.landmarks.length > 0 ? (
+                          settings.landmarks.map((l: any) => (
+                            <option key={l.id || l.name || (typeof l === 'string' ? l : JSON.stringify(l))} value={l.name || l}>
+                              {l.name || l}
+                            </option>
+                          ))
+                        ) : (
+                          <>
+                            <option value="Under-G">Under-G (Campus Area)</option>
+                            <option value="Adenike">Adenike (Off-Campus)</option>
+                            <option value="Main Gate">Main Gate (Entrance)</option>
+                            <option value="Aroje">Aroje (Residential)</option>
+                            <option value="Stadium">Stadium Area</option>
+                            <option value="General">General Area</option>
+                          </>
+                        )}
                       </select>
                     </div>
                   )}

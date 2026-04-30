@@ -11,16 +11,19 @@ interface ReadyForPickupButtonProps {
   audioText?: string;
 }
 
+import { useAuth } from '@/hooks/use-auth';
+
 export default function ReadyForPickupButton({ 
   onClick, 
   label = "I'M READY FOR PICKUP",
   audioText = "Ẹ KÚ IṢẸ́ O!"
 }: ReadyForPickupButtonProps) {
+  const { user } = useAuth();
   const [isPlaying, setIsPlaying] = React.useState(false);
 
   const handleAction = () => {
     // Yoruba Audio Cue Logic
-    const audioEnabled = localStorage.getItem('yoruba-audio-enabled') === 'true';
+    const audioEnabled = user ? (user.yorubaAudioEnabled !== false) : (localStorage.getItem('yoruba-audio-enabled') === 'true');
     if (audioEnabled) {
       setIsPlaying(true);
       if ('speechSynthesis' in window) {

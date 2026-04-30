@@ -2,6 +2,9 @@ import express from "express";
 import AdminInvite from "../models/AdminInvite";
 import User from "../models/User";
 import crypto from "crypto";
+import { v4 as uuidv4 } from "uuid";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 
 const router = express.Router();
 
@@ -20,7 +23,7 @@ router.post("/", async (req, res) => {
       isUsed: false
     });
 
-    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+    const frontendUrl = (process.env.FRONTEND_URL || "http://localhost:3000").replace(/\/$/, "");
     const inviteLink = `${frontendUrl}/auth/admin-finish?token=${token}`;
 
     res.json({ message: "Invite created", token, inviteLink });
@@ -80,10 +83,6 @@ router.post("/complete", async (req, res) => {
     if (existingUser) return res.status(400).json({ message: "A user with this email or phone already exists" });
 
     // 3. Create admin user
-    const { v4: uuidv4 } = require('uuid');
-    const bcrypt = require('bcryptjs');
-    const jwt = require('jsonwebtoken');
-
     const hashedPassword = await bcrypt.hash(password, 10);
     const user = await User.create({
       uid: uuidv4(),

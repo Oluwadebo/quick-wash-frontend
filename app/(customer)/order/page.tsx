@@ -78,9 +78,17 @@ const defaultItems = [
 
 const generateId = () => Math.floor(1000 + Math.random() * 9000).toString();
 
-const calculateRiderFee = () => {
-  const distance = Math.floor(Math.random() * 5) + 1;
-  return 500 + (distance * 100);
+const calculateRiderFee = (landmark?: string) => {
+  const distances: { [key: string]: number } = {
+    'Under-G': 2,
+    'Adenike': 3,
+    'Isale-General': 5,
+    'Stadium': 4,
+    'Bovina': 6,
+    'LAUTECH Gate': 1
+  };
+  const dist = (landmark && distances[landmark]) || 3;
+  return 500 + (dist * 100);
 };
 
 export default function OrderPage() {
@@ -285,8 +293,15 @@ function OrderPageContent() {
 
   const totalItems = cart.reduce((acc, item) => acc + (Number(item.count) || 0), 0);
   const itemsPrice = cart.reduce((acc, item) => acc + (Number(getItemPrice(item)) || 0), 0);
-  const [riderFee] = React.useState(() => calculateRiderFee());
+  const [riderFee, setRiderFee] = React.useState(0);
   const totalPrice = totalItems > 0 ? (Number(itemsPrice) || 0) + (Number(riderFee) || 0) : 0;
+
+  // Update rider fee when landmark changes
+  React.useEffect(() => {
+    if (pickupLandmark) {
+      setRiderFee(calculateRiderFee(pickupLandmark));
+    }
+  }, [pickupLandmark]);
 
   // Load existing order details if any
   const [existingOrder, setExistingOrder] = React.useState<Order | null>(null);
@@ -384,7 +399,11 @@ function OrderPageContent() {
       const serverOrderId = result.id || newOrderId;
       console.log(`[Order] Payment successful. Server Order ID: ${serverOrderId}`);
       
-      localStorage.setItem('qw_current_order_id', serverOrderId);
+      if (currentUser?.uid) {
+        api.updateUser(currentUser.uid, { currentOrderId: serverOrderId });
+        updateUser({ currentOrderId: serverOrderId });
+      }
+      
       setExistingOrderId(serverOrderId);
       
       if (currentUser?.uid && vendorId) {
@@ -438,7 +457,7 @@ function OrderPageContent() {
   };
 
   const handlePickupRequest = React.useCallback(async () => {
-    let orderId = existingOrderId || localStorage.getItem('qw_current_order_id');
+    let orderId = existingOrderId || currentUser?.currentOrderId;
     console.log(`[Order] Requesting pickup for Order ID: ${orderId}`);
     
     if (!orderId) {
@@ -469,7 +488,10 @@ function OrderPageContent() {
           order = mostRecent;
           orderId = mostRecent.id;
           setExistingOrderId(orderId);
-          localStorage.setItem('qw_current_order_id', orderId);
+          if (currentUser?.uid) {
+            api.updateUser(currentUser.uid, { currentOrderId: orderId });
+            updateUser({ currentOrderId: orderId });
+          }
         }
       }
 
@@ -482,7 +504,10 @@ function OrderPageContent() {
           color: 'bg-primary-container text-on-primary-container',
         });
         
-        localStorage.removeItem('qw_current_order_id');
+        if (currentUser?.uid) {
+          api.updateUser(currentUser.uid, { currentOrderId: undefined });
+          updateUser({ currentOrderId: undefined });
+        }
         setNotification({ message: 'Order confirmed! Redirecting to tracking...', type: 'success' });
         
         setTimeout(() => {
@@ -497,7 +522,7 @@ function OrderPageContent() {
       setNotification({ message: err.message || 'Pickup request failed. Please try again.', type: 'error' });
       setTimeout(() => setNotification(null), 4000);
     }
-  }, [router, existingOrderId, pickupAddress, pickupLandmark, currentUser, vendorId]);
+  }, [router, existingOrderId, pickupAddress, pickupLandmark, currentUser, vendorId, updateUser]);
 
   const showActionRequired = existingOrder?.status === 'Action Required' || existingOrder?.status === 'rider_assign_pickup' || existingOrder?.status === 'confirm';
 
@@ -533,7 +558,11 @@ function OrderPageContent() {
       setExistingOrderId(null);
       setExistingOrder(null);
       setIsPaid(false);
-      localStorage.removeItem('qw_current_order_id');
+      
+      if (currentUser?.uid) {
+        api.updateUser(currentUser.uid, { currentOrderId: undefined });
+        updateUser({ currentOrderId: undefined });
+      }
       
       setNotification({ message: "Order cancelled and refunded successfully.", type: 'success' });
       setIsPaying(false);

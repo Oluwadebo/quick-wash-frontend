@@ -93,7 +93,7 @@ export default function LandingPage() {
         ],
         metrics: { avgDelivery: 18, totalVolume: 82000, uptime: '99.9%' }
       }));
-  }, [router]);
+  }, [router, user]);
 
   const howItWorks = {
     customer: [

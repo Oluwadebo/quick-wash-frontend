@@ -430,15 +430,31 @@ export default function WalletPage() {
               </button>
 
               <button 
-                onClick={() => {
+                onClick={async () => {
                   const issue = prompt('Please describe the issue with this transaction:');
                   if (issue && user?.uid) {
-                    const allHist = JSON.parse(localStorage.getItem(`qw_wallet_history_${user.uid}`) || '[]');
-                    const updated = allHist.map((h: any) => h.id === selectedTransaction.id ? { ...h, status: 'disputed', issueDescription: issue } : h);
-                    localStorage.setItem(`qw_wallet_history_${user.uid}`, JSON.stringify(updated));
-                    setHistory(updated.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-                    setSelectedTransaction(null);
-                    alert('Issue raised successfully. Our support team will review it.');
+                    try {
+                      const token = localStorage.getItem('qw_token');
+                      const resp = await fetch(`/api/transactions/${selectedTransaction.id}`, {
+                        method: 'PATCH',
+                        headers: {
+                          'Authorization': `Bearer ${token}`,
+                          'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ 
+                          status: 'disputed', 
+                          issueDescription: issue 
+                        })
+                      });
+                      if (resp.ok) {
+                        const updated = await resp.json();
+                        setHistory(prev => prev.map(t => (t.id === selectedTransaction.id || t._id === selectedTransaction.id) ? updated : t));
+                        setSelectedTransaction(null);
+                        alert('Issue raised successfully. Our support team will review it.');
+                      }
+                    } catch (err) {
+                      alert('Failed to raise issue.');
+                    }
                   }
                 }}
                 className="w-full h-12 bg-error/10 text-error mt-4 rounded-xl font-headline font-black text-[10px] uppercase tracking-widest active:scale-95 transition-transform border border-error/10"

@@ -5,7 +5,7 @@ import User from "../models/User";
 
 const router = express.Router();
 
-// Record Transaction (this is what DatabaseService calls)
+// Record Transaction
 router.post("/", async (req, res) => {
   try {
     const { userId, type, amount, desc, method, reference, status } = req.body;
@@ -48,6 +48,20 @@ router.get("/", async (req, res) => {
 
     const transactions = await Transaction.find({ userId }).sort({ date: -1 });
     res.json(transactions.map(t => t.toObject ? t.toObject() : t));
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.patch("/:id", async (req, res) => {
+  try {
+    const transaction = await Transaction.findOneAndUpdate(
+      { id: req.params.id },
+      { $set: req.body },
+      { new: true }
+    );
+    if (!transaction) return res.status(404).json({ message: "Transaction not found" });
+    res.json(transaction.toObject());
   } catch (err: any) {
     res.status(500).json({ message: err.message });
   }

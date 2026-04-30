@@ -358,15 +358,17 @@ export default function VendorDashboard() {
                         type: newRainState ? 'info' : 'success' 
                       });
                       
-                      const alerts = JSON.parse(localStorage.getItem('qw_alerts') || '[]');
-                      alerts.push({
+                      const newAlert = {
                         id: Date.now(),
                         type: 'WEATHER',
                         msg: `Heavy rain reported at ${currentUser?.shopName || 'a vendor shop'}.`,
                         time: new Date().toISOString(),
                         vendorId: currentUser.uid
-                      });
-                      localStorage.setItem('qw_alerts', JSON.stringify(alerts));
+                      };
+                      
+                      const updatedAlerts = [...(currentUser.alerts || []), newAlert];
+                      await api.updateUser(currentUser.uid, { alerts: updatedAlerts });
+                      updateUser({ alerts: updatedAlerts });
                       
                       setTimeout(() => setNotification(null), 3000);
                       if (newRainState) window.dispatchEvent(new Event('qw_audio_rain'));

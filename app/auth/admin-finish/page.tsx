@@ -68,7 +68,6 @@ function AdminFinishPageContent() {
         const data = await resp.json();
         if (data.token) {
           localStorage.setItem('qw_token', data.token);
-          localStorage.setItem('qw_user', JSON.stringify(data.user));
           // Success state will be handled below (invite becomes null)
         }
         setInvite(null); 
