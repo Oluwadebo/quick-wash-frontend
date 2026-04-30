@@ -21,16 +21,19 @@ export const metadata: Metadata = {
 
 import BottomNav from '@/components/shared/BottomNav';
 import Footer from '@/components/shared/Footer';
+import { AuthProvider } from '@/hooks/use-auth';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${plusJakartaSans.variable} ${manrope.variable}`}>
       <body suppressHydrationWarning className="bg-surface text-on-surface antialiased">
-        <main className="min-h-screen">
-          {children}
-        </main>
-        <Footer />
-        <BottomNav />
+        <AuthProvider>
+          <main className="min-h-screen">
+            {children}
+          </main>
+          <Footer />
+          <BottomNav />
+        </AuthProvider>
       </body>
     </html>
   );

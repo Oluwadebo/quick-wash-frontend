@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { db, SiteSettings } from '@/lib/DatabaseService';
+import { api, SiteSettings } from '@/lib/ApiService';
 
 const roles = [
   { 
@@ -46,7 +46,10 @@ const features = [
   { icon: Star, title: 'Trust Points', desc: 'Earn rewards for every wash' }
 ];
 
+import { useAuth } from '@/hooks/use-auth';
+
 export default function LandingPage() {
+  const { user } = useAuth();
   const router = useRouter();
   const [activeTab, setActiveTab] = React.useState<'customer' | 'vendor' | 'rider'>('customer');
   const [settings, setSettings] = React.useState<SiteSettings | null>(null);
@@ -60,11 +63,14 @@ export default function LandingPage() {
   });
 
   React.useEffect(() => {
-    db.getSiteSettings().then(setSettings);
-    const storedUser = localStorage.getItem('qw_user');
-    if (storedUser) {
-      const user = JSON.parse(storedUser);
-      router.push(`/${user.role === 'customer' ? 'customer' : user.role}`);
+    api.getSiteSettings().then(setSettings);
+    
+    if (user) {
+      if (user.role === 'admin' || user.role === 'super-admin' || user.role === 'super-sub-admin') {
+        router.push('/admin');
+      } else {
+        router.push(`/${user.role === 'customer' ? 'customer' : user.role}`);
+      }
     }
 
     // Fetch live stats

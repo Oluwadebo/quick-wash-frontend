@@ -25,7 +25,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
-import { db, SiteSettings } from '@/lib/DatabaseService';
+import { api, SiteSettings } from '@/lib/ApiService';
 
 interface NavItem {
   label: string;
@@ -75,7 +75,7 @@ export default function Sidebar() {
   const [settings, setSettings] = React.useState<SiteSettings | null>(null);
 
   React.useEffect(() => {
-    db.getSiteSettings().then(setSettings);
+    api.getSiteSettings().then(setSettings);
   }, []);
 
   const handleInvite = () => {
@@ -95,9 +95,9 @@ export default function Sidebar() {
   } else if (user?.role === 'rider') {
     items = riderItems;
     roleLabel = 'Rider Station';
-  } else if (user?.role === 'admin' || user?.role === 'super-sub-admin') {
+  } else if (user?.role === 'admin' || user?.role === 'super-admin' || user?.role === 'super-sub-admin') {
     items = adminItems;
-    const isSuperAdmin = user?.email === 'ogunweoluwadebo1@gmail.com' || user?.phoneNumber === '07048865686';
+    const isSuperAdmin = user?.role === 'super-admin' || user?.email === 'ogunweoluwadebo1@gmail.com' || user?.phoneNumber === '07048865686';
     roleLabel = isSuperAdmin ? 'Super Admin' : (user?.role === 'super-sub-admin' ? 'Super Admin (Sub)' : 'Moderator Admin');
   }
 

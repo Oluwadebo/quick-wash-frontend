@@ -141,13 +141,29 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
 
 export const getOrders = async (req: any, res: Response) => {
   const { role, uid } = req.user;
-  let query = {};
-  if (role === 'customer') query = { customerUid: uid };
-  if (role === 'vendor') query = { vendorId: uid };
-  if (role === 'rider') query = { riderUid: uid };
+  let query: any = {};
+  
+  if (role === 'customer') {
+    query = { customerUid: uid };
+  } else if (role === 'vendor') {
+    query = { vendorId: uid };
+  } else if (role === 'rider') {
+    // Riders see orders assigned to them OR unassigned available orders
+    query = {
+      $or: [
+        { riderUid: uid },
+        { 
+          $and: [
+            { $or: [{ riderUid: { $exists: false } }, { riderUid: null }, { riderUid: "" }] },
+            { status: { $in: ['rider_assign_pickup', 'rider_assign_delivery'] } }
+          ]
+        }
+      ]
+    };
+  }
   
   const orders = await Order.find(query).sort({ createdAt: -1 });
-  res.json(orders.map(o => o.toObject ? o.toObject() : o));
+  res.json(orders);
 };
 
 export const createOrder = async (req: Request, res: Response) => {

@@ -13,10 +13,13 @@ import { cn } from '@/lib/utils';
 import { formatRelativeTime } from '@/lib/time';
 
 import { Toast } from '@/components/shared/Toast';
-import { db, Order, UserData } from '@/lib/DatabaseService';
+import { api, Order, UserData } from '@/lib/ApiService';
+
+import { useAuth } from '@/hooks/use-auth';
 
 export default function OrderTrackingPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = React.use(params);
+  const { user: authUser } = useAuth();
   const [order, setOrder] = React.useState<Order | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [rider, setRider] = React.useState<UserData | null>(null);
@@ -30,13 +33,13 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
 
   React.useEffect(() => {
     const refresh = async () => {
-      const allOrders = await db.getOrders();
-      const userData = localStorage.getItem('qw_user');
-      const currentUser = userData ? JSON.parse(userData) : {};
+      if (!authUser?.uid) return;
+
+      const allOrders = await api.getOrders();
       const found = allOrders.find((o: Order) => o.id === resolvedParams.id);
       
       // STRICT UID FILTERING
-      if (found && found.customerUid !== currentUser.uid) {
+      if (found && found.customerUid !== authUser.uid) {
         setOrder(null);
         setLoading(false);
         return;
@@ -45,20 +48,18 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
       setOrder(found || null);
       
       if (found?.riderUid) {
-        const riderInfo = await db.getUser(found.riderUid);
+        const riderInfo = await api.getUser(found.riderUid);
         setRider(riderInfo);
       }
       setLoading(false);
     };
 
     refresh();
-    window.addEventListener('storage', refresh);
     const interval = setInterval(refresh, 5000); 
     return () => {
-      window.removeEventListener('storage', refresh);
       clearInterval(interval);
     };
-  }, [resolvedParams.id]);
+  }, [resolvedParams.id, authUser]);
 
   if (loading) return <div className="pt-32 text-center font-headline font-black text-on-surface">Loading...</div>;
   if (!order) return <div className="pt-32 text-center font-headline font-black text-on-surface">Order not found.</div>;
@@ -72,28 +73,32 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
   const handleCancelOrder = async () => {
     if (order?.status === 'confirm' || order?.status === 'rider_assign_pickup') {
       if (confirm('Are you sure you want to cancel this order? Your payment will be fully refunded to your wallet.')) {
-        const updatedOrder = { ...order, status: 'Cancelled', color: 'bg-error/10 text-error', refunded: true };
-        await db.saveOrder(updatedOrder);
-        
-        // Refund customer
-        const customer = await db.getUser(order.customerUid);
-        if (customer) {
-          // Full refund, no trust point penalty if before pickup as requested
-          await db.updateUser(customer.uid, { 
-            walletBalance: (customer.walletBalance || 0) + (order.totalPrice || 0) 
+        try {
+          const token = localStorage.getItem('qw_token');
+          const res = await fetch(`/api/orders/${order.id}/cancel`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ reason: 'User Cancelled from Tracker' })
           });
-          
-          await db.recordTransaction(customer.uid, {
-            type: 'deposit',
-            amount: order.totalPrice,
-            desc: 'Order Cancellation Refund (Full)'
-          });
-        }
 
-        setOrder(updatedOrder);
-        setNotification({ message: 'Order cancelled and fully refunded successfully.', type: 'success' });
-        setTimeout(() => setNotification(null), 3000);
-        window.dispatchEvent(new Event('storage'));
+          if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.message || 'Failed to cancel order');
+          }
+
+          const data = await res.json();
+          setOrder(data.order);
+          setNotification({ message: 'Order cancelled and fully refunded successfully.', type: 'success' });
+          setTimeout(() => setNotification(null), 3000);
+          window.dispatchEvent(new Event('storage'));
+        } catch (error: any) {
+          console.error("Cancellation failed", error);
+          setNotification({ message: error.message || "Failed to cancel order. Please try again.", type: 'error' });
+          setTimeout(() => setNotification(null), 3000);
+        }
       }
     } else {
       setNotification({ message: 'Orders can only be cancelled before pickup.', type: 'error' });
@@ -103,11 +108,11 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
 
   const steps = [
     { id: 'confirm', label: 'Paid', icon: CreditCard },
-    { id: 'rider_assign_pickup', label: 'Heading', icon: Phone },
+    { id: 'rider_assign_pickup', label: order.riderUid ? 'Heading' : 'Searching', icon: Phone },
     { id: 'picked_up', label: 'Laundry', icon: Package },
     { id: 'washing', label: 'Washing', icon: WashingMachine },
     { id: 'ready', label: 'Ready', icon: CheckCircle },
-    { id: 'rider_assign_delivery', label: 'Heading', icon: ArrowRight },
+    { id: 'rider_assign_delivery', label: order.riderUid ? 'Heading' : 'Searching', icon: ArrowRight },
     { id: 'picked_up_delivery', label: 'Delivering', icon: ShoppingBag },
     { id: 'delivered', label: 'Arrived', icon: DoorOpen },
     { id: 'completed', label: 'Done', icon: ShieldCheck }
@@ -118,13 +123,13 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
 
   const handleVerifyDelivery = async (inputCode: string) => {
     try {
-      const updatedOrder = await db.updateOrderStatus(order.id, 'delivered', 'bg-success text-on-success', inputCode);
+      const updatedOrder = await api.updateOrderStatus(order.id, 'delivered', 'bg-success text-on-success', inputCode);
       setOrder(updatedOrder);
       setNotification({ message: 'Delivery verified! Thank you.', type: 'success' });
       setHandoverInput('');
       
       // Customer reward for successful completion
-      if (order.customerUid) await db.adjustTrustPoints(order.customerUid, 'completed_order');
+      if (order.customerUid) await api.adjustTrustPoints(order.customerUid, 'completed_order');
 
       setTimeout(() => setNotification(null), 3000);
       window.dispatchEvent(new Event('storage'));
@@ -142,20 +147,20 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
       color: 'bg-success text-on-success',
       completedAt: new Date().toISOString()
     };
-    await db.saveOrder(updatedOrder);
+    await api.saveOrder(updatedOrder);
 
     // Vendor gets remaining 20%
     const itemsPrice = order.itemsPrice || 0;
     const remaining20 = itemsPrice * 0.2;
     
-    const vendorUser = await db.getUser(order.vendorId);
+    const vendorUser = await api.getUser(order.vendorId);
     if (vendorUser) {
-      await db.adjustTrustPoints(vendorUser.uid, 'completed_order');
-      await db.updateUser(vendorUser.uid, { 
+      await api.adjustTrustPoints(vendorUser.uid, 'completed_order');
+      await api.updateUser(vendorUser.uid, { 
         walletBalance: (vendorUser.walletBalance || 0) + remaining20,
         pendingBalance: Math.max(0, (vendorUser.pendingBalance || 0) - remaining20)
       });
-      await db.recordTransaction(vendorUser.uid, {
+      await api.recordTransaction(vendorUser.uid, {
         type: 'deposit',
         amount: remaining20,
         desc: `Final Payout (20%) - Order #${order.id}`
@@ -175,7 +180,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
     // Adjust vendor trust points based on rating
     // 5 stars = +5, 4 stars = +2, 3 stars = 0, 2 stars = -5, 1 star = -10
     const pointsMap: { [key: number]: number } = { 5: 5, 4: 2, 3: 0, 2: -5, 1: -10 };
-    await db.adjustTrustPoints(order.vendorId, pointsMap[rating] || 0);
+    await api.adjustTrustPoints(order.vendorId, pointsMap[rating] || 0);
     
     setShowRatingModal(false);
     setNotification({ message: 'Thank you for your feedback!', type: 'success' });
@@ -193,7 +198,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
       disputedAt: new Date().toISOString()
     } as Order;
 
-    await db.saveOrder(updatedOrder);
+    await api.saveOrder(updatedOrder);
     setOrder(updatedOrder);
     setShowIssueInput(false);
     setNotification({ message: 'Your issue has been reported. Our support team will contact you shortly.', type: 'info' });
@@ -331,7 +336,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
           <SealedBagUploader 
             orderId={order.id} 
             onUploaded={async () => {
-              const all = await db.getOrders();
+              const all = await api.getOrders();
               const fresh = all.find((o: Order) => o.id === order.id);
               if (fresh) setOrder(fresh);
             }} 
@@ -473,7 +478,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
                   color: 'bg-primary text-on-primary',
                   customerConfirmedDeliveryAt: new Date().toISOString()
                 };
-                await db.saveOrder(updatedOrder);
+                await api.saveOrder(updatedOrder);
                 setOrder(updatedOrder);
                 setNotification({ message: 'Riders have been notified that you are ready to receive your laundry!', type: 'success' });
                 setTimeout(() => setNotification(null), 3000);

@@ -14,6 +14,7 @@ export const API_URLS = {
   orders: `${API_BASE_URL}/api/orders`,
   wallet: `${API_BASE_URL}/api/wallet`,
   prices: `${API_BASE_URL}/api/prices`,
+  stats: `${API_BASE_URL}/api/stats`,
 };
 
 export default API_BASE_URL;

@@ -1,17 +1,16 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { api } from '@/lib/ApiService';
 
-export type UserRole = 'customer' | 'vendor' | 'rider' | 'admin' | 'super-sub-admin';
+export type UserRole = 'customer' | 'vendor' | 'rider' | 'admin' | 'super-admin' | 'super-sub-admin';
 
 interface UserData {
   uid: string;
   fullName?: string;
   phoneNumber: string;
-  email: string; // Made email mandatory
-  password?: string;
-  landmark?: string;
+  email: string;
   role: UserRole;
   shopName?: string;
   shopAddress?: string;
@@ -26,39 +25,67 @@ interface UserData {
   turnaroundTime?: string;
   capacity?: number;
   trustPoints?: number;
-  trustScore?: number; // 0-100
+  trustScore?: number;
   walletBalance?: number;
   pendingBalance?: number;
   badges?: string[];
   status?: 'active' | 'restricted' | 'suspended';
-  shopImage?: string; // New field
-  ninImage?: string;  // New field
-  transferReference?: string; // New field
+  shopImage?: string;
+  ninImage?: string;
+  transferReference?: string;
 }
 
-export function useAuth() {
-  const [user, setUser] = useState<UserData | null>(() => {
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('qw_user');
-      return stored ? JSON.parse(stored) : null;
-    }
-    return null;
-  });
+interface AuthContextType {
+  user: UserData | null;
+  loading: boolean;
+  isProcessing: boolean;
+  error: string | null;
+  login: (identifier: string, password?: string) => Promise<void>;
+  signup: (data: Omit<UserData, 'uid'>) => Promise<void>;
+  logout: () => void;
+  approveUser: (uid: string) => Promise<UserData>;
+  updateUser: (updatedData: Partial<UserData>) => void;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
-  useEffect(() => {
-    // Initial load check
-    Promise.resolve().then(() => setLoading(false));
+  const fetchMe = useCallback(async () => {
+    try {
+      const data = await api.getMe();
+      if (data) {
+        setUser(data);
+      } else {
+        setUser(null);
+      }
+    } catch (e) {
+      setUser(null);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('qw_token');
+      if (token) {
+        fetchMe();
+      } else {
+        setLoading(false);
+      }
+    }
+  }, [fetchMe]);
 
   const signup = async (data: Omit<UserData, 'uid'>) => {
     setIsProcessing(true);
     setError(null);
     
-    // Validation
     if (!data.phoneNumber || !/^\d{11}$/.test(data.phoneNumber)) {
       setError('Phone number must be exactly 11 digits!');
       setIsProcessing(false);
@@ -87,19 +114,14 @@ export function useAuth() {
       });
 
       const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.message || 'Signup failed');
-      }
+      if (!response.ok) throw new Error(result.message || 'Signup failed');
 
       const { user: newUser, token } = result;
-      
       if (token) localStorage.setItem('qw_token', token);
 
       if (!newUser.isApproved) {
         router.push(`/auth?login=true&message=pending&role=${data.role}`);
       } else {
-        localStorage.setItem('qw_user', JSON.stringify(newUser));
         setUser(newUser);
         router.push('/customer');
       }
@@ -122,13 +144,9 @@ export function useAuth() {
       });
 
       const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.message || 'Login failed');
-      }
+      if (!response.ok) throw new Error(result.message || 'Login failed');
 
       const { user: foundUser, token } = result;
-      
       if (token) localStorage.setItem('qw_token', token);
 
       if (!foundUser.isApproved) {
@@ -137,11 +155,8 @@ export function useAuth() {
         return;
       }
 
-      localStorage.setItem('qw_user', JSON.stringify(foundUser));
       setUser(foundUser);
-      
-      // Role-based redirection
-      if (foundUser.role === 'admin' || foundUser.role === 'super-sub-admin') router.push('/admin');
+      if (foundUser.role === 'admin' || foundUser.role === 'super-admin' || foundUser.role === 'super-sub-admin') router.push('/admin');
       else if (foundUser.role === 'vendor') router.push('/vendor');
       else if (foundUser.role === 'rider') router.push('/rider');
       else router.push('/customer');
@@ -153,7 +168,6 @@ export function useAuth() {
   };
 
   const logout = useCallback(() => {
-    localStorage.removeItem('qw_user');
     localStorage.removeItem('qw_token');
     localStorage.removeItem('qw_current_order_id');
     setUser(null);
@@ -161,62 +175,59 @@ export function useAuth() {
   }, [router]);
 
   const updateUser = useCallback((updatedData: Partial<UserData>) => {
-    setUser(prev => {
-      if (!prev) return null;
-      const newUser = { ...prev, ...updatedData };
-      localStorage.setItem('qw_user', JSON.stringify(newUser));
-      return newUser;
-    });
+    setUser(prev => prev ? { ...prev, ...updatedData } : null);
   }, []);
 
-  // Sync auth state across tabs
+  const approveUser = async (uid: string) => {
+    return await api.approveUser(uid);
+  };
+
   useEffect(() => {
     const handleStorage = (e: StorageEvent) => {
-      if (e.key === 'qw_user') {
-        const newUser = e.newValue ? JSON.parse(e.newValue) : null;
-        setUser(newUser);
-        if (!newUser) router.push('/auth?login=true');
+      if (e.key === 'qw_token') {
+        if (!e.newValue) {
+          setUser(null);
+          router.push('/auth?login=true');
+        } else {
+          fetchMe();
+        }
       }
     };
     window.addEventListener('storage', handleStorage);
     return () => window.removeEventListener('storage', handleStorage);
-  }, [router]);
+  }, [router, fetchMe]);
 
-  // Inactivity Logout (30 minutes)
   useEffect(() => {
     if (!user) return;
-
     let timeoutId: NodeJS.Timeout;
-
     const resetTimer = () => {
       if (timeoutId) clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => {
-        logout();
-        alert('You have been logged out due to inactivity.');
-      }, 30 * 60 * 1000); // 30 minutes
+      timeoutId = setTimeout(() => logout(), 60 * 60 * 1000);
     };
-
     const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
     const handleActivity = () => resetTimer();
-    
     events.forEach(event => document.addEventListener(event, handleActivity));
-
     resetTimer();
-
     return () => {
       if (timeoutId) clearTimeout(timeoutId);
       events.forEach(event => document.removeEventListener(event, handleActivity));
     };
   }, [user, logout]);
 
-  const approveUser = (phoneNumber: string) => {
-    const users = JSON.parse(localStorage.getItem('qw_all_users') || '[]');
-    const updatedUsers = users.map((u: any) => 
-      u.phoneNumber === phoneNumber ? { ...u, isApproved: true } : u
-    );
-    localStorage.setItem('qw_all_users', JSON.stringify(updatedUsers));
-    return updatedUsers;
-  };
+  return (
+    <AuthContext.Provider value={{ user, loading, isProcessing, error, login, signup, logout, approveUser, updateUser }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
 
-  return { user, loading, isProcessing, error, login, signup, logout, approveUser, updateUser };
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    // Return a fallback or throw error. 
+    // To support existing direct calls without AuthProvider, we might want to return context check, 
+    // but better to enforce AuthProvider in layout.
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
 }

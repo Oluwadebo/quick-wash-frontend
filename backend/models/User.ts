@@ -46,7 +46,7 @@ const UserSchema: Schema = new Schema({
   phoneNumber: { type: String, required: true, unique: true, index: true },
   email: { type: String, required: true, unique: true, index: true },
   password: { type: String },
-  role: { type: String, enum: ['customer', 'vendor', 'rider', 'admin', 'super-sub-admin'], default: 'customer', index: true },
+  role: { type: String, enum: ['customer', 'vendor', 'rider', 'admin', 'super-admin', 'super-sub-admin'], default: 'customer', index: true },
   isApproved: { type: Boolean, default: false },
   walletBalance: { type: Number, default: 0 },
   pendingBalance: { type: Number, default: 0 },

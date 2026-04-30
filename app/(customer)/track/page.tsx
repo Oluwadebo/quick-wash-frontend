@@ -7,9 +7,11 @@ import { motion, AnimatePresence } from 'motion/react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
-import { db, Order, UserData } from '@/lib/DatabaseService';
+import { api, Order, UserData } from '@/lib/ApiService';
+import { useAuth } from '@/hooks/use-auth';
 
 export default function TrackListPage() {
+  const { user: authUser } = useAuth();
   const [orders, setOrders] = React.useState<Order[]>([]);
   const [user, setUser] = React.useState<UserData | null>(null);
   const [timeRange, setTimeRange] = React.useState<'today' | '7d' | '14d' | '30d' | '2m' | 'all' | 'custom'>('all');
@@ -17,16 +19,15 @@ export default function TrackListPage() {
 
   React.useEffect(() => {
     const init = async () => {
-      const currentUser = JSON.parse(localStorage.getItem('qw_user') || '{}');
-      if (!currentUser.uid) return;
+      if (!authUser?.uid) return;
       
-      const me = await db.getUser(currentUser.uid);
+      const me = await api.getUser(authUser.uid);
       setUser(me);
 
       if (me?.uid) {
         try {
           // Fetch orders for current customer
-          const customerOrders = await db.getOrders();
+          const customerOrders = await api.getOrders();
           setOrders(Array.isArray(customerOrders) ? customerOrders.sort((a: any, b: any) => {
             const dateB = new Date(b.createdAt || b.time || 0).getTime();
             const dateA = new Date(a.createdAt || a.time || 0).getTime();
@@ -39,7 +40,7 @@ export default function TrackListPage() {
       }
     };
     init();
-  }, []);
+  }, [authUser]);
 
   const getStatusColor = (status: string) => {
     switch (status) {

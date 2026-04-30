@@ -7,7 +7,7 @@ import { useAuth, UserRole } from '@/hooks/use-auth';
 import { Droplets, ArrowLeft, Phone, Lock, User, MapPin, ChevronRight, Sparkles, Store, Bike, Eye, EyeOff, Mail, Github, Globe } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
-import { db, SiteSettings } from '@/lib/DatabaseService';
+import { api, SiteSettings } from '@/lib/ApiService';
 
 function AuthContent() {
   const searchParams = useSearchParams();
@@ -23,7 +23,7 @@ function AuthContent() {
 
   // Load site settings
   React.useEffect(() => {
-    db.getSiteSettings().then(setSettings);
+    api.getSiteSettings().then(setSettings);
   }, []);
 
   // Keep state in sync with URL

@@ -65,7 +65,13 @@ function AdminFinishPageContent() {
         body: JSON.stringify({ ...formData, token })
       });
       if (resp.ok) {
-        setInvite(null); // Clear form and show success
+        const data = await resp.json();
+        if (data.token) {
+          localStorage.setItem('qw_token', data.token);
+          localStorage.setItem('qw_user', JSON.stringify(data.user));
+          // Success state will be handled below (invite becomes null)
+        }
+        setInvite(null); 
         setLoading(false);
       } else {
         const data = await resp.json();
@@ -90,13 +96,13 @@ function AdminFinishPageContent() {
               <ShieldCheck className="text-white w-8 h-8" />
             </div>
           </div>
-          <h1 className="text-3xl font-headline font-black text-on-surface mb-4 uppercase italic">Registration Submitted</h1>
-          <p className="text-on-surface-variant font-medium mb-8">Your account has been created successfully. However, as a security measure, you must wait for the <span className="text-primary font-black">Super Admin</span> to approve your account before you can log in.</p>
+          <h1 className="text-3xl font-headline font-black text-on-surface mb-4 uppercase italic">Setup Complete</h1>
+          <p className="text-on-surface-variant font-medium mb-8">Your admin account has been created and activated. You now have full access to the management console.</p>
           <button 
-            onClick={() => router.push('/auth?login=true')}
-            className="w-full h-16 bg-surface-container-highest text-on-surface rounded-2xl font-headline font-black uppercase tracking-widest hover:bg-primary hover:text-on-primary transition-all"
+            onClick={() => router.push('/admin')}
+            className="w-full h-16 bg-primary text-on-primary rounded-2xl font-headline font-black uppercase tracking-widest shadow-xl shadow-primary/20 hover:scale-[1.02] transition-all"
           >
-            GO TO LOGIN
+            GO TO DASHBOARD
           </button>
         </motion.div>
       </div>

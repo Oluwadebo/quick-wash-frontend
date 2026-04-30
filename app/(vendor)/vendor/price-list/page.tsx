@@ -6,7 +6,8 @@ import { Shirt, ShoppingBag, Bed, Sparkles, Plus, Edit3, Trash2, Check, X, Dropl
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
-import { db } from '@/lib/DatabaseService';
+import { api } from '@/lib/ApiService';
+import { useAuth } from '@/hooks/use-auth';
 
 interface SubService {
   id: string;
@@ -79,31 +80,31 @@ const defaultServices: Service[] = [
 ];
 
 export default function PriceListPage() {
+  const { user: authUser } = useAuth();
   const [services, setServices] = React.useState<Service[]>([]);
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [user, setUser] = React.useState<any>(null);
 
   React.useEffect(() => {
     const init = async () => {
-      const currentUser = JSON.parse(localStorage.getItem('qw_user') || '{}');
-      setUser(currentUser);
-      if (currentUser.uid) {
-        const stored = await db.getVendorPriceList(currentUser.uid);
+      if (authUser?.uid) {
+        setUser(authUser);
+        const stored = await api.getVendorPriceList(authUser.uid);
         if (stored && stored.length > 0) {
           setServices(stored);
         } else {
           setServices(defaultServices);
-          await db.saveVendorPriceList(currentUser.uid, defaultServices);
+          await api.saveVendorPriceList(authUser.uid, defaultServices);
         }
       }
     };
     init();
-  }, []);
+  }, [authUser]);
 
   const saveServices = async (updated: Service[]) => {
     setServices(updated);
     if (user?.uid) {
-      await db.saveVendorPriceList(user.uid, updated);
+      await api.saveVendorPriceList(user.uid, updated);
     }
   };
 

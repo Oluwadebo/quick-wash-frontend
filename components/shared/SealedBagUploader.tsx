@@ -4,7 +4,7 @@ import React from 'react';
 import { Camera, Upload, CheckCircle2, ShieldCheck, Info } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
-import { db } from '@/lib/DatabaseService';
+import { api } from '@/lib/ApiService';
 
 export default function SealedBagUploader({ orderId, onUploaded }: { orderId: string, onUploaded?: () => void }) {
   const [status, setStatus] = React.useState<'idle' | 'uploading' | 'success'>('idle');
@@ -21,10 +21,10 @@ export default function SealedBagUploader({ orderId, onUploaded }: { orderId: st
         const base64String = reader.result as string;
         
         try {
-          const allOrders = await db.getOrders();
+          const allOrders = await api.getOrders();
           const order = allOrders.find(o => o.id === orderId);
           if (order) {
-            await db.saveOrder({
+            await api.saveOrder({
               ...order,
               evidenceImage: base64String
             });

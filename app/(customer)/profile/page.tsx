@@ -8,7 +8,7 @@ import { motion } from 'motion/react';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
-import { db, UserData } from '@/lib/DatabaseService';
+import { api, UserData } from '@/lib/ApiService';
 
 const badges = [
   { id: 'early-bird', name: 'Early Bird', icon: Sun, color: 'bg-surface-container-high text-primary', rotate: 'rotate-3' },
@@ -33,10 +33,10 @@ export default function ProfilePage() {
 
   const refreshData = React.useCallback(async () => {
     if (authUser?.uid) {
-      const me = await db.getUser(authUser.uid);
+      const me = await api.getUser(authUser.uid);
       setUser(me);
 
-      const allOrders = await db.getOrders();
+      const allOrders = await api.getOrders();
       const filtered = allOrders.filter((o: any) => o.customerUid === authUser.uid);
       setRecentOrders(filtered.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
       setTotalWashes(filtered.filter((o: any) => o.status === 'completed').length);

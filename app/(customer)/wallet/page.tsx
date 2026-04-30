@@ -6,7 +6,7 @@ import { Wallet, ArrowUpRight, ArrowDownLeft, Plus, History, CreditCard, Landmar
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
-import { db } from '@/lib/DatabaseService';
+import { api } from '@/lib/ApiService';
 import { API_URLS } from '@/lib/api-config';
 
 export default function WalletPage() {
