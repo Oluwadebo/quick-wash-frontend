@@ -8,10 +8,10 @@ const router = express.Router();
 // Get balance and history
 router.get("/history", async (req, res) => {
   try {
-    const { userId } = req.query;
+    const userId = (req.query.userId as string) || (req.body.userId as string);
     if (!userId) return res.status(400).json({ message: "userId required" });
 
-    const transactions = await Transaction.find({ userId }).sort({ date: -1 });
+    const transactions = await Transaction.find({ userId: userId }).sort({ date: -1 });
     const user = await User.findOne({ uid: userId });
     
     console.log(`[Wallet] Fetched ${transactions.length} transactions for user ${userId}. Balance: ₦${user?.walletBalance || 0}`);
@@ -38,8 +38,7 @@ router.get("/transactions/:userId", async (req, res) => {
 router.post("/fund", async (req, res) => {
   try {
     const { amount, method, reference, userId: bodyUserId } = req.body;
-    // Note: in a real app, userId should come from token. For now we might need it in body if not using auth middleware
-    const userId = bodyUserId || req.query.userId; 
+    const userId = (bodyUserId as string) || (req.query.userId as string); 
 
     console.log(`[Wallet] Funding request for user: ${userId}, amount: ${amount}, method: ${method}`);
 

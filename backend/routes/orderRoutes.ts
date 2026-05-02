@@ -10,7 +10,8 @@ const router = express.Router();
 
 router.get("/", async (req, res) => {
   try {
-    const { userId, role } = req.query;
+    const userId = req.query.userId as string;
+    const role = req.query.role as string;
     let query = {};
     
     if (role === 'customer') query = { customerUid: userId };
