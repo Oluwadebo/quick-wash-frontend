@@ -6,6 +6,7 @@ import { Mail, Phone, MapPin, MessageCircle, Clock, Globe, ArrowRight, Send, Che
 import { motion } from 'motion/react';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
+import { API_URLS } from '@/lib/api-config';
 import Footer from '@/components/shared/Footer';
 
 export default function ContactPage() {
@@ -20,7 +21,7 @@ export default function ContactPage() {
     setError(null);
     
     try {
-      const res = await fetch('/api/contact', {
+      const res = await fetch(`${API_URLS.base}/contact`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formState)

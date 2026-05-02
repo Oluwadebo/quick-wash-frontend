@@ -47,6 +47,7 @@ const features = [
 ];
 
 import { useAuth } from '@/hooks/use-auth';
+import { API_URLS } from '@/lib/api-config';
 
 export default function LandingPage() {
   const { user } = useAuth();
@@ -74,7 +75,7 @@ export default function LandingPage() {
     }
 
     // Fetch live stats
-    fetch('/api/stats')
+    fetch(`${API_URLS.base}/stats`)
       .then(res => res.json())
       .then(data => {
         if (data && !data.error) {

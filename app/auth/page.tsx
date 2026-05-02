@@ -8,6 +8,7 @@ import { Droplets, ArrowLeft, Phone, Lock, User, MapPin, ChevronRight, Sparkles,
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { api, SiteSettings } from '@/lib/ApiService';
+import { API_URLS } from '@/lib/api-config';
 
 function AuthContent() {
   const searchParams = useSearchParams();
@@ -75,7 +76,7 @@ function AuthContent() {
     e.preventDefault();
     setResetMessage(null);
     try {
-      const res = await fetch('/api/auth/forgot-password', {
+      const res = await fetch(`${API_URLS.base}/auth/forgot-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ identifier: resetData.identifier })
@@ -96,7 +97,7 @@ function AuthContent() {
     e.preventDefault();
     setResetMessage(null);
     try {
-      const res = await fetch('/api/auth/reset-password', {
+      const res = await fetch(`${API_URLS.base}/auth/reset-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(resetData)

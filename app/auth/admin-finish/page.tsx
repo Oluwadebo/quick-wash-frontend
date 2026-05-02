@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { motion } from 'motion/react';
 import { Droplets, ShieldCheck, User, Lock, Phone, Mail } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
+import { API_URLS } from '@/lib/api-config';
 import { cn } from '@/lib/utils';
 import { Suspense } from 'react';
 
@@ -33,7 +34,7 @@ function AdminFinishPageContent() {
     if (!token) return;
     const fetchInvite = async () => {
       try {
-        const resp = await fetch(`/api/admin/invite/verify?token=${token}`);
+        const resp = await fetch(`${API_URLS.base}/admin/invite/verify?token=${token}`);
         if (resp.ok) {
           const data = await resp.json();
           setInvite(data);
@@ -59,7 +60,7 @@ function AdminFinishPageContent() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const resp = await fetch('/api/admin/invite/complete', {
+      const resp = await fetch(`${API_URLS.base}/admin/invite/complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...formData, token })

@@ -7,6 +7,7 @@ import VendorCard from '@/components/shared/VendorCard';
 import { Volume2, MapPin, Search, SlidersHorizontal, DollarSign, Zap, Star, Navigation } from 'lucide-react';
 import { motion } from 'motion/react';
 import { cn } from '@/lib/utils';
+import { API_URLS } from '@/lib/api-config';
 
 const sortOptions = [
   { id: 'cheapest', label: 'Cheapest', icon: DollarSign },
@@ -28,7 +29,7 @@ function VendorSelectionContent() {
     const fetchVendors = async () => {
       try {
         setLoading(true);
-        const response = await fetch('/api/vendors');
+        const response = await fetch(`${API_URLS.base}/vendors`);
         const data = await response.json();
         
         if (Array.isArray(data)) {

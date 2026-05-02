@@ -17,6 +17,7 @@ import ProtectedRoute from '@/components/shared/ProtectedRoute';
 import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import { api, SiteSettings } from '@/lib/ApiService';
+import { API_URLS } from '@/lib/api-config';
 
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -94,7 +95,7 @@ export default function AdminDashboard() {
       
       // If role is admin, use the invite system
       if (newUser.role === 'admin' || newUser.role === 'super-sub-admin') {
-        const resp = await fetch('/api/admin/invite', {
+        const resp = await fetch(`${API_URLS.base}/admin/invite`, {
           method: 'POST',
           headers: { 
             'Authorization': `Bearer ${token}`,
@@ -124,7 +125,7 @@ export default function AdminDashboard() {
         }
       }
 
-      const resp = await fetch('/api/admin/users/create', {
+      const resp = await fetch(`${API_URLS.base}/admin/users/create`, {
         method: 'POST',
         headers: { 
           'Authorization': `Bearer ${token}`,
@@ -163,11 +164,11 @@ export default function AdminDashboard() {
       try {
         const token = localStorage.getItem('qw_token');
         const [usersRes, ordersRes, transRes, campRes, auditRes, sysStats, site] = await Promise.all([
-          fetch('/api/admin/users', { headers: { 'Authorization': `Bearer ${token}` } }),
-          fetch('/api/orders', { headers: { 'Authorization': `Bearer ${token}` } }),
-          fetch('/api/transactions', { headers: { 'Authorization': `Bearer ${token}` } }),
-          fetch('/api/campaigns', { headers: { 'Authorization': `Bearer ${token}` } }),
-          fetch('/api/audit-logs', { headers: { 'Authorization': `Bearer ${token}` } }),
+          fetch(`${API_URLS.base}/admin/users`, { headers: { 'Authorization': `Bearer ${token}` } }),
+          fetch(`${API_URLS.base}/orders`, { headers: { 'Authorization': `Bearer ${token}` } }),
+          fetch(`${API_URLS.base}/transactions`, { headers: { 'Authorization': `Bearer ${token}` } }),
+          fetch(`${API_URLS.base}/campaigns`, { headers: { 'Authorization': `Bearer ${token}` } }),
+          fetch(`${API_URLS.base}/audit-logs`, { headers: { 'Authorization': `Bearer ${token}` } }),
           api.getSystemStats(),
           api.getSiteSettings()
         ]);
@@ -245,7 +246,7 @@ export default function AdminDashboard() {
           body: JSON.stringify(campaignForm)
         });
       } else {
-        resp = await fetch('/api/campaigns', {
+        resp = await fetch(`${API_URLS.base}/campaigns`, {
           method: 'POST',
           headers: { 
             'Authorization': `Bearer ${token}`,
@@ -263,7 +264,7 @@ export default function AdminDashboard() {
         setCampaignForm({ name: '', status: 'Active', reach: '0', conversion: '0%', color: 'bg-primary' });
         
         // Record Audit Log
-        await fetch('/api/audit-logs', {
+        await fetch(`${API_URLS.base}/audit-logs`, {
           method: 'POST',
           headers: { 
             'Authorization': `Bearer ${token}`,
@@ -290,7 +291,7 @@ export default function AdminDashboard() {
       if (resp.ok) {
         setCampaigns(prev => prev.filter(c => c.id !== id));
         // Record Audit Log
-        await fetch('/api/audit-logs', {
+        await fetch(`${API_URLS.base}/audit-logs`, {
           method: 'POST',
           headers: { 
             'Authorization': `Bearer ${token}`,
@@ -332,7 +333,7 @@ export default function AdminDashboard() {
 
       // Audit Log
       const token = localStorage.getItem('qw_token');
-      await fetch('/api/audit-logs', {
+      await fetch(`${API_URLS.base}/audit-logs`, {
         method: 'POST',
         headers: { 
           'Authorization': `Bearer ${token}`,
@@ -387,7 +388,7 @@ export default function AdminDashboard() {
 
   const handleResolveDispute = async (orderId: string, resolution: 'refund' | 'reject' | 'partial', customAmount?: number) => {
     try {
-      const response = await fetch('/api/orders/dispute', {
+      const response = await fetch(`${API_URLS.base}/orders/dispute`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
