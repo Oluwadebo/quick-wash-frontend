@@ -4,7 +4,7 @@
   "description": "Backend for Quick-Wash App",
   "main": "server.ts",
   "scripts": {
-    "start": "node --loader ts-node/esm server.ts",
+    "start": "node dist/server.js",
     "dev": "nodemon --exec node --loader ts-node/esm server.ts",
     "build": "tsc"
   },
@@ -15,8 +15,11 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^5.0.0",
+    "express-rate-limit": "^8.4.1",
+    "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.2.1",
+    "morgan": "^1.10.1",
     "multer": "^1.4.5-lts.1",
     "uuid": "^9.0.1"
   },
@@ -25,7 +28,9 @@
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/jsonwebtoken": "^9.0.6",
+    "@types/morgan": "^1.9.10",
     "@types/node": "^20.11.24",
+    "@types/uuid": "^9.0.8",
     "nodemon": "^3.1.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3"

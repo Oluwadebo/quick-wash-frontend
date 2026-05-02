@@ -29,7 +29,7 @@ dotenv.config();
 const app = express();
 // Robust trust proxy setting for AI Studio/Cloud Run environment
 app.set("trust proxy", 1); 
-const PORT = process.env.BACKEND_PORT || 5000;
+const PORT = process.env.PORT || process.env.BACKEND_PORT || 5000;
 const MONGODB_URI =
   process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/quick-wash";
 
@@ -177,7 +177,7 @@ const startServer = async () => {
             // Check for other unnecessary unique indexes that might cause issues
             const indexes = await ordersCol.indexes();
             for (const idx of indexes) {
-              if (idx.name !== '_id_' && idx.name !== 'id_1' && idx.unique && !['customerUid_1', 'vendorId_1', 'status_1'].includes(idx.name)) {
+              if (idx.name && idx.name !== '_id_' && idx.name !== 'id_1' && idx.unique && !['customerUid_1', 'vendorId_1', 'status_1'].includes(idx.name)) {
                 console.log(`[Database] Possible problematic unique index found: ${idx.name}. Consider dropping if it causes E11000.`);
               }
             }
@@ -226,38 +226,22 @@ const startServer = async () => {
           
           for (const order of pendingOrders) {
             const session = await mongoose.startSession();
-            let isNoTransaction = false;
+            session.startTransaction();
             try {
-              session.startTransaction();
-            } catch (e) {
-              isNoTransaction = true;
-            }
-            
-            try {
-              const OrderModel = mongoose.model('Order');
-              const UserModel = mongoose.model('User');
-              const TransactionModel = mongoose.model('Transaction');
-              
-              const freshOrder = isNoTransaction 
-                ? await OrderModel.findById(order._id)
-                : await OrderModel.findById(order._id).session(session);
-                
+              const freshOrder = await mongoose.model('Order').findById(order._id).session(session);
               if (!freshOrder || !["confirm", "rider_assign_pickup"].includes(freshOrder.status)) {
-                if (!isNoTransaction) await session.abortTransaction();
+                await session.abortTransaction();
                 session.endSession();
                 continue;
               }
 
               if (freshOrder.paymentMethod === 'wallet') {
-                const user = isNoTransaction
-                  ? await UserModel.findOne({ uid: freshOrder.customerUid })
-                  : await UserModel.findOne({ uid: freshOrder.customerUid }).session(session);
-                  
+                const user = await mongoose.model('User').findOne({ uid: freshOrder.customerUid }).session(session);
                 if (user) {
                   user.walletBalance = (user.walletBalance || 0) + freshOrder.totalPrice;
-                  isNoTransaction ? await user.save() : await user.save({ session });
+                  await user.save({ session });
 
-                  const transData = {
+                  await mongoose.model('Transaction').create([{
                     id: uuidv4(),
                     userId: user.uid,
                     type: 'deposit',
@@ -267,25 +251,19 @@ const startServer = async () => {
                     method: 'wallet',
                     reference: `AUTO-REF-${freshOrder.id}`,
                     date: new Date()
-                  };
-                  
-                  isNoTransaction 
-                    ? await TransactionModel.create([transData])
-                    : await TransactionModel.create([transData], { session });
+                  }], { session });
                 }
               }
 
               freshOrder.status = 'Refunded (Auto)';
               freshOrder.color = 'bg-error/20 text-error';
               freshOrder.refundAmount = freshOrder.totalPrice;
-              isNoTransaction ? await freshOrder.save() : await freshOrder.save({ session });
+              await freshOrder.save({ session });
 
-              if (!isNoTransaction) await session.commitTransaction();
+              await session.commitTransaction();
               console.log(`[Auto-Timeout] Order ${freshOrder.id} auto-refunded.`);
             } catch (err) {
-              if (!isNoTransaction) {
-                try { await session.abortTransaction(); } catch (e) {}
-              }
+              await session.abortTransaction();
               console.error(`[Auto-Timeout] Error processing ${order.id}:`, err);
             } finally {
               session.endSession();
