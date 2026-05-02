@@ -49,7 +49,13 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   const session = await mongoose.startSession();
-  session.startTransaction();
+  let isNoTransaction = false;
+  try {
+    session.startTransaction();
+  } catch(e) {
+    isNoTransaction = true;
+  }
+  
   try {
     const data = req.body;
     const { customerUid, paymentMethod, totalPrice } = data;
@@ -57,9 +63,12 @@ router.post("/", async (req, res) => {
     console.log(`[Order] Creating order for user: ${customerUid}, method: ${paymentMethod}, price: ${totalPrice}`);
 
     // Check user and balance
-    const user = await User.findOne({ uid: customerUid }).session(session);
+    const user = isNoTransaction 
+      ? await User.findOne({ uid: customerUid })
+      : await User.findOne({ uid: customerUid }).session(session);
+      
     if (!user) {
-      await session.abortTransaction();
+      if (!isNoTransaction) await session.abortTransaction();
       console.error(`[Order] User not found: ${customerUid}`);
       return res.status(404).json({ message: 'User not found' });
     }
@@ -71,11 +80,11 @@ router.post("/", async (req, res) => {
     if (isWalletPayment) {
       const balance = Number(user.walletBalance) || 0;
       if (balance < price) {
-        await session.abortTransaction();
+        if (!isNoTransaction) await session.abortTransaction();
         return res.status(400).json({ message: `Insufficient wallet balance. Needed: ₦${price}, Balance: ₦${balance}` });
       }
       user.walletBalance = balance - price;
-      await user.save({ session });
+      isNoTransaction ? await user.save() : await user.save({ session });
     }
 
     // Generate a more robust unique ID
@@ -88,7 +97,10 @@ router.post("/", async (req, res) => {
     let finalId = data.id || await generateId();
     
     // Check if ID already exists
-    const existingOrderCheck = await Order.findOne({ id: finalId }).session(session);
+    const existingOrderCheck = isNoTransaction
+      ? await Order.findOne({ id: finalId })
+      : await Order.findOne({ id: finalId }).session(session);
+      
     if (existingOrderCheck) {
       finalId = await generateId();
     }
@@ -108,12 +120,16 @@ router.post("/", async (req, res) => {
 
     let finalOrder;
     try {
-      const [order] = await Order.create([orderData], { session });
+      const [order] = isNoTransaction
+        ? await Order.create([orderData])
+        : await Order.create([orderData], { session });
       finalOrder = order;
     } catch (saveErr: any) {
       if (saveErr.code === 11000) {
         orderData.id = `QW${Date.now()}${Math.floor(Math.random() * 1000)}`;
-        const [order] = await Order.create([orderData], { session });
+        const [order] = isNoTransaction
+          ? await Order.create([orderData])
+          : await Order.create([orderData], { session });
         finalOrder = order;
       } else {
         throw saveErr;
@@ -122,7 +138,7 @@ router.post("/", async (req, res) => {
 
     // Record Transaction
     if (isWalletPayment) {
-      await Transaction.create([{
+      const transData = {
         id: uuidv4(),
         userId: customerUid,
         type: 'withdrawal',
@@ -132,10 +148,14 @@ router.post("/", async (req, res) => {
         method: 'wallet',
         reference: `ORD-${finalOrder.id}`,
         date: new Date()
-      }], { session });
+      };
+      
+      isNoTransaction
+        ? await Transaction.create([transData])
+        : await Transaction.create([transData], { session });
     }
 
-    await session.commitTransaction();
+    if (!isNoTransaction) await session.commitTransaction();
 
     // Clean up draft after successful order
     try {
@@ -388,27 +408,36 @@ router.patch("/:id", async (req, res) => {
 
 router.post("/:id/cancel", async (req, res) => {
   const session = await mongoose.startSession();
-  session.startTransaction();
+  let isNoTransaction = false;
+  try {
+    session.startTransaction();
+  } catch(e) {
+    isNoTransaction = true;
+  }
+  
   try {
     const { id } = req.params;
     const { reason } = req.body;
     
-    const order = await Order.findOne({ id }).session(session);
+    const order = isNoTransaction
+      ? await Order.findOne({ id })
+      : await Order.findOne({ id }).session(session);
+      
     if (!order) {
-      await session.abortTransaction();
+      if (!isNoTransaction) await session.abortTransaction();
       return res.status(404).json({ message: 'Order not found' });
     }
 
     // Only allow cancellation in certain states
     const cancellableStatuses = ['confirm', 'rider_assign_pickup'];
     if (!cancellableStatuses.includes(order.status)) {
-      await session.abortTransaction();
+      if (!isNoTransaction) await session.abortTransaction();
       return res.status(400).json({ message: `Orders in ${order.status} status cannot be cancelled.` });
     }
 
     // Prevent double refund
     if (order.status === 'Cancelled' || order.status.includes('Refunded')) {
-      await session.abortTransaction();
+      if (!isNoTransaction) await session.abortTransaction();
       return res.status(400).json({ message: 'Order is already cancelled or refunded.' });
     }
 
@@ -417,12 +446,15 @@ router.post("/:id/cancel", async (req, res) => {
 
     // 1. Process Refund if wallet used
     if (order.paymentMethod === 'wallet') {
-      const user = await User.findOne({ uid: customerUid }).session(session);
+      const user = isNoTransaction
+        ? await User.findOne({ uid: customerUid })
+        : await User.findOne({ uid: customerUid }).session(session);
+        
       if (user) {
         user.walletBalance = (user.walletBalance || 0) + price;
-        await user.save({ session });
+        isNoTransaction ? await user.save() : await user.save({ session });
 
-        await Transaction.create([{
+        const transData = {
           id: uuidv4(),
           userId: customerUid,
           type: 'deposit',
@@ -432,7 +464,11 @@ router.post("/:id/cancel", async (req, res) => {
           method: 'wallet',
           reference: `REF-${order.id}`,
           date: new Date()
-        }], { session });
+        };
+        
+        isNoTransaction
+          ? await Transaction.create([transData])
+          : await Transaction.create([transData], { session });
       }
     }
 
@@ -440,9 +476,9 @@ router.post("/:id/cancel", async (req, res) => {
     order.status = 'Cancelled';
     order.color = 'bg-error text-on-error';
     order.refundAmount = price;
-    await order.save({ session });
+    isNoTransaction ? await order.save() : await order.save({ session });
 
-    await session.commitTransaction();
+    if (!isNoTransaction) await session.commitTransaction();
     console.log(`[Order] Order ${order.id} cancelled and refunded successfully.`);
     res.json({ message: 'Order cancelled and refunded successfully', order: order.toObject() });
   } catch (err: any) {
@@ -456,16 +492,27 @@ router.post("/:id/cancel", async (req, res) => {
 
 router.post("/:id/return", async (req, res) => {
   const session = await mongoose.startSession();
-  session.startTransaction();
+  let isNoTransaction = false;
+  try {
+    session.startTransaction();
+  } catch(e) {
+    isNoTransaction = true;
+  }
+  
   try {
     const { id } = req.params;
     const { riderUid, reason } = req.body;
     
-    const order = await Order.findOne({ id }).session(session);
-    const rider = await User.findOne({ uid: riderUid }).session(session);
+    const order = isNoTransaction
+      ? await Order.findOne({ id })
+      : await Order.findOne({ id }).session(session);
+      
+    const rider = isNoTransaction
+      ? await User.findOne({ uid: riderUid })
+      : await User.findOne({ uid: riderUid }).session(session);
     
     if (!order || !rider || order.riderUid !== riderUid) {
-      await session.abortTransaction();
+      if (!isNoTransaction) await session.abortTransaction();
       return res.status(400).json({ message: 'Invalid order or rider.' });
     }
 
@@ -486,10 +533,10 @@ router.post("/:id/return", async (req, res) => {
     // 4. Deduct 5 trust points
     rider.trustPoints = (rider.trustPoints || 0) - 5;
     rider.lastPenaltyAt = new Date();
-    await rider.save({ session });
+    isNoTransaction ? await rider.save() : await rider.save({ session });
 
     // 5. Record transaction
-    await Transaction.create([{
+    const transData = {
       id: uuidv4(),
       userId: riderUid,
       type: 'withdrawal',
@@ -499,7 +546,11 @@ router.post("/:id/return", async (req, res) => {
       method: 'wallet',
       reference: `RET-PEN-${order.id}`,
       date: new Date()
-    }], { session });
+    };
+    
+    isNoTransaction
+      ? await Transaction.create([transData])
+      : await Transaction.create([transData], { session });
 
     // 6. Reset order status and codes
     const oldStatus = order.status;
@@ -515,9 +566,9 @@ router.post("/:id/return", async (req, res) => {
     order.handoverCode = null;
     order.color = 'bg-warning/20 text-warning';
     
-    await order.save({ session });
+    isNoTransaction ? await order.save() : await order.save({ session });
 
-    await session.commitTransaction();
+    if (!isNoTransaction) await session.commitTransaction();
     res.json({ message: 'Order returned successfully', order: order.toObject() });
   } catch (err: any) {
     await session.abortTransaction();

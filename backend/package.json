@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Backend for Quick-Wash App",
   "main": "server.ts",
+  "type": "commonjs",
   "scripts": {
     "start": "node dist/server.js",
     "dev": "nodemon --exec npx tsx server.ts",
