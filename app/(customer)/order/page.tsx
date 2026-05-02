@@ -6,7 +6,7 @@ import React from 'react';
 import { useRouter } from 'next/navigation';
 import TopAppBar from '@/components/shared/TopAppBar';
 import ReadyForPickupButton from '@/components/shared/ReadyForPickupButton';
-import { Minus, Plus, Sparkles, Shirt, ShoppingBag, Bed, CreditCard, Bolt, Info, ChevronRight, ShieldCheck, Check, MapPin, ShieldAlert, Wallet, History, AlertTriangle } from 'lucide-react';
+import { Minus, Plus, Sparkles, Shirt, ShoppingBag, Bed, CreditCard, Bolt, Info, ChevronRight, ShieldCheck, Check, MapPin, ShieldAlert, Wallet, History, AlertTriangle, Navigation } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { api, Order, UserData } from '@/lib/ApiService';
@@ -130,7 +130,7 @@ function OrderPageContent() {
       if (authUser) {
         setCurrentUser(authUser);
         
-        const orders = await api.getOrders();
+        const orders = await api.getOrders(authUser.uid, 'customer');
         const existing = orders.find((o: Order) => 
           o.customerUid === authUser.uid && 
           o.status === 'confirm' &&
@@ -176,8 +176,8 @@ function OrderPageContent() {
           };
         });
       } else if (vendorId) {
-        // Fallback to default items only if no vendor-specific services exist
-        initialCart = defaultItems.map(item => ({ ...item, count: 0 }));
+        // Clear initial cart if no specific vendor items found - user wants no general items shown
+        initialCart = [];
       }
 
       // 4. Restore Saved Count Data (Skip if isNew)
@@ -477,7 +477,7 @@ function OrderPageContent() {
       // If not found by ID, try finding a recent pending order as a fallback
       if (!order && currentUser?.uid) {
         console.warn(`[Order] Order ${orderId} not found, searching for user's most recent confirm order...`);
-        const allOrders = await api.getOrders();
+        const allOrders = await api.getOrders(currentUser.uid, 'customer');
         const mostRecent = allOrders.find(o => 
           o.customerUid === currentUser.uid && 
           o.status === 'confirm' && 
@@ -618,10 +618,42 @@ function OrderPageContent() {
           <h1 className="text-[4rem] leading-[0.9] font-headline font-black text-on-surface mb-4 tracking-tighter">
             {isPaid ? 'Order Secured.' : "Let's get started."}
           </h1>
-          <p className="text-on-surface-variant font-medium text-xl leading-relaxed max-w-xl">
+          <div className="mt-6 p-8 bg-white rounded-[3rem] border-4 border-primary/20 shadow-2xl relative overflow-hidden group">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full -mr-16 -mt-16 blur-2xl" />
+            <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-6">
+              <div className="flex-1">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-primary/60 mb-2">Service Provided By</p>
+                <h2 className="text-4xl md:text-5xl font-headline font-black text-on-surface mb-3 tracking-tighter">
+                  {vendor?.shopName || vendor?.fullName || 'Quick-Wash Station'}
+                </h2>
+                <div className="flex flex-wrap items-center gap-4 text-on-surface-variant font-bold text-sm tracking-wide">
+                  <div className="flex items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full">
+                    <MapPin className="w-4 h-4" />
+                    <span className="uppercase text-[10px] tracking-widest">{vendor?.landmark || 'LAUTECH Area'}</span>
+                  </div>
+                  <div className="flex items-center gap-2 bg-surface-container-highest px-4 py-2 rounded-full border border-primary/5">
+                    <Navigation className="w-4 h-4 text-primary/40" />
+                    <span>{vendor?.shopAddress || vendor?.address || 'LAUTECH Ogbomoso'}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-col items-end shrink-0 pt-4 md:pt-0 border-t md:border-t-0 border-dashed border-primary/10">
+                <div className="bg-primary text-white px-8 py-4 rounded-3xl font-headline font-black text-sm shadow-xl shadow-primary/20 uppercase tracking-widest text-center min-w-[200px]">
+                  {vendor?.turnaroundTime || '24h Delivery'}
+                </div>
+                {vendor?.phoneNumber && (
+                  <p className="mt-3 text-[10px] font-black text-primary/40 uppercase tracking-[0.3em] text-right">
+                    VERIFIED PARTNER: {vendor.uid?.slice(0, 8).toUpperCase()}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <p className="text-on-surface-variant font-medium text-xl leading-relaxed max-w-xl mt-8">
             {showActionRequired 
-              ? `Your payment to ${vendor?.shopName || 'Quick-Wash'} was successful. Please review your items and request a pickup.`
-              : `Ordering from ${vendor?.shopName || 'Quick-Wash Station'}. What are we cleaning today?`
+              ? `Your payment was successful. Please review your items and request a pickup.`
+              : `What are we cleaning today? Select items below to begin your order.`
             }
           </p>
         </header>
@@ -681,7 +713,7 @@ function OrderPageContent() {
             </section>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {cart.map((item, idx) => (
+              {cart.length > 0 ? cart.map((item, idx) => (
                 <motion.div 
                   key={item.id}
                   initial={{ opacity: 0, y: 20 }}
@@ -830,7 +862,15 @@ function OrderPageContent() {
                     </div>
                   </div>
                 </motion.div>
-              ))}
+              )) : (
+                <div className="col-span-full py-20 text-center bg-surface-container-low rounded-[4rem] border-4 border-dashed border-primary/10">
+                  <div className="w-24 h-24 bg-white rounded-[2.5rem] flex items-center justify-center shadow-2xl mx-auto mb-8 text-primary/20">
+                    <ShoppingBag className="w-12 h-12" />
+                  </div>
+                  <h3 className="text-3xl font-headline font-black text-on-surface mb-3 tracking-tight">No items listed yet</h3>
+                  <p className="text-on-surface-variant font-medium text-lg max-w-md mx-auto">This vendor has not added any services to their price list. Please check back later or choose another vendor.</p>
+                </div>
+              )}
             </div>
           </>
         )}

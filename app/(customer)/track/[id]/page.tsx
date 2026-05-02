@@ -141,37 +141,24 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
 
   const handleNoIssue = async () => {
     if (!order) return;
-    const updatedOrder = { 
-      ...order, 
-      status: 'completed', 
-      color: 'bg-success text-on-success',
-      completedAt: new Date().toISOString()
-    };
-    await api.saveOrder(updatedOrder);
+    try {
+      const updatedOrder = await api.updateOrderStatus(order.id, 'completed', 'bg-success text-on-success');
+      setOrder(updatedOrder);
+      setShowRatingModal(true);
+      setNotification({ message: 'Thank you for confirming! Please rate your experience.', type: 'success' });
+      
+      // Customer reward for successful completion
+      if (order.customerUid) await api.adjustTrustPoints(order.customerUid, 'completed_order');
+      
+      // Also reward vendor
+      if (order.vendorId) await api.adjustTrustPoints(order.vendorId, 'completed_order');
 
-    // Vendor gets remaining 20%
-    const itemsPrice = order.itemsPrice || 0;
-    const remaining20 = itemsPrice * 0.2;
-    
-    const vendorUser = await api.getUser(order.vendorId);
-    if (vendorUser) {
-      await api.adjustTrustPoints(vendorUser.uid, 'completed_order');
-      await api.updateUser(vendorUser.uid, { 
-        walletBalance: (vendorUser.walletBalance || 0) + remaining20,
-        pendingBalance: Math.max(0, (vendorUser.pendingBalance || 0) - remaining20)
-      });
-      await api.recordTransaction(vendorUser.uid, {
-        type: 'deposit',
-        amount: remaining20,
-        desc: `Final Payout (20%) - Order #${order.id}`
-      });
+      setTimeout(() => setNotification(null), 3000);
+      window.dispatchEvent(new Event('storage'));
+    } catch (error: any) {
+      setNotification({ message: error.message || 'Failed to complete order', type: 'error' });
+      setTimeout(() => setNotification(null), 3000);
     }
-
-    setOrder(updatedOrder);
-    setShowRatingModal(true);
-    setNotification({ message: 'Thank you for confirming! Please rate your experience.', type: 'success' });
-    setTimeout(() => setNotification(null), 3000);
-    window.dispatchEvent(new Event('storage'));
   };
 
   const handleSubmitRating = async () => {

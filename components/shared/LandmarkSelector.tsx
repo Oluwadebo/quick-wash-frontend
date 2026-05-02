@@ -17,12 +17,16 @@ export default function LandmarkSelector() {
   React.useEffect(() => {
     const load = async () => {
       try {
-        const [s, users] = await Promise.all([
+        const [s, v] = await Promise.all([
           api.getSiteSettings(),
-          api.getUsers()
+          api.getVendors()
         ]);
+        console.log(`[LandmarkSelector] Loaded ${v.length} vendors`);
+        if (v.length > 0) {
+          console.log(`[LandmarkSelector] Sample vendor landmark: ${v[0].landmark}`);
+        }
         setSettings(s);
-        setVendors(users.filter(u => u.role === 'vendor'));
+        setVendors(v as UserData[]);
       } catch (e) {
         console.error("Failed to load hotspots", e);
       } finally {
@@ -32,19 +36,38 @@ export default function LandmarkSelector() {
     load();
   }, []);
 
-  const availableLandmarks = settings?.landmarks || ["Under-G", "Adenike", "Main Gate", "Aroje", "Stadium"];
+  const landmarkData = React.useMemo(() => {
+    const availableLandmarks = settings?.landmarks || ["Under-G", "Adenike", "Main Gate", "Aroje", "Stadium"];
+    
+    return availableLandmarks.map((l: any) => {
+      const name = typeof l === 'string' ? l : l.name;
+      const normalizedName = name.trim().toLowerCase();
+      
+      const matchingVendors = vendors.filter(v => {
+        if (!v.landmark) return false;
+        const vLandmark = v.landmark.trim().toLowerCase();
+        const nN = normalizedName.trim().toLowerCase();
+        
+        // Match if exact, or if one contains the other (e.g. "Under-G" vs "Under-G (Campus)")
+        const match = vLandmark === nN || vLandmark.includes(nN) || nN.includes(vLandmark);
+        return match;
+      });
 
-  const landmarkData = availableLandmarks.map((l: any) => {
-    const name = typeof l === 'string' ? l : l.name;
-    const vendorCount = vendors.filter(v => v.landmark === name).length;
-    return {
-      id: (typeof l === 'string' ? l : l.id || l.name).toLowerCase().replace(/\s+/g, '-'),
-      name: name,
-      info: `${vendorCount} active vendor${vendorCount !== 1 ? 's' : ''}`,
-      featured: name === 'Main Gate' || name === 'LAUTECH Main Gate',
-      image: `https://picsum.photos/seed/${encodeURIComponent(name)}/800/400`
-    };
-  });
+      const vendorCount = matchingVendors.length;
+      
+      if (vendorCount > 0) {
+        console.log(`[LandmarkSelector] Landmark "${name}" has ${vendorCount} matches.`);
+      }
+
+      return {
+        id: (typeof l === 'string' ? l : l.id || l.name).toLowerCase().replace(/\s+/g, '-'),
+        name: name,
+        info: `${vendorCount} ACTIVE VENDOR${vendorCount !== 1 ? 'S' : ''}`,
+        featured: name === 'Main Gate' || name === 'LAUTECH Main Gate',
+        image: `https://picsum.photos/seed/${encodeURIComponent(name)}/800/400`
+      };
+    });
+  }, [settings, vendors]);
 
   const filtered = landmarkData.filter(l => 
     l.name.toLowerCase().includes(search.toLowerCase())
@@ -96,8 +119,8 @@ export default function LandmarkSelector() {
               key={landmark.id} 
               href={`/vendors?landmark=${encodeURIComponent(landmark.name)}`}
               className={cn(
-                "relative rounded-3xl overflow-hidden group cursor-pointer active:scale-[0.98] transition-transform",
-                landmark.featured ? "col-span-2 h-48" : "bg-surface-container-low p-6 flex flex-col justify-between aspect-square"
+                "relative rounded-[40px] overflow-hidden group cursor-pointer active:scale-[0.98] transition-transform",
+                landmark.featured ? "col-span-2 h-48" : "bg-[#dbfae5] p-8 flex flex-col justify-between aspect-square shadow-sm border border-green-200/50"
               )}
             >
               {landmark.featured ? (
@@ -115,21 +138,21 @@ export default function LandmarkSelector() {
                       <span className="bg-primary-container text-on-primary-container text-[10px] font-label font-bold px-3 py-1 rounded-full mb-2 inline-block uppercase">
                         Featured Hub
                       </span>
-                      <h4 className="text-2xl font-bold text-white">{landmark.name}</h4>
-                      <p className="text-xs font-medium text-white/80">{landmark.info}</p>
+                      <h4 className="text-2xl font-bold text-white lowercase">{landmark.name}</h4>
+                      <p className="text-xs font-black text-white/80 uppercase">{landmark.info}</p>
                     </div>
                     <ChevronRight className="text-white w-8 h-8" />
                   </div>
                 </>
               ) : (
                 <>
-                  <div className="w-12 h-12 bg-primary-container/30 rounded-2xl flex items-center justify-center">
-                    <MapPin className="text-primary w-5 h-5" />
+                  <div className="w-12 h-12 bg-green-200/50 rounded-2xl flex items-center justify-center">
+                    <MapPin className="text-green-700 w-6 h-6" />
                   </div>
                   <div>
-                    <h4 className="text-xl font-bold text-on-surface leading-tight mb-1">{landmark.name}</h4>
+                    <h4 className="text-2xl font-black text-green-900 leading-tight mb-1 lowercase">{landmark.name}</h4>
                     {landmark.info && (
-                      <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/60">{landmark.info}</p>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-green-700/80">{landmark.info}</p>
                     )}
                   </div>
                 </>

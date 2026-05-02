@@ -52,66 +52,69 @@ export default function RiderDashboard() {
   const [earningsData, setEarningsData] = React.useState<any[]>([]);
   const [walletHistory, setWalletHistory] = React.useState<any[]>([]);
 
-  React.useEffect(() => {
-    const refreshData = async () => {
-      if (currentUser?.uid) {
-        const allOrders = await api.getOrders();
-        
-        // My entire history sorted by time (latest first)
-        const myAll = allOrders
-          .filter((o: Order) => o.riderUid === currentUser.uid)
-          .sort((a, b) => new Date(b.time || 0).getTime() - new Date(a.time || 0).getTime());
-        setAllMyOrders(myAll);
+  const [isProfileModalOpen, setIsProfileModalOpen] = React.useState(false);
+  const [profileForm, setProfileForm] = React.useState({ fullName: '', bankName: '', bankAccountNumber: '', address: '' });
 
-        // Tasks assigned to this rider - Sorted by claimedAt (latest first)
-        const myTasks = myAll
-          .filter((o: Order) => !['delivered', 'cancelled', 'completed'].includes((o.status || '').toLowerCase()))
-          .sort((a, b) => new Date(b.claimedAt || 0).getTime() - new Date(a.time || 0).getTime());
-        setTasks(myTasks);
+  const refreshData = React.useCallback(async () => {
+    if (currentUser?.uid) {
+      const allOrders = await api.getOrders();
+      
+      // My entire history sorted by time (latest first)
+      const myAll = allOrders
+        .filter((o: Order) => o.riderUid === currentUser.uid)
+        .sort((a, b) => new Date(b.createdAt || b.time || 0).getTime() - new Date(a.createdAt || a.time || 0).getTime());
+      setAllMyOrders(myAll);
 
-        // Orders available for pickup (not yet assigned) - Latest first
-        const available = allOrders
-          .filter((o: Order) => {
-            const isAvailable = (o.status === 'rider_assign_pickup' || o.status === 'rider_assign_delivery') && !o.riderUid;
-            return isAvailable;
-          })
-          .sort((a, b) => new Date(b.time || 0).getTime() - new Date(a.time || 0).getTime());
-        setAvailableOrders(available);
+      // Tasks assigned to this rider - include washing status
+      const myTasks = myAll
+        .filter((o: Order) => !['delivered', 'completed', 'cancelled'].includes((o.status || '').toLowerCase()))
+        .sort((a, b) => new Date(b.claimedAt || b.createdAt || 0).getTime() - new Date(a.claimedAt || a.createdAt || 0).getTime());
+      setTasks(myTasks);
 
-        const me = await api.getUser(currentUser.uid);
-        
-        setStats({
-          walletBalance: me?.walletBalance || 0,
-          trustScore: me?.trustScore || 100,
-          completedTasks: myAll.filter((o: Order) => o.status === 'Completed' || o.status === 'Delivered').length
+      // Orders available for pickup (not yet assigned) - Latest first
+      const available = allOrders
+        .filter((o: Order) => {
+          const isAvailable = (o.status === 'rider_assign_pickup' || o.status === 'rider_assign_delivery') && !o.riderUid;
+          return isAvailable;
+        })
+        .sort((a, b) => new Date(b.time || 0).getTime() - new Date(a.time || 0).getTime());
+      setAvailableOrders(available);
+
+      const me = await api.getUser(currentUser.uid);
+      
+      setStats({
+        walletBalance: me?.walletBalance || 0,
+        trustScore: me?.trustScore || 100,
+        completedTasks: myAll.filter((o: Order) => o.status === 'Completed' || o.status === 'Delivered').length
+      });
+
+      // Mock earnings history for chart
+      const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      setEarningsData(days.map(d => ({ name: d, earnings: Math.floor(Math.random() * 3000) + 500 })));
+
+      // Real wallet history from API
+      try {
+        const token = localStorage.getItem('qw_token');
+        const res = await fetch(`/api/wallet/history?userId=${currentUser.uid}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
         });
-
-        // Mock earnings history for chart
-        const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-        setEarningsData(days.map(d => ({ name: d, earnings: Math.floor(Math.random() * 3000) + 500 })));
-
-        // Real wallet history from API
-        try {
-          const token = localStorage.getItem('qw_token');
-          const res = await fetch(`/api/wallet/history?userId=${currentUser.uid}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
-          if (res.ok) {
-            const data = await res.json();
-            setWalletHistory(data.transactions || []);
-          } else {
-            setWalletHistory([]);
-          }
-        } catch (e) {
+        if (res.ok) {
+          const data = await res.json();
+          setWalletHistory(data.transactions || []);
+        } else {
           setWalletHistory([]);
         }
+      } catch (e) {
+        setWalletHistory([]);
       }
-    };
+    }
+  }, [currentUser]);
 
+  React.useEffect(() => {
     refreshData();
     window.addEventListener('storage', refreshData);
     return () => window.removeEventListener('storage', refreshData);
-  }, [currentUser]);
+  }, [refreshData]);
 
   const handleAcceptOrder = async (orderId: string) => {
     if (!currentUser || isProcessing) return;
@@ -129,11 +132,20 @@ export default function RiderDashboard() {
 
     if (success) {
       setNotification({ message: 'Order claimed successfully! Redirecting...', type: 'success' });
+      
+      // Optimistic UI update: Move order from available to tasks immediately
+      const claimedOrder = availableOrders.find(o => o.id === orderId);
+      if (claimedOrder) {
+        setAvailableOrders(prev => prev.filter(o => o.id !== orderId));
+        setTasks(prev => [{ ...claimedOrder, status: 'rider_accepted', riderUid: currentUser.uid }, ...prev]);
+      }
+
       // FEEDBACK LOOP: Mandatory 2000ms delay
       setTimeout(() => {
         setNotification(null);
         setIsProcessing(false);
-        // State will refresh via storage event or manual refresh
+        // Full refresh will happen via storage event or manual refresh if triggered elsewhere
+        refreshData(); 
       }, 2000);
     } else {
       setNotification({ message: 'Failed to claim. Order might have been taken by another rider.', type: 'error' });
@@ -201,14 +213,11 @@ export default function RiderDashboard() {
     const input = handoverInput[order.id];
     if (input === order.code1) {
       // Backend API handles 50% rider fee on 'picked_up' status change
-      
-      // Generate Code 2 (Rider sees, Vendor enters)
-      const code2 = Math.floor(1000 + Math.random() * 9000).toString();
+      setIsProcessing(true);
 
       // Update order status via PATCH API - MANDATORY: Send handoverCode for validation
       await api.updateOrderStatus(order.id, 'picked_up', 'bg-secondary text-on-secondary', { 
         handoverCode: input,
-        code2, 
         pickedUpAt: new Date().toISOString() 
       });
       
@@ -225,17 +234,16 @@ export default function RiderDashboard() {
   const handleVerifyPickupDelivery = React.useCallback(async (order: Order) => {
     const input = handoverInput[order.id];
     if (input === order.code3) {
-      // Generate Code 4 (Rider sees, Customer enters)
-      const code4 = Math.floor(1000 + Math.random() * 9000).toString();
-
+      // Rider confirming they received items from vendor
+      setIsProcessing(true);
+      
       // Update order status - MANDATORY: Send handoverCode for validation
       await api.updateOrderStatus(order.id, 'picked_up_delivery', 'bg-tertiary text-on-tertiary', {
         handoverCode: input,
-        code4,
         pickedUpDeliveryAt: new Date().toISOString()
       });
       
-      setNotification({ message: 'Delivery pickup confirmed! Head to the customer.', type: 'success' });
+      setNotification({ message: 'Laundry received! Head to the customer.', type: 'success' });
       setTimeout(() => setNotification(null), 3000);
       setHandoverInput(prev => ({ ...prev, [order.id]: '' }));
 
@@ -549,22 +557,36 @@ export default function RiderDashboard() {
                               )}
                               
                               {(order.status === 'rider_assign_delivery' || order.status === 'ready') && (
-                                <div className="flex-[2] flex gap-3">
-                                  <input 
-                                    type="text" 
-                                    placeholder="Code 3"
-                                    value={handoverInput[order.id] || ''}
-                                    onChange={(e) => {
-                                      const val = e.target.value.replace(/\D/g, '');
-                                      setHandoverInput(prev => ({ ...prev, [order.id]: val }));
-                                      if (val.length === 4) handleVerifyPickupDelivery({ ...order, status: 'rider_assign_delivery' });
-                                    }}
-                                    className="w-24 h-16 bg-surface-container-highest rounded-2xl px-4 text-center font-headline font-black text-xl outline-none focus:ring-4 ring-tertiary/20"
-                                    maxLength={4}
-                                  />
-                                  <div className="flex-1 h-16 bg-tertiary/10 text-tertiary rounded-2xl font-headline font-black text-[10px] flex items-center justify-center text-center px-4 leading-tight uppercase tracking-wider">
-                                    Get Delivery Code From Vendor
-                                  </div>
+                                <div className="flex-[2] flex flex-col gap-2">
+                                  {!order.customerReadyForDelivery ? (
+                                    <div className="flex-1 h-16 bg-surface-container-highest opacity-70 text-on-surface-variant rounded-2xl font-headline font-black text-[10px] flex items-center justify-center text-center px-4 leading-tight uppercase tracking-wider italic">
+                                      Waiting for customer to click &quot;Locked and Ready&quot;
+                                    </div>
+                                  ) : (
+                                    <div className="flex gap-3">
+                                      <input 
+                                        type="text" 
+                                        placeholder="Code 3"
+                                        value={handoverInput[order.id] || ''}
+                                        onChange={(e) => {
+                                          const val = e.target.value.replace(/\D/g, '');
+                                          setHandoverInput(prev => ({ ...prev, [order.id]: val }));
+                                          if (val.length === 4) handleVerifyPickupDelivery({ ...order, status: 'rider_assign_delivery' });
+                                        }}
+                                        className="w-24 h-16 bg-surface-container-highest rounded-2xl px-4 text-center font-headline font-black text-xl outline-none focus:ring-4 ring-tertiary/20"
+                                        maxLength={4}
+                                      />
+                                      <div className="flex-1 h-16 bg-tertiary/10 text-tertiary rounded-2xl font-headline font-black text-[10px] flex items-center justify-center text-center px-4 leading-tight uppercase tracking-wider">
+                                        Get Delivery Code From Vendor
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {order.status === 'washing' && (
+                                <div className="flex-[2] p-4 bg-primary/5 rounded-2xl border border-primary/10 flex flex-col items-center justify-center h-16">
+                                  <p className="text-[10px] font-black text-primary uppercase tracking-[0.2em] animate-pulse">VENDOR IS WASHING...</p>
                                 </div>
                               )}
 
@@ -666,9 +688,9 @@ export default function RiderDashboard() {
                 {(() => {
                   const now = new Date();
                   const historical = allMyOrders.filter((o: any) => {
-                    if (!['delivered', 'completed', 'cancelled'].includes(o.status.toLowerCase())) return false;
+                    if (!['delivered', 'completed', 'cancelled'].includes((o.status || '').toLowerCase())) return false;
                     
-                    const itemDate = new Date(o.deliveredAt || o.time);
+                    const itemDate = new Date(o.deliveredAt || o.completedAt || o.createdAt || o.time || 0);
                     if (timeRange === 'today') return itemDate.toDateString() === now.toDateString();
                     if (timeRange === 'custom') {
                       if (!customRange.start || !customRange.end) return true;
@@ -687,20 +709,29 @@ export default function RiderDashboard() {
                   });
 
                   if (historical.length > 0) {
-                    return historical.sort((a: any, b: any) => new Date(b.deliveredAt || b.time).getTime() - new Date(a.deliveredAt || a.time).getTime()).map((order: any) => (
+                    return historical.sort((a: any, b: any) => {
+                      const dateB = new Date(b.deliveredAt || b.completedAt || b.createdAt || b.time || 0).getTime();
+                      const dateA = new Date(a.deliveredAt || a.completedAt || a.createdAt || a.time || 0).getTime();
+                      return dateB - dateA;
+                    }).map((order: any) => (
                       <div key={order.id} className="bg-surface-container-low p-6 rounded-3xl border border-primary/5 flex justify-between items-center group hover:bg-white transition-colors">
                         <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 rounded-xl bg-surface-container-highest flex items-center justify-center">
-                            <History className="w-6 h-6 text-on-surface-variant" />
+                          <div className={cn(
+                            "w-12 h-12 rounded-xl flex items-center justify-center",
+                            (order.status || '').toLowerCase() === 'cancelled' ? "bg-error/10 text-error" : "bg-success/10 text-success"
+                          )}>
+                            <History className="w-6 h-6" />
                           </div>
                           <div>
                             <h4 className="font-headline font-black text-on-surface">Order #{order.id}</h4>
-                            <p className="text-[10px] font-bold text-on-surface-variant">{formatRelativeTime(order.deliveredAt || order.time)} • {order.items}</p>
+                            <p className="text-[10px] font-bold text-on-surface-variant">
+                              {formatRelativeTime(order.deliveredAt || order.completedAt || order.createdAt || order.time)} • {order.items}
+                            </p>
                           </div>
                         </div>
                         <span className={cn(
                           "px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest",
-                          order.status.toLowerCase() === 'completed' || order.status.toLowerCase() === 'delivered' ? "bg-success/10 text-success" : "bg-error/10 text-error"
+                          ['completed', 'delivered'].includes((order.status || '').toLowerCase()) ? "bg-success/10 text-success" : "bg-error/10 text-error"
                         )}>
                           {order.status}
                         </span>
@@ -732,27 +763,14 @@ export default function RiderDashboard() {
                   <div className="flex justify-between items-center mb-6">
                     <h3 className="text-2xl font-headline font-black">Account Settings</h3>
                     <button 
-                      onClick={async () => {
-                        const fullName = prompt("Enter Full Name:", currentUser?.fullName);
-                        const bankName = prompt("Enter Bank Name:", currentUser?.bankName);
-                        const bankAccountNumber = prompt("Enter Bank Account Number (10 digits):", currentUser?.bankAccountNumber);
-                        if (bankAccountNumber && (bankAccountNumber.length !== 10 || isNaN(Number(bankAccountNumber)))) {
-                          alert("Account number must be exactly 10 digits.");
-                          return;
-                        }
-
-                        const address = prompt("Enter Home Address:", currentUser?.address);
-
-                        if (currentUser?.uid) {
-                          await api.updateUser(currentUser.uid, {
-                            fullName: fullName || currentUser.fullName,
-                            bankName: bankName || currentUser.bankName,
-                            bankAccountNumber: bankAccountNumber || currentUser.bankAccountNumber,
-                            address: address || currentUser.address
-                          });
-                          setNotification({ message: "Profile updated!", type: 'success' });
-                          setTimeout(() => setNotification(null), 2000);
-                        }
+                      onClick={() => {
+                        setProfileForm({
+                          fullName: currentUser?.fullName || '',
+                          bankName: currentUser?.bankName || '',
+                          bankAccountNumber: currentUser?.bankAccountNumber || '',
+                          address: currentUser?.address || ''
+                        });
+                        setIsProfileModalOpen(true);
                       }}
                       className="text-primary font-black uppercase tracking-widest text-[10px] flex items-center gap-1"
                     >
@@ -1015,6 +1033,101 @@ export default function RiderDashboard() {
                 >
                   {isProcessing ? 'PROCESSING...' : 'CONFIRM RETURN'}
                 </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      
+      {/* Profile Edit Modal */}
+      <AnimatePresence>
+        {isProfileModalOpen && (
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }}
+              onClick={() => setIsProfileModalOpen(false)}
+              className="absolute inset-0 bg-surface/80 backdrop-blur-xl"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-md bg-white rounded-[3rem] p-10 shadow-2xl border border-primary/10"
+            >
+              <h3 className="text-3xl font-headline font-black text-on-surface mb-6">Edit Profile</h3>
+              
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-primary ml-2">Full Name</label>
+                  <input 
+                    type="text"
+                    value={profileForm.fullName}
+                    onChange={(e) => setProfileForm({...profileForm, fullName: e.target.value})}
+                    className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary border border-primary/5"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-primary ml-2">Bank Name</label>
+                  <input 
+                    type="text"
+                    value={profileForm.bankName}
+                    onChange={(e) => setProfileForm({...profileForm, bankName: e.target.value})}
+                    className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary border border-primary/5"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-primary ml-2">Account Number (10 digits)</label>
+                  <input 
+                    type="text"
+                    maxLength={10}
+                    value={profileForm.bankAccountNumber}
+                    onChange={(e) => setProfileForm({...profileForm, bankAccountNumber: e.target.value.replace(/\D/g, '')})}
+                    className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-2 ring-primary border border-primary/5"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-primary ml-2">Home Address</label>
+                  <textarea 
+                    value={profileForm.address}
+                    onChange={(e) => setProfileForm({...profileForm, address: e.target.value})}
+                    className="w-full h-24 bg-surface-container-lowest rounded-2xl px-6 py-4 font-medium text-sm outline-none focus:ring-2 ring-primary border border-primary/5 resize-none"
+                  />
+                </div>
+
+                <div className="flex gap-4 pt-4">
+                  <button 
+                    onClick={() => setIsProfileModalOpen(false)}
+                    className="flex-1 h-14 bg-surface-container-highest text-on-surface rounded-2xl font-headline font-black text-sm"
+                  >
+                    CANCEL
+                  </button>
+                  <button 
+                    onClick={async () => {
+                      if (profileForm.bankAccountNumber && profileForm.bankAccountNumber.length !== 10) {
+                        alert("Account number must be 10 digits");
+                        return;
+                      }
+                      setIsProcessing(true);
+                      if (currentUser?.uid) {
+                        await api.updateUser(currentUser.uid, profileForm);
+                        setNotification({ message: "Profile updated successfully!", type: 'success' });
+                        setIsProfileModalOpen(false);
+                        window.dispatchEvent(new Event('storage'));
+                        setTimeout(() => setNotification(null), 3000);
+                      }
+                      setIsProcessing(false);
+                    }}
+                    disabled={isProcessing}
+                    className="flex-1 h-14 bg-primary text-white rounded-2xl font-headline font-black text-sm shadow-lg shadow-primary/20"
+                  >
+                    {isProcessing ? 'SAVING...' : 'SAVE CHANGES'}
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>

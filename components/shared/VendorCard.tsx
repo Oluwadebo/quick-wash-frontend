@@ -16,6 +16,8 @@ interface VendorCardProps {
   priceRange: string;
   distance: string;
   turnaround: string;
+  landmark?: string;
+  address?: string;
   isStudentFriendly?: boolean;
   whatsappNumber?: string;
   isRaining?: boolean;
@@ -32,6 +34,8 @@ export default function VendorCard({
   priceRange,
   distance,
   turnaround,
+  landmark,
+  address,
   isStudentFriendly = true,
   whatsappNumber = '2348000000000',
   isRaining = false,
@@ -102,14 +106,22 @@ export default function VendorCard({
         <div className="flex justify-between items-start mb-6">
           <div>
             <h3 className="text-3xl font-headline font-black text-on-surface tracking-tight mb-1">{name}</h3>
-            <div className="flex items-center gap-4 text-on-surface-variant">
+            <div className="flex flex-col gap-1 text-on-surface-variant font-bold text-[10px] uppercase tracking-wider mb-2">
               <div className="flex items-center gap-1.5">
-                <MapPin className="w-4 h-4 text-primary" />
-                <span className="text-xs font-bold uppercase tracking-wider">{distance}</span>
+                <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
+                <span>{landmark || 'LAUTECH Area'}</span>
               </div>
-              <div className="flex items-center gap-1.5">
-                <Clock className="w-4 h-4 text-primary" />
-                <span className="text-xs font-bold uppercase tracking-wider">{turnaround}</span>
+              {address && (
+                <div className="flex items-center gap-1.5 opacity-60">
+                   <ArrowRight className="w-3 h-3 text-primary shrink-0" />
+                   <span className="truncate max-w-[200px]">{address}</span>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-4 text-on-surface-variant">
+              <div className="flex items-center gap-1.5 bg-surface-container-high px-3 py-1 rounded-full">
+                <Clock className="w-3 h-3 text-primary" />
+                <span className="text-[10px] font-black">{turnaround}</span>
               </div>
             </div>
           </div>

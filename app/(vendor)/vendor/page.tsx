@@ -8,8 +8,8 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
 import { formatRelativeTime } from '@/lib/time';
-import { X, History, Wallet, ShoppingBag, Volume2, TrendingUp, Star, ShieldCheck, Clock, Package, ArrowRight, Play, AlertTriangle, Edit3, Trash2, Plus, Shirt, ArrowUpRight, ArrowDownLeft, Eye, EyeOff, CheckCircle2, CloudRain, Droplets, Camera, Info, BarChart3, WashingMachine, Lock } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { X, History, Wallet, ShoppingBag, Volume2, TrendingUp, Star, ShieldCheck, Clock, Package, ArrowRight, Play, AlertTriangle, Edit3, Trash2, Plus, Shirt, ArrowUpRight, ArrowDownLeft, Eye, EyeOff, CheckCircle2, CloudRain, Droplets, Camera, Info, BarChart3, WashingMachine, Lock, Zap, Shield } from 'lucide-react';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
 import { api, Order, UserData } from '@/lib/ApiService';
 import { Toast } from '@/components/shared/Toast';
 
@@ -55,12 +55,20 @@ export default function VendorDashboard() {
     trustScore: 100
   });
 
+  const [isProfileModalOpen, setIsProfileModalOpen] = React.useState(false);
+  const [profileForm, setProfileForm] = React.useState({ fullName: '', phoneNumber: '' });
+  const [isShopModalOpen, setIsShopModalOpen] = React.useState(false);
+  const [shopForm, setShopForm] = React.useState({ shopName: '', whatsappNumber: '', landmark: '' });
+  const [isBankModalOpen, setIsBankModalOpen] = React.useState(false);
+  const [bankForm, setBankForm] = React.useState({ bankName: '', bankAccountNumber: '', bankAccountName: '' });
+  const [isProcessing, setIsProcessing] = React.useState(false);
+
   React.useEffect(() => {
     const init = async () => {
       if (currentUser?.uid) {
-        const allOrders = await api.getOrders();
+        const allOrders = await api.getOrders(currentUser.uid, 'vendor');
         
-        // Case-insensitive vendor filtering
+        // Case-insensitive vendor filtering (Secondary safety)
         const vendorOrders = allOrders.filter((o: Order) => 
           o.vendorId && o.vendorId.toLowerCase() === currentUser.uid.toLowerCase()
         );
@@ -139,32 +147,39 @@ export default function VendorDashboard() {
     init();
   }, [currentUser]);
 
-  const handleStatusUpdate = async (orderId: string, newStatus: string, color: string) => {
-    const order = await api.getOrder(orderId);
-    if (order) {
-      const updatedOrder = { ...order, status: newStatus, color };
-      await api.saveOrder(updatedOrder);
+  const handleStatusUpdate = async (orderId: string, newStatus: string, color: string, extraData: any = {}) => {
+    try {
+      // Use updateOrderStatus which is cleaner for status transitions
+      await api.updateOrderStatus(orderId, newStatus, color, extraData);
       
-      const allOrders = await api.getOrders();
+      const allOrders = await api.getOrders(currentUser?.uid, 'vendor');
       setOrders(allOrders.filter((o: Order) => o.vendorId?.toLowerCase() === currentUser?.uid?.toLowerCase()));
       setSelectedOrder(null);
       
       setNotification({ message: `Order status updated to ${newStatus}`, type: 'success' });
       setTimeout(() => setNotification(null), 2000);
+    } catch (error: any) {
+      console.error('Status update failed:', error);
+      const errorMsg = error.message && error.message.startsWith('{') ? JSON.parse(error.message).error : error.message;
+      setNotification({ message: errorMsg || "Update failed. Please try again.", type: 'error' });
+      setTimeout(() => setNotification(null), 4000);
     }
   };
 
   const handleVerifyHandover = async (order: Order) => {
     const input = handoverInput[order.id];
-    if (input === order.code2) {
-      // Backend API handles the 80% payout on 'washing' status change
-      await handleStatusUpdate(order.id, 'washing', 'bg-primary text-on-primary');
-      setHandoverInput(prev => ({ ...prev, [order.id]: '' }));
-      window.dispatchEvent(new Event('storage'));
-    } else if (input && input.length === 4) {
-      setNotification({ message: "Invalid handover code. Please check with the rider.", type: 'error' });
+    if (!input || input.length < 4) {
+      setNotification({ message: "Please enter the 4-digit code.", type: 'error' });
       setTimeout(() => setNotification(null), 2000);
+      return;
     }
+
+    // Backend API handles the 80% payout on 'washing' status change
+    // We send the code to backend for validation. Even if frontend matches, 
+    // backend is the source of truth.
+    await handleStatusUpdate(order.id, 'washing', 'bg-primary text-on-primary', { handoverCode: input });
+    setHandoverInput(prev => ({ ...prev, [order.id]: '' }));
+    window.dispatchEvent(new Event('storage'));
   };
 
   const toggleReadyForDelivery = async (orderId: string, isReady: boolean) => {
@@ -180,7 +195,7 @@ export default function VendorDashboard() {
       };
       await api.saveOrder(updatedOrder);
       
-      const allOrders = await api.getOrders();
+      const allOrders = await api.getOrders(currentUser?.uid, 'vendor');
       setOrders(allOrders.filter((o: Order) => o.vendorId?.toLowerCase() === currentUser?.uid?.toLowerCase()));
       setSelectedOrder(null);
       
@@ -253,15 +268,15 @@ export default function VendorDashboard() {
       reader.onloadend = async () => {
         const base64String = reader.result as string;
         try {
-          const allOrders = await api.getOrders();
+          const allOrders = await api.getOrders(currentUser?.uid, 'vendor');
           const order = allOrders.find(o => o.id === orderId);
           if (order) {
             await api.saveOrder({
               ...order,
               vendorEvidenceImage: base64String
             });
-            const updatedOrders = await api.getOrders();
-            setOrders(updatedOrders.filter((o: Order) => o.vendorId === currentUser?.uid));
+            const updatedOrders = await api.getOrders(currentUser?.uid, 'vendor');
+            setOrders(updatedOrders.filter((o: Order) => o.vendorId?.toLowerCase() === currentUser?.uid?.toLowerCase()));
             setNotification({ message: 'Evidence uploaded successfully!', type: 'success' });
             setTimeout(() => setNotification(null), 3000);
             window.dispatchEvent(new Event('storage'));
@@ -1018,6 +1033,34 @@ export default function VendorDashboard() {
                 animate={{ opacity: 1, scale: 1 }}
                 className="space-y-8"
               >
+                <div className="bg-surface-container-low p-8 rounded-[3rem] border border-primary/5">
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-2xl font-headline font-black">Personal Profile</h3>
+                    <button 
+                      onClick={() => {
+                        setProfileForm({
+                          fullName: currentUser?.fullName || '',
+                          phoneNumber: currentUser?.phoneNumber || ''
+                        });
+                        setIsProfileModalOpen(true);
+                      }}
+                      className="text-primary font-black uppercase tracking-widest text-[10px] flex items-center gap-1"
+                    >
+                      <Zap className="w-3 h-3" /> EDIT PROFILE
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="p-6 bg-white rounded-2xl border border-primary/5">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">Full Name</p>
+                      <p className="font-headline font-bold text-on-surface">{currentUser?.fullName || 'Not set'}</p>
+                    </div>
+                    <div className="p-6 bg-white rounded-2xl border border-primary/5 shadow-sm">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">Phone Number</p>
+                      <p className="font-headline font-bold text-on-surface">{currentUser?.phoneNumber || 'Not set'}</p>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <button 
                     onClick={() => router.push('/vendor/price-list')}
@@ -1057,20 +1100,13 @@ export default function VendorDashboard() {
                           <ShoppingBag className="w-3 h-3" /> Price List
                         </Link>
                         <button 
-                          onClick={async () => {
-                            const shopName = prompt("Enter Shop Name:", currentUser?.shopName);
-                            const whatsappNumber = prompt("Enter WhatsApp Number:", currentUser?.whatsappNumber);
-                            const landmark = prompt("Enter Area Landmark (e.g. Under-G):", currentUser?.landmark);
-
-                            if (currentUser?.uid) {
-                              await api.updateUser(currentUser.uid, {
-                                shopName: shopName || currentUser.shopName,
-                                whatsappNumber: whatsappNumber || currentUser.whatsappNumber,
-                                landmark: landmark || currentUser.landmark
-                              });
-                              setNotification({ message: "Settings updated successfully!", type: 'success' });
-                              setTimeout(() => setNotification(null), 2000);
-                            }
+                          onClick={() => {
+                            setShopForm({
+                              shopName: currentUser?.shopName || '',
+                              whatsappNumber: currentUser?.whatsappNumber || '',
+                              landmark: currentUser?.landmark || ''
+                            });
+                            setIsShopModalOpen(true);
                           }}
                           className="text-primary font-black uppercase tracking-widest text-[10px] flex items-center gap-1"
                         >
@@ -1101,24 +1137,13 @@ export default function VendorDashboard() {
                   <div className="flex justify-between items-center mb-6">
                     <h3 className="text-2xl font-headline font-black">Payout Details</h3>
                     <button 
-                      onClick={async () => {
-                        const bankName = prompt("Enter Bank Name:", currentUser?.bankName);
-                        const bankAccountNumber = prompt("Enter Bank Account Number (10 digits):", currentUser?.bankAccountNumber);
-                        if (bankAccountNumber && (bankAccountNumber.length !== 10 || isNaN(Number(bankAccountNumber)))) {
-                          alert("Account number must be exactly 10 digits.");
-                          return;
-                        }
-                        const bankAccountName = prompt("Enter Account Name:", currentUser?.bankAccountName);
-
-                        if (currentUser?.uid) {
-                          await api.updateUser(currentUser.uid, {
-                            bankName: bankName || currentUser.bankName,
-                            bankAccountNumber: bankAccountNumber || currentUser.bankAccountNumber,
-                            bankAccountName: bankAccountName || currentUser.bankAccountName
-                          });
-                          setNotification({ message: "Bank details updated!", type: 'success' });
-                          setTimeout(() => setNotification(null), 2000);
-                        }
+                      onClick={() => {
+                        setBankForm({
+                          bankName: currentUser?.bankName || '',
+                          bankAccountNumber: currentUser?.bankAccountNumber || '',
+                          bankAccountName: currentUser?.bankAccountName || ''
+                        });
+                        setIsBankModalOpen(true);
                       }}
                       className="text-primary font-black uppercase tracking-widest text-[10px] flex items-center gap-1"
                     >
@@ -1194,20 +1219,48 @@ export default function VendorDashboard() {
                       <p className="text-xs font-bold text-on-surface-variant">{selectedOrder.customerPhone || 'N/A'}</p>
                     </div>
                     <div className="p-6 bg-surface-container-lowest rounded-3xl border border-primary/5">
-                      <p className="font-label text-[10px] font-black uppercase tracking-widest text-primary mb-2">Your Earnings</p>
-                      <p className="font-headline font-black text-2xl text-primary">₦{(selectedOrder.itemsPrice || 0).toLocaleString()}</p>
-                      <p className="text-[8px] font-bold text-on-surface-variant">Excludes ₦{(selectedOrder.riderFee || 0).toLocaleString()} Rider Fee</p>
+                      <p className="font-label text-[10px] font-black uppercase tracking-widest text-primary mb-2">Net Earnings</p>
+                      <p className="font-headline font-black text-2xl text-primary">₦{(selectedOrder.itemsPrice * 0.9 || 0).toLocaleString()}</p>
+                      <p className="text-[8px] font-bold text-on-surface-variant italic">10% platform fee deducted</p>
                     </div>
                   </div>
 
-                  <div className="p-6 bg-tertiary-container/10 rounded-3xl border border-tertiary-container/30">
-                    <div className="flex items-center gap-3 mb-2">
-                      <ShieldCheck className="w-5 h-5 text-tertiary fill-current" />
-                      <p className="font-headline font-black text-tertiary">Handover Code</p>
+                  {/* Customer Rating Display */}
+                  {(selectedOrder.rating || selectedOrder.status === 'completed') && (
+                    <div className="p-6 bg-primary/5 rounded-3xl border border-primary/10">
+                      <div className="flex justify-between items-center mb-2">
+                        <p className="font-label text-[10px] font-black uppercase tracking-widest text-primary">Customer Rating</p>
+                        <div className="flex gap-1">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Shield 
+                              key={star} 
+                              className={cn(
+                                "w-4 h-4",
+                                (selectedOrder.rating || 0) >= star ? "text-primary fill-current" : "text-primary/20"
+                              )} 
+                            />
+                          ))}
+                        </div>
+                      </div>
+                      {selectedOrder.reviewText && (
+                        <p className="text-xs font-medium text-on-surface italic">&quot;{selectedOrder.reviewText}&quot;</p>
+                      )}
+                      {!selectedOrder.rating && (
+                        <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest opacity-50">No rating given yet</p>
+                      )}
                     </div>
-                    <p className="text-3xl font-headline font-black tracking-[0.5em] text-on-surface">{selectedOrder.handoverCode}</p>
-                    <p className="text-[10px] font-bold text-on-surface-variant mt-2">Ask the rider for this code to start washing.</p>
-                  </div>
+                  )}
+
+                  {/* Handover Code Hidden as per request */}
+                  {selectedOrder.status === 'ready' && (
+                    <div className="p-6 bg-tertiary-container/10 rounded-3xl border border-tertiary-container/30">
+                      <div className="flex items-center gap-3 mb-2">
+                        <ShieldCheck className="w-5 h-5 text-tertiary fill-current" />
+                        <p className="font-headline font-black text-tertiary">Pickup Verification</p>
+                      </div>
+                      <p className="text-[10px] font-bold text-on-surface-variant mt-2">Ready for rider to pick up. Provide verification code when they arrive.</p>
+                    </div>
+                  )}
                 </div>
               </motion.div>
             </div>
@@ -1657,6 +1710,192 @@ export default function VendorDashboard() {
                     </button>
                   </div>
                 </form>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+        {/* Shop Info Modal */}
+        <AnimatePresence>
+          {isShopModalOpen && (
+            <div className="fixed inset-0 z-[150] flex items-center justify-center p-6">
+              <motion.div 
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                onClick={() => setIsShopModalOpen(false)}
+                className="absolute inset-0 bg-surface/80 backdrop-blur-xl"
+              />
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                className="relative w-full max-w-md bg-white rounded-[3rem] p-10 shadow-2xl border border-primary/10"
+              >
+                <h3 className="text-3xl font-headline font-black text-on-surface mb-6">Edit Shop Info</h3>
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-primary ml-2">Shop Name</label>
+                    <input 
+                      type="text"
+                      value={shopForm.shopName}
+                      onChange={(e) => setShopForm({...shopForm, shopName: e.target.value})}
+                      className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none border border-primary/5 focus:ring-2 ring-primary"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-primary ml-2">WhatsApp Number</label>
+                    <input 
+                      type="text"
+                      value={shopForm.whatsappNumber}
+                      onChange={(e) => setShopForm({...shopForm, whatsappNumber: e.target.value})}
+                      className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none border border-primary/5 focus:ring-2 ring-primary"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-primary ml-2">Landmark (e.g. Under-G)</label>
+                    <input 
+                      type="text"
+                      value={shopForm.landmark}
+                      onChange={(e) => setShopForm({...shopForm, landmark: e.target.value})}
+                      className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none border border-primary/5 focus:ring-2 ring-primary"
+                    />
+                  </div>
+                  <div className="flex gap-4 pt-4">
+                    <button onClick={() => setIsShopModalOpen(false)} className="flex-1 h-14 bg-surface-container-highest text-on-surface rounded-2xl font-headline font-black text-sm">CANCEL</button>
+                    <button 
+                      onClick={async () => {
+                        setIsProcessing(true);
+                        if (currentUser?.uid) {
+                          await api.updateUser(currentUser.uid, shopForm);
+                          setNotification({ message: "Shop info updated!", type: 'success' });
+                          setIsShopModalOpen(false);
+                          window.dispatchEvent(new Event('storage'));
+                          setTimeout(() => setNotification(null), 3000);
+                        }
+                        setIsProcessing(false);
+                      }}
+                      className="flex-1 h-14 bg-primary text-white rounded-2xl font-headline font-black text-sm shadow-lg shadow-primary/20"
+                    >SAVE</button>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+        {/* Bank Info Modal */}
+        <AnimatePresence>
+          {isBankModalOpen && (
+            <div className="fixed inset-0 z-[150] flex items-center justify-center p-6">
+              <motion.div 
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                onClick={() => setIsBankModalOpen(false)}
+                className="absolute inset-0 bg-surface/80 backdrop-blur-xl"
+              />
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                className="relative w-full max-w-md bg-white rounded-[3rem] p-10 shadow-2xl border border-primary/10"
+              >
+                <h3 className="text-3xl font-headline font-black text-on-surface mb-6">Bank Details</h3>
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-primary ml-2">Bank Name</label>
+                    <input 
+                      type="text"
+                      value={bankForm.bankName}
+                      onChange={(e) => setBankForm({...bankForm, bankName: e.target.value})}
+                      className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none border border-primary/5 focus:ring-2 ring-primary"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-primary ml-2">Account Number</label>
+                    <input 
+                      type="text"
+                      maxLength={10}
+                      value={bankForm.bankAccountNumber}
+                      onChange={(e) => setBankForm({...bankForm, bankAccountNumber: e.target.value.replace(/\D/g, '')})}
+                      className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none border border-primary/5 focus:ring-2 ring-primary"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-primary ml-2">Account Name</label>
+                    <input 
+                      type="text"
+                      value={bankForm.bankAccountName}
+                      onChange={(e) => setBankForm({...bankForm, bankAccountName: e.target.value})}
+                      className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none border border-primary/5 focus:ring-2 ring-primary"
+                    />
+                  </div>
+                  <div className="flex gap-4 pt-4">
+                    <button onClick={() => setIsBankModalOpen(false)} className="flex-1 h-14 bg-surface-container-highest text-on-surface rounded-2xl font-headline font-black text-sm">CANCEL</button>
+                    <button 
+                      onClick={async () => {
+                        if (bankForm.bankAccountNumber.length !== 10) { alert("Account number must be 10 digits"); return; }
+                        setIsProcessing(true);
+                        if (currentUser?.uid) {
+                          await api.updateUser(currentUser.uid, bankForm);
+                          setNotification({ message: "Bank details updated!", type: 'success' });
+                          setIsBankModalOpen(false);
+                          window.dispatchEvent(new Event('storage'));
+                          setTimeout(() => setNotification(null), 3000);
+                        }
+                        setIsProcessing(false);
+                      }}
+                      className="flex-1 h-14 bg-primary text-white rounded-2xl font-headline font-black text-sm shadow-lg shadow-primary/20"
+                    >SAVE</button>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Profile Info Modal */}
+        <AnimatePresence>
+          {isProfileModalOpen && (
+            <div className="fixed inset-0 z-[150] flex items-center justify-center p-6">
+              <motion.div 
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                onClick={() => setIsProfileModalOpen(false)}
+                className="absolute inset-0 bg-surface/80 backdrop-blur-xl"
+              />
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                className="relative w-full max-w-md bg-white rounded-[3rem] p-10 shadow-2xl border border-primary/10"
+              >
+                <h3 className="text-3xl font-headline font-black text-on-surface mb-6">Personal Profile</h3>
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-primary ml-2">Full Name</label>
+                    <input 
+                      type="text"
+                      value={profileForm.fullName}
+                      onChange={(e) => setProfileForm({...profileForm, fullName: e.target.value})}
+                      className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none border border-primary/5 focus:ring-2 ring-primary"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-primary ml-2">Phone Number</label>
+                    <input 
+                      type="text"
+                      disabled
+                      value={profileForm.phoneNumber}
+                      className="w-full h-14 bg-surface-container-highest rounded-2xl px-6 font-headline font-bold outline-none opacity-50 cursor-not-allowed border border-primary/5"
+                    />
+                  </div>
+                  <div className="flex gap-4 pt-4">
+                    <button onClick={() => setIsProfileModalOpen(false)} className="flex-1 h-14 bg-surface-container-highest text-on-surface rounded-2xl font-headline font-black text-sm">CANCEL</button>
+                    <button 
+                      onClick={async () => {
+                        setIsProcessing(true);
+                        if (currentUser?.uid) {
+                          await api.updateUser(currentUser.uid, { fullName: profileForm.fullName });
+                          setNotification({ message: "Profile updated!", type: 'success' });
+                          setIsProfileModalOpen(false);
+                          window.dispatchEvent(new Event('storage'));
+                          setTimeout(() => setNotification(null), 3000);
+                        }
+                        setIsProcessing(false);
+                      }}
+                      className="flex-1 h-14 bg-primary text-white rounded-2xl font-headline font-black text-sm shadow-lg shadow-primary/20"
+                    >SAVE</button>
+                  </div>
+                </div>
               </motion.div>
             </div>
           )}

@@ -14,7 +14,9 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 router.post(["/register", "/signup"], async (req, res) => {
   try {
     await seedAdmin(); // Ensure admin exists if DB was cleared
-    const { fullName, email, phoneNumber, password, role, ninImage, shopImage } = req.body;
+    const { fullName, email, phoneNumber, password, role, ninImage, shopImage, landmark } = req.body;
+    console.log(`[Auth] Registration Details: email=${email}, role=${role}, landmark=${landmark || req.body.landmark || 'NONE'}`);
+    console.log(`[Auth] Full Body Keys: ${Object.keys(req.body).join(', ')}`);
 
     const existingUser = await User.findOne({ 
       $or: [{ email }, { phoneNumber }] 
@@ -43,6 +45,7 @@ router.post(["/register", "/signup"], async (req, res) => {
       uid: uuidv4(),
       password: hashedPassword,
       transferReference,
+      landmark: landmark || req.body.landmark || 'Under-G',
       role: role || 'customer',
       isApproved: (role === 'vendor' || role === 'rider') ? false : true,
       trustPoints: 100,
@@ -222,7 +225,7 @@ router.post("/login", async (req, res) => {
 // Get all vendors
 router.get("/get-all-vendors", async (req, res) => {
   try {
-    const vendors = await User.find({ role: 'vendor', isApproved: true }).select("-password");
+    const vendors = await User.find({ role: 'vendor' }).select("-password");
     res.json(vendors);
   } catch (err: any) {
     res.status(500).json({ message: err.message });

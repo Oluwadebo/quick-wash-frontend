@@ -14,8 +14,26 @@ router.get("/", async (req, res) => {
     let query = {};
     
     if (role === 'customer') query = { customerUid: userId };
-    else if (role === 'vendor') query = { vendorId: userId };
-    else if (role === 'rider') query = { riderUid: userId };
+    else if (role === 'vendor') {
+      // Vendors only see orders that are confirmed (paid) or beyond
+      query = { 
+        vendorId: userId,
+        status: { $nin: ['draft', 'pending_payment', 'Cancelled (Expired)'] }
+      };
+    }
+    else if (role === 'rider') {
+      query = {
+        $or: [
+          { riderUid: userId },
+          { 
+            $and: [
+              { $or: [{ riderUid: { $exists: false } }, { riderUid: null }, { riderUid: "" }] },
+              { status: { $in: ['rider_assign_pickup', 'rider_assign_delivery'] } }
+            ]
+          }
+        ]
+      };
+    }
     else if (role === 'admin' || role === 'super-sub-admin') {
        if (userId) query = { $or: [{ customerUid: userId }, { vendorId: userId }, { riderUid: userId }] };
        else query = {}; // See all
@@ -142,15 +160,25 @@ router.post("/", async (req, res) => {
 
 router.post("/auto-cancel", async (req, res) => {
   const session = await mongoose.startSession();
-  session.startTransaction();
+  try {
+    session.startTransaction();
+  } catch (e) {
+    // Transaction not supported (standalone Mongo), continue without it
+    (session as any).isNoTransaction = true;
+  }
+  
   try {
     const expiredTime = new Date(Date.now() - 30 * 60 * 1000); // 30 minutes
     
     // Find orders that are still in 'confirm' status and older than 30 minutes
-    const expiredOrders = await Order.find({
+    const query: any = {
       status: { $in: ['confirm', 'rider_assign_pickup'] },
       createdAt: { $lt: expiredTime }
-    }).session(session);
+    };
+    
+    const expiredOrders = (session as any).isNoTransaction 
+      ? await Order.find(query)
+      : await Order.find(query).session(session);
 
     const results = [];
 
@@ -162,12 +190,17 @@ router.post("/auto-cancel", async (req, res) => {
 
       // Refund
       if (order.paymentMethod === 'wallet') {
-        const user = await User.findOne({ uid: customerUid }).session(session);
+        const user = (session as any).isNoTransaction
+          ? await User.findOne({ uid: customerUid })
+          : await User.findOne({ uid: customerUid }).session(session);
+          
         if (user) {
           user.walletBalance = (user.walletBalance || 0) + price;
-          await user.save({ session });
+          (session as any).isNoTransaction 
+            ? await user.save() 
+            : await user.save({ session });
 
-          await Transaction.create([{
+          const transData = {
             id: uuidv4(),
             userId: customerUid,
             type: 'deposit',
@@ -177,22 +210,33 @@ router.post("/auto-cancel", async (req, res) => {
             method: 'wallet',
             reference: `AUTO-REF-${order.id}`,
             date: new Date()
-          }], { session });
+          };
+          
+          (session as any).isNoTransaction
+            ? await Transaction.create([transData])
+            : await Transaction.create([transData], { session });
         }
       }
 
       order.status = 'Cancelled (Expired)';
       order.color = 'bg-error text-on-error';
       order.refundAmount = price;
-      await order.save({ session });
+      
+      (session as any).isNoTransaction
+        ? await order.save()
+        : await order.save({ session });
       
       results.push(order.id);
     }
 
-    await session.commitTransaction();
+    if (!(session as any).isNoTransaction) {
+      await session.commitTransaction();
+    }
     res.json({ processed: results.length, orderIds: results });
   } catch (err: any) {
-    await session.abortTransaction();
+    if (!(session as any).isNoTransaction) {
+      try { await session.abortTransaction(); } catch (e) {}
+    }
     console.error('Auto-cancel error:', err);
     res.status(500).json({ message: err.message });
   } finally {
@@ -249,20 +293,82 @@ router.patch("/:id", async (req, res) => {
         if (inputCode !== order.code1) {
           return res.status(400).json({ message: 'Invalid Handover Code (Code 1) for Pickup.' });
         }
+        // Rider gets 1st half of fee upon pickup from customer
+        if (order.riderUid && !order.payoutReleased80) {
+          const rider = await User.findOne({ uid: order.riderUid });
+          if (rider) {
+            const firstHalf = (order.riderFee || 0) * 0.5;
+            rider.walletBalance = (rider.walletBalance || 0) + firstHalf;
+            await rider.save();
+            await Transaction.create({
+              id: uuidv4(), userId: rider.uid, type: 'deposit', amount: firstHalf,
+              desc: `Order #${order.id} Pickup Fee (50%)`, status: 'completed', date: new Date()
+            });
+            // Note: we use payoutReleased80 as a flag for the 1st half payout here for convenience or add a new flag
+          }
+        }
       } else if (newStatus === 'washing') {
         const inputCode = req.body.handoverCode;
         if (inputCode !== order.code2) {
           return res.status(400).json({ message: 'Invalid Handover Code (Code 2) for Vendor Receipt.' });
+        }
+        // Vendor gets 80% of net (itemsPrice * 0.9) upon starting wash
+        if (order.vendorId && !order.payoutReleased80) {
+          const vendor = await User.findOne({ uid: order.vendorId });
+          if (vendor) {
+            const netItemsPrice = (order.itemsPrice || 0) * 0.9;
+            const payout80 = netItemsPrice * 0.8;
+            vendor.walletBalance = (vendor.walletBalance || 0) + payout80;
+            await vendor.save();
+            order.payoutReleased80 = true;
+            await Transaction.create({
+              id: uuidv4(), userId: vendor.uid, type: 'deposit', amount: payout80,
+              desc: `Order #${order.id} Initial Funds (80% of Net)`, status: 'completed', date: new Date()
+            });
+          }
         }
       } else if (newStatus === 'picked_up_delivery') {
         const inputCode = req.body.handoverCode;
         if (inputCode !== order.code3) {
           return res.status(400).json({ message: 'Invalid Handover Code (Code 3) for Delivery Pickup.' });
         }
+        // Gate: Customer must be ready
+        if (!order.customerReadyForDelivery) {
+          return res.status(400).json({ message: 'Customer is not yet ready to receive this order. Please wait for the "Locked and Ready" confirmation.' });
+        }
       } else if (newStatus === 'delivered') {
         const inputCode = req.body.handoverCode;
         if (inputCode !== order.code4) {
           return res.status(400).json({ message: 'Invalid Handover Code (Code 4) for Customer Delivery.' });
+        }
+        // Rider gets 2nd half of fee upon delivery
+        if (order.riderUid && !order.payoutReleased20) {
+          const rider = await User.findOne({ uid: order.riderUid });
+          if (rider) {
+            const secondHalf = (order.riderFee || 0) * 0.5;
+            rider.walletBalance = (rider.walletBalance || 0) + secondHalf;
+            await rider.save();
+            await Transaction.create({
+              id: uuidv4(), userId: rider.uid, type: 'deposit', amount: secondHalf,
+              desc: `Order #${order.id} Delivery Fee (50%)`, status: 'completed', date: new Date()
+            });
+          }
+        }
+      } else if (newStatus === 'completed') {
+        // Vendor gets remaining 20% of net upon completion
+        if (order.vendorId && !order.payoutReleased20) {
+          const vendor = await User.findOne({ uid: order.vendorId });
+          if (vendor) {
+            const netItemsPrice = (order.itemsPrice || 0) * 0.9;
+            const payout20 = netItemsPrice * 0.2;
+            vendor.walletBalance = (vendor.walletBalance || 0) + payout20;
+            await vendor.save();
+            order.payoutReleased20 = true;
+            await Transaction.create({
+              id: uuidv4(), userId: vendor.uid, type: 'deposit', amount: payout20,
+              desc: `Order #${order.id} Final Funds (20% of Net)`, status: 'completed', date: new Date()
+            });
+          }
         }
       }
     }

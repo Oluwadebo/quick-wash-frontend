@@ -17,8 +17,15 @@ export default function Footer() {
     api.getSiteSettings().then(setSettings);
   }, []);
 
-  // Hide footer on dashbaords and auth pages to prevent double showing or cluttering
-  const isDashboard = pathname.startsWith('/admin') || pathname.startsWith('/customer') || pathname.startsWith('/vendor') || pathname.startsWith('/rider');
+  // Hide footer on dashboards and auth pages to prevent double showing or cluttering
+  const isDashboard = pathname.startsWith('/admin') || 
+                     pathname.startsWith('/customer') || 
+                     pathname.startsWith('/vendor') || 
+                     pathname.startsWith('/rider') ||
+                     pathname.startsWith('/track') ||
+                     pathname.startsWith('/vendors') ||
+                     pathname.startsWith('/wallet') ||
+                     pathname.startsWith('/profile');
   const isAuth = pathname.startsWith('/auth');
   
   if (isDashboard || isAuth) return null;

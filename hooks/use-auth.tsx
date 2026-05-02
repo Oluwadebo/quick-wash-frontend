@@ -30,6 +30,7 @@ interface UserData {
   pendingBalance?: number;
   badges?: string[];
   status?: 'active' | 'restricted' | 'suspended';
+  landmark?: string;
   shopImage?: string;
   ninImage?: string;
   transferReference?: string;

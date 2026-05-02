@@ -154,6 +154,19 @@ class ApiService {
     return [];
   }
 
+  async getVendors(): Promise<Partial<UserData>[]> {
+    await this.delay();
+    try {
+      const resp = await fetch(`${API_URLS.base}/vendors`);
+      if (resp.ok) {
+        return await resp.json();
+      }
+    } catch (e) {
+      console.error('Failed to fetch vendors:', e);
+    }
+    return [];
+  }
+
   async getUser(uid: string): Promise<UserData | null> {
     await this.delay();
     if (typeof window !== 'undefined') {
@@ -229,13 +242,17 @@ class ApiService {
     }
   }
 
-  async getOrders(): Promise<Order[]> {
+  async getOrders(userId?: string, role?: string): Promise<Order[]> {
     await this.delay();
     const token = localStorage.getItem('qw_token');
     
     if (typeof window !== 'undefined' && token) {
       try {
-        const url = `${API_URLS.orders}`; 
+        let url = `${API_URLS.orders}`; 
+        if (userId && role) {
+          url += `?userId=${userId}&role=${role}`;
+        }
+        
         const resp = await fetch(url, {
           headers: { 
             'Authorization': `Bearer ${token}`,
@@ -368,6 +385,8 @@ class ApiService {
     if (typeof window !== 'undefined') {
       try {
         const token = localStorage.getItem('qw_token');
+        if (!token) return; // Don't run if not logged in
+        
         await fetch(`${API_URLS.orders}/auto-cancel`, {
           method: 'POST',
           headers: { 
@@ -375,7 +394,7 @@ class ApiService {
           }
         });
       } catch (e) {
-        console.error('Auto-cancel failed:', e);
+        // Silent for background task
       }
     }
   }

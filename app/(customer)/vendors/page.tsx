@@ -1,6 +1,7 @@
 'use client';
 
-import React from 'react';
+import React, { Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import TopAppBar from '@/components/shared/TopAppBar';
 import VendorCard from '@/components/shared/VendorCard';
 import { Volume2, MapPin, Search, SlidersHorizontal, DollarSign, Zap, Star, Navigation } from 'lucide-react';
@@ -14,9 +15,12 @@ const sortOptions = [
   { id: 'closest', label: 'Closest', icon: Navigation },
 ];
 
-export default function VendorSelectionPage() {
+function VendorSelectionContent() {
+  const searchParams = useSearchParams();
+  const initialLandmark = searchParams.get('landmark') || '';
   const [selectedSort, setSelectedSort] = React.useState('highest-rated');
   const [searchQuery, setSearchQuery] = React.useState('');
+  const [selectedLandmark, setSelectedLandmark] = React.useState(initialLandmark);
   const [vendors, setVendors] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
 
@@ -31,10 +35,12 @@ export default function VendorSelectionPage() {
           const approvedVendors = data.map((u: any) => ({
             id: u.uid,
             name: u.shopName || u.fullName || 'Anonymous Vendor',
-            priceRange: '₦2,000/KG', 
-            rating: u.trustPoints ? (u.trustPoints / 20) : 4.5,
-            reviews: Math.floor(Math.random() * 50),
-            distance: 'Local',
+            priceRange: u.priceRange || '₦2,000/KG', 
+            rating: u.trustPoints ? Math.min(5, 3.5 + (u.trustPoints / 200)) : 4.5,
+            reviews: Math.floor(Math.random() * 50) + 5,
+            distance: u.distance || '0.5 km',
+            landmark: u.landmark,
+            address: u.shopAddress || u.address,
             turnaround: u.turnaroundTime || '24h Standard',
             image: u.shopImage || `https://picsum.photos/seed/laundry-${u.phoneNumber}/800/600`,
             isRaining: u.isRaining || false,
@@ -56,38 +62,54 @@ export default function VendorSelectionPage() {
   const filteredVendors = React.useMemo(() => {
     let result = [...vendors];
 
+    // Filter by landmark
+    if (selectedLandmark) {
+      const sL = selectedLandmark.trim().toLowerCase();
+      console.log(`[VendorsPage] Filtering by landmark: "${selectedLandmark}" (normalized: "${sL}")`);
+      result = result.filter(v => {
+        if (!v.landmark) return false;
+        const vL = v.landmark.trim().toLowerCase();
+        const match = vL === sL || vL.includes(sL) || sL.includes(vL);
+        if (match) {
+          console.log(`[VendorsPage] Match found: Vendor "${v.name}" has landmark "${v.landmark}"`);
+        }
+        return match;
+      });
+    }
+
     // Filter by search
     if (searchQuery) {
       result = result.filter(v => 
-        v.name.toLowerCase().includes(searchQuery.toLowerCase())
+        v.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        v.landmark?.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
 
     // Sort
     result.sort((a, b) => {
       if (selectedSort === 'cheapest') {
-        const priceA = parseInt(a.priceRange.replace(/[^0-9]/g, ''));
-        const priceB = parseInt(b.priceRange.replace(/[^0-9]/g, ''));
+        const priceA = parseInt(a.priceRange?.replace(/[^0-9]/g, '') || '2000');
+        const priceB = parseInt(b.priceRange?.replace(/[^0-9]/g, '') || '2000');
         return priceA - priceB;
       }
       if (selectedSort === 'fastest') {
-        const timeA = parseInt(a.turnaround.replace(/[^0-9]/g, ''));
-        const timeB = parseInt(b.turnaround.replace(/[^0-9]/g, ''));
+        const timeA = parseInt(a.turnaround?.replace(/[^0-9]/g, '') || '24');
+        const timeB = parseInt(b.turnaround?.replace(/[^0-9]/g, '') || '24');
         return timeA - timeB;
       }
       if (selectedSort === 'highest-rated') {
-        return b.rating - a.rating;
+        return (b.rating || 0) - (a.rating || 0);
       }
       if (selectedSort === 'closest') {
-        const distA = parseFloat(a.distance.replace(/[^0-9.]/g, ''));
-        const distB = parseFloat(b.distance.replace(/[^0-9.]/g, ''));
+        const distA = parseFloat(a.distance?.replace(/[^0-9.]/g, '') || '1');
+        const distB = parseFloat(b.distance?.replace(/[^0-9.]/g, '') || '1');
         return distA - distB;
       }
       return 0;
     });
 
     return result;
-  }, [selectedSort, searchQuery, vendors]);
+  }, [selectedSort, searchQuery, vendors, selectedLandmark]);
 
   return (
     <div className="pb-32">
@@ -121,22 +143,22 @@ export default function VendorSelectionPage() {
             />
           </div>
 
-          <div className="flex items-center gap-4 overflow-x-auto pb-4 hide-scrollbar">
-            <div className="bg-surface-container-highest p-4 rounded-2xl flex items-center justify-center">
-              <SlidersHorizontal className="w-6 h-6 text-on-surface" />
+          <div className="flex items-center gap-3 overflow-x-auto pb-6 hide-scrollbar -mx-2 px-2">
+            <div className="bg-success/10 p-4 rounded-2xl flex items-center justify-center shrink-0 border border-success/20">
+              <SlidersHorizontal className="w-6 h-6 text-success" />
             </div>
             {sortOptions.map((option) => (
               <button
                 key={option.id}
                 onClick={() => setSelectedSort(option.id)}
                 className={cn(
-                  "flex-shrink-0 px-8 py-4 rounded-2xl font-headline font-black text-sm flex items-center gap-3 transition-all active:scale-95",
+                  "flex-shrink-0 px-8 py-4 rounded-2xl font-headline font-black text-sm flex items-center gap-3 transition-all active:scale-95 border-2",
                   selectedSort === option.id 
-                    ? "signature-gradient text-white shadow-lg" 
-                    : "bg-surface-container-low text-on-surface-variant border border-primary/5"
+                    ? "bg-success text-white border-success shadow-lg shadow-success/20" 
+                    : "bg-success/5 text-success border-success/10 hover:bg-success/10"
                 )}
               >
-                <option.icon className={cn("w-5 h-5", selectedSort === option.id && "fill-current")} />
+                <option.icon className={cn("w-5 h-5", selectedSort === option.id ? "fill-white" : "fill-current")} />
                 {option.label}
               </button>
             ))}
@@ -165,5 +187,13 @@ export default function VendorSelectionPage() {
         </section>
       </main>
     </div>
+  );
+}
+
+export default function VendorSelectionPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-surface flex flex-col items-center justify-center font-headline font-black">Loading vendors...</div>}>
+      <VendorSelectionContent />
+    </Suspense>
   );
 }

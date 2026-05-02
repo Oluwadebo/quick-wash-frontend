@@ -139,7 +139,7 @@ function AuthContent() {
         fullName: formData.fullName,
         phoneNumber: formData.phoneNumber,
         password: formData.password,
-        landmark: (role === 'customer' || role === 'rider') ? formData.landmark : undefined,
+        landmark: (role === 'customer' || role === 'rider' || role === 'vendor') ? formData.landmark : undefined,
         role: role,
         shopName: role === 'vendor' ? formData.shopName : undefined,
         shopAddress: role === 'vendor' ? formData.shopAddress : undefined,

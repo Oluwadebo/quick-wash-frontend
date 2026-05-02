@@ -78,10 +78,32 @@ export default function Sidebar() {
     api.getSiteSettings().then(setSettings);
   }, []);
 
-  const handleInvite = () => {
+  const handleInvite = async () => {
     const link = `https://quick-wash.campus/invite?ref=${user?.phoneNumber}`;
-    navigator.clipboard.writeText(link);
-    alert('Referral link copied! Invite friends to earn trust points.');
+    
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Quick-Wash',
+          text: 'Join me on Quick-Wash for fast, premium laundry services!',
+          url: link
+        });
+        return;
+      } catch (err) {
+        console.log('Share failed:', err);
+      }
+    }
+
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard) {
+        await navigator.clipboard.writeText(link);
+        alert('Referral link copied! Share it with friends to earn trust points.');
+      } else {
+        alert('Invite link: ' + link);
+      }
+    } catch (err) {
+      alert('Invite link: ' + link);
+    }
   };
 
   if (pathname === '/' || pathname.startsWith('/auth') || !user) return null;
@@ -102,8 +124,8 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className="w-72 bg-surface-container-low border-r border-primary/5 p-6 hidden lg:flex flex-col gap-2 h-screen sticky top-0">
-      <div className="mb-8 px-4 flex items-center gap-3">
+    <aside className="w-72 bg-surface-container-low border-r border-primary/5 p-6 hidden lg:flex flex-col gap-2 h-screen sticky top-0 overflow-y-auto custom-scrollbar">
+      <div className="mb-8 px-4 flex items-center gap-3 shrink-0">
         <div className="w-10 h-10 rounded-xl signature-gradient flex items-center justify-center shadow-lg">
           {settings?.logo ? (
             <Image src={settings.logo} alt="Logo" width={24} height={24} className="object-contain" unoptimized />
@@ -147,7 +169,7 @@ export default function Sidebar() {
         {user?.role === 'customer' && (
           <button
             onClick={handleInvite}
-            className="flex items-center gap-4 px-6 py-4 rounded-2xl font-headline font-bold text-sm text-primary hover:bg-primary/5 transition-all active:scale-95 mt-4 border-2 border-dashed border-primary/20"
+            className="flex items-center gap-4 px-6 py-4 rounded-2xl font-headline font-bold text-sm text-primary hover:bg-primary/5 transition-all active:scale-95 mt-4 border-2 border-dashed border-primary/20 shrink-0"
           >
             <Users className="w-5 h-5" />
             Invite Friends
@@ -155,18 +177,20 @@ export default function Sidebar() {
         )}
       </div>
 
-      <div className="mt-auto pt-6 border-t border-primary/5 space-y-4">
-        <div className="p-4 bg-primary/5 rounded-2xl border border-primary/10">
-          <p className="text-[10px] font-black uppercase tracking-widest text-primary mb-2">System Status</p>
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 bg-success rounded-full animate-pulse"></div>
-            <span className="text-xs font-bold text-on-surface">All Systems Operational</span>
+      <div className="mt-auto pt-6 border-t border-primary/5 space-y-4 shrink-0">
+        {(user?.role === 'admin' || user?.role === 'super-admin' || user?.role === 'super-sub-admin') && (
+          <div className="p-4 bg-primary/5 rounded-2xl border border-primary/10">
+            <p className="text-[10px] font-black uppercase tracking-widest text-primary mb-2">System Status</p>
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-success rounded-full animate-pulse"></div>
+              <span className="text-xs font-bold text-on-surface">All Systems Operational</span>
+            </div>
           </div>
-        </div>
+        )}
 
         <button
           onClick={logout}
-          className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-headline font-bold text-sm text-error hover:bg-error/5 transition-all active:scale-95"
+          className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-headline font-bold text-sm text-error hover:bg-error/5 transition-all active:scale-95 text-left"
         >
           <LogOut className="w-5 h-5" />
           Logout

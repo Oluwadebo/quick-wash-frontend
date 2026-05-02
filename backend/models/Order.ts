@@ -47,6 +47,9 @@ export interface IOrder extends Document {
   refundAmount?: number;
   consecutiveReturns?: number;
   returnReason?: string;
+  rating?: number;
+  reviewText?: string;
+  customerReadyForDelivery?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -96,6 +99,9 @@ const OrderSchema: Schema = new Schema({
   evidenceImage: { type: String },
   vendorEvidenceImage: { type: String },
   refundAmount: { type: Number },
+  rating: { type: Number },
+  reviewText: { type: String },
+  customerReadyForDelivery: { type: Boolean, default: false },
 }, { timestamps: true });
 
 export default mongoose.models.Order || mongoose.model<IOrder>('Order', OrderSchema);

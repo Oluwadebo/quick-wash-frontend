@@ -4,7 +4,7 @@ import VendorPriceList from '../models/VendorPriceList.js';
 
 export const getVendors = async (req: Request, res: Response) => {
   try {
-    const vendors = await User.find({ role: 'vendor', isApproved: true });
+    const vendors = await User.find({ role: 'vendor' });
     res.json(vendors);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
