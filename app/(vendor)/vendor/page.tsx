@@ -1184,7 +1184,7 @@ export default function VendorDashboard() {
                 initial={{ opacity: 0, scale: 0.9, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                className="relative w-full max-w-lg bg-surface-container-low rounded-[3rem] p-10 shadow-2xl border border-primary/10 overflow-y-auto max-h-[90vh]"
+                className="relative w-full max-w-lg bg-surface-container-low rounded-[3rem] p-10 shadow-2xl border border-primary/10 overflow-y-auto max-h-[90vh] custom-scrollbar"
               >
                 <div className="flex justify-between items-start mb-8">
                   <h3 className="text-3xl font-headline font-black text-on-surface">Order Details</h3>
@@ -1193,7 +1193,7 @@ export default function VendorDashboard() {
                   </button>
                 </div>
                 
-                <div className="space-y-6">
+                <div className="space-y-6 max-h-[65vh] overflow-y-auto pr-2 custom-scrollbar">
                   <div className="p-6 bg-surface-container-lowest rounded-3xl border border-primary/5">
                     <p className="font-label text-[10px] font-black uppercase tracking-widest text-primary mb-2">Items & Pricing</p>
                     <div className="space-y-3">
@@ -1227,13 +1227,13 @@ export default function VendorDashboard() {
                   </div>
 
                   {/* Handover Section */}
-                  {(selectedOrder.status === 'ready' || selectedOrder.status === 'rider_assign_delivery') && (
+                  {['washing', 'ready', 'rider_assign_delivery', 'picked_up_delivery', 'delivered', 'completed'].includes(selectedOrder.status.toLowerCase()) && (
                     <div className="p-8 bg-[#006E33]/10 rounded-[2.5rem] border-2 border-[#006E33]/20 relative overflow-hidden">
                       <div className="absolute top-0 right-0 p-4 opacity-10">
                         <ShieldCheck className="w-24 h-24 text-[#006E33]" />
                       </div>
                       <div className="relative z-10 text-center">
-                        <p className="font-label text-[10px] uppercase tracking-[0.2em] font-black text-[#006E33] mb-6">Handover Code for Rider (Code 3)</p>
+                        <p className="font-label text-[10px] uppercase tracking-[0.2em] font-black text-[#006E33] mb-6">Delivery Pickup Code (Code 3)</p>
                         <div className="flex justify-center gap-3">
                           {(selectedOrder.code3 || '----').split('').map((char: string, i: number) => (
                             <div key={i} className="w-12 h-16 bg-white rounded-2xl flex items-center justify-center font-headline font-black text-2xl text-[#006E33] shadow-lg border border-[#006E33]/10">
@@ -1242,7 +1242,7 @@ export default function VendorDashboard() {
                           ))}
                         </div>
                         <p className="text-[10px] font-bold text-[#006E33]/70 mt-6 leading-relaxed">
-                          Give this code to the rider only after they have picked up the washed items.
+                          Give this code to the rider coming to pick up the clean laundry.
                         </p>
                       </div>
                     </div>
@@ -1303,7 +1303,7 @@ export default function VendorDashboard() {
                 initial={{ opacity: 0, scale: 0.9, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                className="relative w-full max-w-md bg-surface-container-low rounded-[3rem] p-10 shadow-2xl border border-primary/10"
+                className="relative w-full max-w-md bg-surface-container-low rounded-[3rem] p-10 shadow-2xl border border-primary/10 max-h-[90vh] overflow-y-auto custom-scrollbar"
               >
                 <h3 className="text-3xl font-headline font-black text-on-surface mb-4">Close Shop</h3>
                 <p className="text-on-surface-variant font-medium mb-8">Set a time when you will be back. Customers will see this before selecting you.</p>
@@ -1362,7 +1362,7 @@ export default function VendorDashboard() {
                 initial={{ opacity: 0, scale: 0.9, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                className="relative w-full max-w-md bg-surface-container-low rounded-[3rem] p-10 shadow-2xl border border-primary/10"
+                className="relative w-full max-w-md bg-surface-container-low rounded-[3rem] p-10 shadow-2xl border border-primary/10 max-h-[90vh] overflow-y-auto custom-scrollbar"
               >
                 <h3 className="text-3xl font-headline font-black text-on-surface mb-4">Report Issue</h3>
                 <p className="text-on-surface-variant font-medium mb-8">Something wrong with the order items or customer before you start washing? Report it here.</p>

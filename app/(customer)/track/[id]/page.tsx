@@ -92,6 +92,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
           const data = await res.json();
           setOrder(data.order);
           setNotification({ message: 'Order cancelled and fully refunded successfully.', type: 'success' });
+          refreshUser();
           setTimeout(() => setNotification(null), 3000);
           window.dispatchEvent(new Event('storage'));
         } catch (error: any) {
@@ -288,7 +289,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
         </section>
 
         {/* Handover Code Section */}
-        {(order.status === 'confirm' || order.status === 'rider_assign_pickup' || order.status === 'picked_up_delivery') && (
+        {(order.status === 'confirm' || order.status === 'rider_assign_pickup' || order.status === 'rider_accepted' || order.status === 'washing' || order.status === 'ready' || order.status === 'rider_assign_delivery' || order.status === 'picked_up_delivery') && (
           <section className="bg-surface-container-lowest rounded-[3rem] p-10 text-center space-y-8 shadow-2xl border-4 border-primary-container relative overflow-hidden">
             <div className="absolute top-0 right-0 p-4">
               <ShieldCheck className="text-primary/10 w-24 h-24" />
@@ -296,22 +297,25 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
             
             <div className="relative z-10">
               <p className="font-label text-xs uppercase tracking-[0.3em] font-black text-on-surface-variant mb-8">
-                {order.status === 'picked_up_delivery' ? 'Enter Code from Rider to Confirm Delivery' : 'Give this to Rider at Pickup'}
+                {order.status === 'picked_up_delivery' ? 'Enter Code from Rider to Confirm Delivery' : 'Your Handoff Code for the Rider'}
               </p>
               
-              {(order.status === 'confirm' || order.status === 'rider_assign_pickup') ? (
-                <div className="flex justify-center gap-4">
-                  {(order.code1 || '----').split('').map((num: string, i: number) => (
-                    <motion.span 
-                      key={i}
-                      initial={{ scale: 0.8, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      transition={{ delay: i * 0.1 }}
-                      className="w-16 h-20 flex items-center justify-center bg-surface-container-low rounded-2xl text-4xl font-headline font-black text-primary shadow-xl border border-primary/5"
-                    >
-                      {num}
-                    </motion.span>
-                  ))}
+              {(order.status !== 'picked_up_delivery') ? (
+                <div className="flex flex-col items-center">
+                  <div className="flex justify-center gap-4 mb-4">
+                    {(order.code1 || '----').split('').map((num: string, i: number) => (
+                      <motion.span 
+                        key={i}
+                        initial={{ scale: 0.8, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        transition={{ delay: i * 0.1 }}
+                        className="w-14 h-16 sm:w-16 sm:h-20 flex items-center justify-center bg-surface-container-low rounded-2xl text-3xl sm:text-4xl font-headline font-black text-primary shadow-xl border border-primary/5"
+                      >
+                        {num}
+                      </motion.span>
+                    ))}
+                  </div>
+                  <p className="text-[10px] font-black text-primary uppercase tracking-widest text-center">PICKUP CODE (GIVE TO RIDER)</p>
                 </div>
               ) : (
                 <div className="flex flex-col items-center gap-6">
@@ -481,8 +485,11 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
 
       {/* Sticky Footer */}
       {order.status === 'ready' && (
-        <div className="fixed bottom-0 left-0 w-full p-8 bg-gradient-to-t from-surface via-surface to-transparent z-40">
-          <div className="max-w-2xl mx-auto">
+        <div className="fixed bottom-0 left-0 w-full p-6 sm:p-10 bg-gradient-to-t from-surface via-surface to-transparent z-[70]">
+          <div className="max-w-2xl mx-auto flex flex-col items-center gap-4">
+            <p className="text-[10px] font-black text-primary bg-primary/10 px-4 py-2 rounded-full uppercase tracking-widest shadow-sm">
+              Tap below when you are ready to receive
+            </p>
             <ReadyToReceiveButton 
               onClick={async () => {
                 if (!order) return;
@@ -500,6 +507,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
                 setOrder(updatedOrder);
                 setNotification({ message: 'Riders have been notified that you are ready to receive your laundry!', type: 'success' });
                 setTimeout(() => setNotification(null), 3000);
+                refreshUser();
                 window.dispatchEvent(new Event('storage'));
               }}
             />
@@ -517,36 +525,38 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
           <motion.div 
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            className="relative w-full max-w-sm bg-surface-container-low rounded-[3rem] p-10 border border-primary/10 shadow-2xl text-center max-h-[85vh] overflow-y-auto custom-scrollbar"
-          >
-            <div className="w-20 h-20 bg-primary/10 text-primary rounded-full flex items-center justify-center mx-auto mb-6">
-              <ShieldCheck className="w-10 h-10" />
-            </div>
-            <h2 className="text-2xl font-headline font-black text-on-surface mb-2">Rate Experience</h2>
-            <p className="text-on-surface-variant text-sm font-medium mb-8">How was the laundry service?</p>
-            
-            <div className="flex justify-center gap-2 mb-10">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <button 
-                  key={star}
-                  onClick={() => setRating(star)}
-                  className={cn(
-                    "w-12 h-12 rounded-xl flex items-center justify-center transition-all active:scale-95",
-                    rating >= star ? "bg-primary text-white" : "bg-surface-container-highest text-on-surface-variant"
-                  )}
-                >
-                  <Shield className="w-6 h-6 fill-current" />
-                </button>
-              ))}
-            </div>
+                className="relative w-full max-w-sm bg-surface-container-low rounded-[3rem] p-10 border border-primary/10 shadow-2xl text-center max-h-[90vh] overflow-y-auto custom-scrollbar"
+              >
+                <div className="w-20 h-20 bg-primary/10 text-primary rounded-full flex items-center justify-center mx-auto mb-6">
+                  <ShieldCheck className="w-10 h-10" />
+                </div>
+                <h2 className="text-2xl font-headline font-black text-on-surface mb-2">Rate Experience</h2>
+                <div className="max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+                  <p className="text-on-surface-variant text-sm font-medium mb-8">How was the laundry service?</p>
+                  
+                  <div className="flex justify-center gap-2 mb-10">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button 
+                        key={star}
+                        onClick={() => setRating(star)}
+                        className={cn(
+                          "w-12 h-12 rounded-xl flex items-center justify-center transition-all active:scale-95",
+                          rating >= star ? "bg-primary text-white" : "bg-surface-container-highest text-on-surface-variant"
+                        )}
+                      >
+                        <Shield className="w-6 h-6 fill-current" />
+                      </button>
+                    ))}
+                  </div>
 
-            <button 
-              onClick={handleSubmitRating}
-              className="w-full h-16 signature-gradient text-white rounded-2xl font-headline font-black text-sm shadow-lg active:scale-95 transition-transform"
-            >
-              SUBMIT RATING
-            </button>
-          </motion.div>
+                  <button 
+                    onClick={handleSubmitRating}
+                    className="w-full h-16 signature-gradient text-white rounded-2xl font-headline font-black text-sm shadow-lg active:scale-95 transition-transform"
+                  >
+                    SUBMIT RATING
+                  </button>
+                </div>
+              </motion.div>
         </div>
       )}
     </div>

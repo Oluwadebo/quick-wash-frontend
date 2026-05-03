@@ -14,7 +14,7 @@ export default function ReadyToReceiveButton({ onClick }: { onClick?: () => void
       whileTap={{ scale: 0.98 }}
       onClick={onClick}
       className={cn(
-        "relative w-full h-24 rounded-3xl flex items-center justify-center gap-4 text-white font-headline font-black text-2xl tracking-tight shadow-2xl transition-all overflow-hidden",
+        "relative w-full h-20 sm:h-24 rounded-2xl sm:rounded-3xl flex items-center justify-center gap-4 text-white font-headline font-black text-xl sm:text-2xl tracking-tight shadow-2xl transition-all overflow-hidden",
         "kinetic-gradient shadow-primary/30"
       )}
     >

@@ -200,10 +200,10 @@ export default function LandmarkSelectionPage() {
                 </div>
                 <div>
                   <h4 className="font-headline font-black text-2xl leading-tight text-white">
-                    {order.status === 'ready' ? 'Wash Complete' : 'Rider is Coming'}
+                    {order.status === 'ready' ? 'Order Ready' : 'Rider is Coming'}
                   </h4>
                   <p className="text-xs font-bold text-white/90">
-                    {order.status === 'ready' ? 'Your clothes are ready! Waiting for rider.' : 'Our rider is currently on the way to you!'}
+                    {order.status === 'ready' ? 'Wash complete! Tap TRACK to notify a rider.' : 'Our rider is currently on the way to you!'}
                   </p>
                 </div>
               </div>

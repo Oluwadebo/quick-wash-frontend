@@ -358,8 +358,10 @@ router.patch("/:id", async (req, res) => {
           return res.status(400).json({ message: 'Customer is not yet ready to receive this order. Please wait for the "Locked and Ready" confirmation.' });
         }
       } else if (newStatus === 'delivered') {
-        const inputCode = String(req.body.handoverCode || '');
-        if (inputCode !== String(order.code4 || '')) {
+        const inputCode = String(req.body.handoverCode || '').trim();
+        const correctCode = String(order.code4 || '').trim();
+        if (inputCode !== correctCode) {
+          console.error(`[Order] Handover Code 4 mismatch: ${inputCode} vs ${correctCode}`);
           return res.status(400).json({ message: 'Invalid Handover Code (Code 4) for Customer Delivery.' });
         }
         // Rider gets 2nd half of fee upon delivery
@@ -430,7 +432,7 @@ router.post("/:id/cancel", async (req, res) => {
     }
 
     // Only allow cancellation in certain states
-    const cancellableStatuses = ['confirm', 'rider_assign_pickup'];
+    const cancellableStatuses = ['confirm', 'rider_assign_pickup', 'rider_accepted'];
     if (!cancellableStatuses.includes(order.status)) {
       if (!isNoTransaction) await session.abortTransaction();
       return res.status(400).json({ message: `Orders in ${order.status} status cannot be cancelled.` });
@@ -554,11 +556,14 @@ router.post("/:id/return", async (req, res) => {
       : await Transaction.create([transData], { session });
 
     // 6. Reset order status correctly based on where it was
-    const oldStatus = order.status;
-    if (oldStatus === 'rider_accepted' || oldStatus === 'picked_up') {
+    const oldStatus = (order.status || '').toLowerCase();
+    if (['rider_accepted', 'picked_up'].includes(oldStatus)) {
       order.status = 'rider_assign_pickup';
-    } else if (oldStatus === 'picked_up_delivery') {
+    } else if (['ready', 'rider_assign_delivery', 'picked_up_delivery'].includes(oldStatus)) {
       order.status = 'rider_assign_delivery';
+    } else {
+      // Default fallback if status was something else
+      order.status = 'rider_assign_pickup';
     }
     
     // Clear rider info but keep most codes
@@ -684,6 +689,10 @@ router.post("/:id/claim", async (req, res) => {
     // Only transition to rider_accepted if it's the pickup phase
     if (order.status === 'rider_assign_pickup') {
       order.status = 'rider_accepted';
+      order.color = 'bg-primary/20 text-primary';
+    } else if (order.status === 'rider_assign_delivery') {
+      // For delivery phase, we can just mark it as accepted if we want, 
+      // but usually stays in rider_assign_delivery until picked_up_delivery
       order.color = 'bg-primary/20 text-primary';
     }
 
