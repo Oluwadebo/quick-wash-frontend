@@ -49,6 +49,7 @@ export interface UserData {
   shopAddress?: string;
   landmark?: string;
   currentOrderId?: string;
+  yorubaAudioEnabled?: boolean;
   alerts?: any[];
 }
 
@@ -329,8 +330,8 @@ class ApiService {
     if (typeof window !== 'undefined') {
       try {
         const token = localStorage.getItem('qw_token');
-        const resp = await fetch(`${API_URLS.orders}/${orderId}`, {
-          method: 'PATCH',
+        const resp = await fetch(`${API_URLS.orders}/${orderId}/claim`, {
+          method: 'POST',
           headers: { 
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
@@ -338,8 +339,7 @@ class ApiService {
           body: JSON.stringify({ 
             riderUid, 
             riderName, 
-            riderPhone,
-            status: 'rider_accepted' // Update status when claimed
+            riderPhone
           })
         });
         return resp.ok;

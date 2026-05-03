@@ -40,8 +40,10 @@ export interface IOrder extends Document {
   issueDescription?: string;
   disputedAt?: Date;
   paymentMethod: string;
-  payoutReleased80?: boolean; // New field for partial payout
-  payoutReleased20?: boolean; // New field for final payout
+  payoutReleased80?: boolean; // Vendor 80% Payout
+  payoutReleased20?: boolean; // Vendor 20% Payout
+  riderPayout1Released?: boolean; // Rider 50% Payout (Pickup)
+  riderPayout2Released?: boolean; // Rider 50% Payout (Delivery)
   evidenceImage?: string;
   vendorEvidenceImage?: string;
   refundAmount?: number;
@@ -96,6 +98,8 @@ const OrderSchema: Schema = new Schema({
   paymentMethod: { type: String, default: 'wallet' },
   payoutReleased80: { type: Boolean, default: false },
   payoutReleased20: { type: Boolean, default: false },
+  riderPayout1Released: { type: Boolean, default: false },
+  riderPayout2Released: { type: Boolean, default: false },
   evidenceImage: { type: String },
   vendorEvidenceImage: { type: String },
   refundAmount: { type: Number },

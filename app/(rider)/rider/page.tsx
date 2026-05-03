@@ -112,17 +112,20 @@ export default function RiderDashboard() {
 
   React.useEffect(() => {
     refreshData();
-    
-    const interval = setInterval(() => {
-      refreshData();
-    }, 10000); // 10 seconds
-
     window.addEventListener('storage', refreshData);
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('storage', refreshData);
-    };
+    return () => window.removeEventListener('storage', refreshData);
   }, [refreshData]);
+
+  // Specific polling for task status sync (e.g. customer ready status)
+  React.useEffect(() => {
+    const pollInterval = setInterval(() => {
+      // Only poll if we have active tasks that might change status
+      if (tasks.length > 0) {
+        refreshData();
+      }
+    }, 5000); // 5 seconds for critical sync
+    return () => clearInterval(pollInterval);
+  }, [tasks.length, refreshData]);
 
   const handleAcceptOrder = async (orderId: string) => {
     if (!currentUser || isProcessing) return;
@@ -168,19 +171,23 @@ export default function RiderDashboard() {
     if (!currentUser) return;
     const order = await api.getOrder(orderId);
     if (order && order.riderUid === currentUser.uid) {
+      const cancellable = ['rider_accepted', 'rider_assign_pickup', 'rider_assign_delivery'].includes(order.status);
+      if (!cancellable) {
+        setNotification({ message: 'Order cannot be rejected at this stage.', type: 'error' });
+        return;
+      }
+
       await api.saveOrder({
         ...order,
-        riderUid: undefined,
-        riderName: undefined,
-        riderPhone: undefined,
-        status: order.status === 'rider_assign_pickup' ? 'rider_assign_pickup' : 'rider_assign_delivery',
+        riderUid: null, // Clear properly
+        riderName: null,
+        riderPhone: null,
+        status: order.status === 'rider_accepted' || order.status === 'rider_assign_pickup' ? 'rider_assign_pickup' : 'rider_assign_delivery',
         color: 'bg-warning/20 text-warning'
       });
       setOrderToReject(null);
       setNotification({ message: 'Order rejected and returned to pool.', type: 'info' });
-      const allOrders = await api.getOrders();
-      setTasks(allOrders.filter((o: Order) => o.riderUid === currentUser.uid && !['delivered', 'cancelled', 'completed'].includes((o.status || '').toLowerCase())));
-      window.dispatchEvent(new Event('storage'));
+      refreshData();
     }
   };
 
@@ -309,7 +316,7 @@ export default function RiderDashboard() {
 
   return (
     <div className="pb-32">
-      <TopAppBar roleLabel="Rider Station" />
+      <TopAppBar roleLabel="Rider Station" showAudioToggle />
       
       <main className="pt-8 px-6 max-w-7xl mx-auto">
           <header className="mb-10">
@@ -389,39 +396,70 @@ export default function RiderDashboard() {
                       Available for Pickup
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {availableOrders.map((order) => (
-                        <div key={order.id} className="bg-surface-container-low p-8 rounded-[2.5rem] border-2 border-primary/20 shadow-xl">
-                          <div className="flex justify-between items-start mb-6">
-                            <div>
-                              <p className="font-label text-[10px] font-black uppercase tracking-widest text-primary mb-1 leading-none">Order #{order.id}</p>
-                              <h4 className="font-headline font-black text-xl text-on-surface mb-2">{order.customerName}</h4>
-                              <div className="space-y-2">
-                                <div className="flex items-center gap-2 text-primary">
-                                  <MapPin className="w-3 h-3" />
-                                    <div className="flex flex-col">
-                                      <p className="text-[10px] font-black uppercase tracking-widest leading-tight">Pickup: {order.customerLandmark}</p>
-                                      {order.customerAddress && (
-                                        <p className="text-[8px] font-medium text-on-surface-variant truncate max-w-[200px]">{order.customerAddress}</p>
-                                      )}
+                      {availableOrders.map((order) => {
+                        const isDeliveryTask = order.status === 'rider_assign_delivery';
+                        return (
+                          <div key={order.id} className="bg-surface-container-low p-8 rounded-[2.5rem] border-2 border-primary/20 shadow-xl overflow-hidden relative">
+                            {isDeliveryTask && <div className="absolute top-0 right-0 bg-tertiary text-on-tertiary px-4 py-1 text-[8px] font-black uppercase tracking-widest rounded-bl-xl shadow-sm">Delivery Only</div>}
+                            <div className="flex justify-between items-start mb-6">
+                              <div>
+                                <p className="font-label text-[10px] font-black uppercase tracking-widest text-primary mb-1 leading-none">Order #{order.id}</p>
+                                <h4 className="font-headline font-black text-xl text-on-surface mb-2">{isDeliveryTask ? `Deliver for ${order.customerName}` : `Pickup from ${order.customerName}`}</h4>
+                                <div className="space-y-3">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                                      <MapPin className="w-4 h-4" />
                                     </div>
-                                </div>
-                                <div className="flex items-center gap-2 text-tertiary">
-                                  <Package className="w-3 h-3" />
-                                  <p className="text-[10px] font-black uppercase tracking-widest">Vendor: {order.vendorName} ({order.vendorLandmark})</p>
+                                    <div className="flex flex-col">
+                                      <p className="text-[10px] font-black uppercase tracking-widest text-primary leading-tight">
+                                        {isDeliveryTask ? 'Pickup from Vendor' : 'Pickup from Customer'}
+                                      </p>
+                                      <p className="text-sm font-bold text-on-surface">
+                                        {isDeliveryTask ? order.vendorLandmark : order.customerLandmark}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-lg bg-tertiary/10 flex items-center justify-center text-tertiary shrink-0">
+                                      <ArrowRight className="w-4 h-4" />
+                                    </div>
+                                    <div className="flex flex-col">
+                                      <p className="text-[10px] font-black uppercase tracking-widest text-tertiary leading-tight">
+                                        {isDeliveryTask ? 'Deliver to Customer' : 'Deliver to Vendor'}
+                                      </p>
+                                      <p className="text-sm font-bold text-on-surface">
+                                        {isDeliveryTask ? order.customerLandmark : order.vendorLandmark}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  {isDeliveryTask ? (
+                                    <div className="flex items-center gap-2 text-on-surface-variant font-bold text-[10px] bg-surface p-2 rounded-xl border border-primary/5">
+                                      <ShoppingBag className="w-3 h-3" />
+                                      <span>Items to Deliver: {order.items}</span>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center gap-2 text-on-surface-variant font-bold text-[10px] bg-surface p-2 rounded-xl border border-primary/5">
+                                      <Package className="w-3 h-3" />
+                                      <span>Pickup for: {order.vendorName}</span>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
+                              <div className="text-right">
+                                <span className="bg-primary text-on-primary px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest inline-block mb-1">₦{order.riderFee?.toLocaleString() || '1,000'} FEE</span>
+                                <p className="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">{formatRelativeTime(order.time)}</p>
+                              </div>
                             </div>
-                            <span className="bg-primary text-on-primary px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">₦1,000 FEE</span>
+                            <button 
+                              onClick={() => handleAcceptOrder(order.id)}
+                              disabled={currentUser?.status === 'restricted' || isProcessing}
+                              className="w-full h-14 signature-gradient text-white rounded-xl font-headline font-black text-sm shadow-lg active:scale-95 transition-transform disabled:opacity-50 disabled:active:scale-100"
+                            >
+                              {currentUser?.status === 'restricted' ? 'ACCOUNT RESTRICTED' : isProcessing ? 'PROCESSING...' : 'CLAIM ORDER NOW'}
+                            </button>
                           </div>
-                          <button 
-                            onClick={() => handleAcceptOrder(order.id)}
-                            disabled={currentUser?.status === 'restricted'}
-                            className="w-full h-14 signature-gradient text-white rounded-xl font-headline font-black text-sm shadow-lg active:scale-95 transition-transform disabled:opacity-50 disabled:active:scale-100"
-                          >
-                            {currentUser?.status === 'restricted' ? 'ACCOUNT RESTRICTED' : 'ACCEPT ORDER'}
-                          </button>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -605,7 +643,7 @@ export default function RiderDashboard() {
                               )}
                             </div>
 
-                            {(order.status === 'rider_assign_pickup' || order.status === 'rider_assign_delivery') && (
+                            {(order.status === 'rider_accepted' || order.status === 'rider_assign_pickup' || order.status === 'rider_assign_delivery' || order.status === 'ready') && (
                               <button 
                                 onClick={() => {
                                   setSelectedOrderId(order.id);

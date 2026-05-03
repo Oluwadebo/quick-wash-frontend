@@ -134,7 +134,7 @@ export default function WalletPage() {
     } finally {
       setIsProcessing(false);
     }
-  }, [fundAmount, paymentMethod, user?.uid, fetchWalletData]);
+  }, [fundAmount, paymentMethod, user?.uid, fetchWalletData, refreshUser]);
 
   const filteredHistory = React.useMemo(() => {
     const now = new Date();
