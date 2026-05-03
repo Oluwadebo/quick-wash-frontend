@@ -112,8 +112,16 @@ export default function RiderDashboard() {
 
   React.useEffect(() => {
     refreshData();
+    
+    const interval = setInterval(() => {
+      refreshData();
+    }, 10000); // 10 seconds
+
     window.addEventListener('storage', refreshData);
-    return () => window.removeEventListener('storage', refreshData);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('storage', refreshData);
+    };
   }, [refreshData]);
 
   const handleAcceptOrder = async (orderId: string) => {
@@ -301,7 +309,7 @@ export default function RiderDashboard() {
 
   return (
     <div className="pb-32">
-      <TopAppBar roleLabel="Rider Station" showAudioToggle />
+      <TopAppBar roleLabel="Rider Station" />
       
       <main className="pt-8 px-6 max-w-7xl mx-auto">
           <header className="mb-10">

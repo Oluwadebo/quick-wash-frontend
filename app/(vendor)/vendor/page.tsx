@@ -63,89 +63,86 @@ export default function VendorDashboard() {
   const [bankForm, setBankForm] = React.useState({ bankName: '', bankAccountNumber: '', bankAccountName: '' });
   const [isProcessing, setIsProcessing] = React.useState(false);
 
+  const fetchData = React.useCallback(async () => {
+    if (!currentUser?.uid) return;
+    
+    try {
+      const allOrders = await api.getOrders(currentUser.uid, 'vendor');
+      
+      // Case-insensitive vendor filtering (Secondary safety)
+      const vendorOrders = allOrders.filter((o: Order) => 
+        o.vendorId && o.vendorId.toLowerCase() === currentUser.uid.toLowerCase()
+      );
+      
+      // Check for 3-day delay penalty
+      const now = new Date().getTime();
+      const threeDays = 3 * 24 * 60 * 60 * 1000;
+      let penaltyApplied = false;
+
+      const checkedOrders = await Promise.all(vendorOrders.map(async (o: Order) => {
+        if (o.status.toLowerCase() === 'washing' && o.time) {
+          const startTime = new Date(o.time).getTime();
+          if (now - startTime > threeDays && !o.penaltyApplied) {
+            o.penaltyApplied = true;
+            penaltyApplied = true;
+            
+            if (currentUser?.uid) {
+              await api.adjustTrustPoints(currentUser.uid, 'vendor_delay');
+            }
+            await api.saveOrder(o);
+          }
+        }
+        return o;
+      }));
+
+      setOrders(checkedOrders);
+
+      const me = await api.getUser(currentUser.uid);
+      if (me) {
+        setStats({
+          totalEarnings: me.walletBalance || 0,
+          pendingBalance: me.pendingBalance || 0,
+          activeOrders: vendorOrders.filter(o => !['delivered', 'completed', 'cancelled'].includes(o.status.toLowerCase())).length,
+          trustScore: me.trustPoints || 100
+        });
+      }
+
+      // Real wallet history from API if needed (maybe only on first load or manual refresh)
+      // but let's refresh balance at least
+    } catch (e) {
+      console.error('[Vendor] Polling error:', e);
+    }
+  }, [currentUser]);
+
   React.useEffect(() => {
-    const init = async () => {
-      if (currentUser?.uid) {
-        const allOrders = await api.getOrders(currentUser.uid, 'vendor');
-        
-        // Case-insensitive vendor filtering (Secondary safety)
-        const vendorOrders = allOrders.filter((o: Order) => 
-          o.vendorId && o.vendorId.toLowerCase() === currentUser.uid.toLowerCase()
-        );
-        
-        // Check for 3-day delay penalty
-        const now = new Date().getTime();
-        const threeDays = 3 * 24 * 60 * 60 * 1000;
-        let penaltyApplied = false;
-
-        const checkedOrders = await Promise.all(vendorOrders.map(async (o: Order) => {
-          if (o.status.toLowerCase() === 'washing' && o.time) {
-            const startTime = new Date(o.time).getTime();
-            if (now - startTime > threeDays && !o.penaltyApplied) {
-              o.penaltyApplied = true;
-              penaltyApplied = true;
-              
-              if (currentUser?.uid) {
-                await api.adjustTrustPoints(currentUser.uid, 'vendor_delay');
-              }
-              await api.saveOrder(o);
-            }
-          }
-          return o;
-        }));
-
-        setOrders(checkedOrders);
-
-        // Load Services using ApiService
-        const vendorPrices = await api.getVendorPriceList(currentUser.uid);
-        setServices(vendorPrices);
-        
-        // Fetch global services from database
-        try {
-          const settings = await api.getSiteSettings();
-          const gServices = settings.globalServices && settings.globalServices.length > 0 
-            ? settings.globalServices 
-            : ["Shirt", "Jeans", "Native", "Suit", "Duvet", "Bedsheet"];
-          setGlobalServices(gServices);
-        } catch (e) {
-          setGlobalServices(["Shirt", "Jeans", "Native", "Suit", "Duvet", "Bedsheet"]);
-        }
-
-        const me = await api.getUser(currentUser.uid);
-        if (me) {
-          setStats({
-            totalEarnings: me.walletBalance || 0,
-            pendingBalance: me.pendingBalance || 0,
-            activeOrders: vendorOrders.filter(o => !['delivered', 'completed', 'cancelled'].includes(o.status.toLowerCase())).length,
-            trustScore: me.trustPoints || 100
-          });
-        }
-
-        // Generate analytics
-        const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-        setRevenueData(days.map(d => ({ name: d, revenue: Math.floor(Math.random() * 5000) + 1500 })));
-
-        // Real wallet history from API
-        try {
-          const token = localStorage.getItem('qw_token');
-          const res = await fetch(`/api/wallet/history?userId=${currentUser.uid}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
-          if (res.ok) {
-            const data = await res.json();
-            setWalletHistory(data.transactions || []);
-            if (data.balance !== undefined) {
-               setStats(prev => ({ ...prev, totalEarnings: data.balance }));
-            }
-          }
-        } catch (e) {
-          console.error('Failed to fetch wallet history:', e);
-        }
-
+    const initServices = async () => {
+      if (!currentUser?.uid) return;
+      
+      // Load Services using ApiService
+      const vendorPrices = await api.getVendorPriceList(currentUser.uid);
+      setServices(vendorPrices);
+      
+      // Fetch global services from database
+      try {
+        const settings = await api.getSiteSettings();
+        const gServices = settings.globalServices && settings.globalServices.length > 0 
+          ? settings.globalServices 
+          : ["Shirt", "Jeans", "Native", "Suit", "Duvet", "Bedsheet"];
+        setGlobalServices(gServices);
+      } catch (e) {
+        setGlobalServices(["Shirt", "Jeans", "Native", "Suit", "Duvet", "Bedsheet"]);
       }
     };
-    init();
-  }, [currentUser]);
+
+    fetchData();
+    initServices();
+
+    const interval = setInterval(() => {
+      fetchData();
+    }, 10000); // 10 seconds
+
+    return () => clearInterval(interval);
+  }, [currentUser, fetchData]);
 
   const handleStatusUpdate = async (orderId: string, newStatus: string, color: string, extraData: any = {}) => {
     try {
@@ -166,8 +163,8 @@ export default function VendorDashboard() {
     }
   };
 
-  const handleVerifyHandover = async (order: Order) => {
-    const input = handoverInput[order.id];
+  const handleVerifyHandover = async (order: Order, overrideCode?: string) => {
+    const input = overrideCode || handoverInput[order.id];
     if (!input || input.length < 4) {
       setNotification({ message: "Please enter the 4-digit code.", type: 'error' });
       setTimeout(() => setNotification(null), 2000);
@@ -303,7 +300,7 @@ export default function VendorDashboard() {
 
   return (
     <div className="pb-32">
-      <TopAppBar roleLabel="Vendor Station" showAudioToggle />
+      <TopAppBar roleLabel="Vendor Station" />
       
       <main className="pt-8 px-6 max-w-7xl mx-auto">
           <AnimatePresence>

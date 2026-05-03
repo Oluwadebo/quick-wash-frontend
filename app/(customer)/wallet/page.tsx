@@ -10,7 +10,7 @@ import { api } from '@/lib/ApiService';
 import { API_URLS } from '@/lib/api-config';
 
 export default function WalletPage() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const [balance, setBalance] = React.useState(0);
   const [history, setHistory] = React.useState<any[]>([]);
   const [selectedTransaction, setSelectedTransaction] = React.useState<any>(null);
@@ -85,6 +85,9 @@ export default function WalletPage() {
         console.log('[Wallet] Funding success, updating UI states...');
         setBalance(result.balance);
         setLastFundedAmount(amount);
+        
+        // Sync global auth state
+        if (refreshUser) await refreshUser();
         
         // 2. Immediate History Update with optimistic transaction
         if (result.transaction) {
@@ -169,21 +172,21 @@ export default function WalletPage() {
 
   return (
     <div className="pb-32">
-      <TopAppBar title="My Wallet" showAudioToggle />
+      <TopAppBar title="My Wallet" />
 
-      <main className="pt-8 px-6 max-w-2xl mx-auto space-y-8">
+      <main className="pt-8 px-4 sm:px-6 max-w-2xl mx-auto space-y-6 sm:space-y-8">
         {/* Balance Card */}
         <motion.section 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-primary p-10 rounded-[3rem] text-on-primary shadow-2xl shadow-primary/20 relative overflow-hidden group"
+          className="bg-primary p-7 sm:p-10 rounded-[2.5rem] sm:rounded-[3rem] text-on-primary shadow-2xl shadow-primary/20 relative overflow-hidden group"
         >
           <div className="relative z-10">
             <div className="flex items-center gap-3 opacity-80 mb-4">
               <Wallet className="w-5 h-5" />
               <span className="font-label text-xs font-black uppercase tracking-[0.3em]">Available Balance</span>
             </div>
-            <h2 className="text-6xl font-headline font-black tracking-tighter mb-10">
+            <h2 className="text-4xl sm:text-6xl font-headline font-black tracking-tighter mb-10 overflow-hidden text-ellipsis">
               ₦{balance.toLocaleString()}
             </h2>
             <div className="flex gap-4">

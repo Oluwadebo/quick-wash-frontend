@@ -108,7 +108,7 @@ export default function ProfilePage() {
 
   return (
     <div className="pb-32">
-      <TopAppBar title="My Profile" showAudioToggle />
+      <TopAppBar title="My Profile" />
 
       <main className="pt-8 px-6 max-w-2xl mx-auto space-y-8">
         <section className="flex items-center gap-6">

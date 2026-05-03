@@ -14,7 +14,7 @@ import { api, Order, UserData } from '@/lib/ApiService';
 import { useAuth } from '@/hooks/use-auth';
 
 export default function LandmarkSelectionPage() {
-  const { user: authUser } = useAuth();
+  const { user: authUser, refreshUser } = useAuth();
   const [recentOrders, setRecentOrders] = React.useState<Order[]>([]);
   const [user, setUser] = React.useState<UserData | null>(null);
   const [alerts, setAlerts] = React.useState<any[]>([]);
@@ -24,22 +24,23 @@ export default function LandmarkSelectionPage() {
   const [readyToReceiveOrders, setReadyToReceiveOrders] = React.useState<Order[]>([]);
   const [activeBadgeId, setActiveBadgeId] = React.useState<string | null>(null);
 
-  React.useEffect(() => {
-    const init = async () => {
-      if (!authUser?.uid) return;
-      
+  const fetchData = React.useCallback(async () => {
+    if (!authUser?.uid) return;
+    
+    try {
       const me = await api.getUser(authUser.uid);
-      setUser(me);
+      if (me) setUser(me);
 
       if (me?.uid) {
-        await api.processAutoRecovery(me.uid);
-        
         // Fetch drafts from backend instead of localStorage
         const userDrafts = await api.getDrafts(me.uid);
         if (userDrafts.length > 0) {
           const mainDraft = userDrafts[0];
           setPendingCart(mainDraft.items);
           setPendingVendorId(mainDraft.vendorId);
+        } else {
+          setPendingCart([]);
+          setPendingVendorId(null);
         }
 
         const allOrders = await api.getOrders();
@@ -61,11 +62,21 @@ export default function LandmarkSelectionPage() {
         const filtered = allOrders.filter((o: Order) => o.customerUid === me.uid);
         setRecentOrders(filtered.sort((a: Order, b: Order) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
       }
-    };
-    init();
-    
-    // We don't really need a storage listener for qw_user anymore as useAuth handles it
+    } catch (err) {
+      console.error('[Dashboard] Polling error:', err);
+    }
   }, [authUser]);
+
+  React.useEffect(() => {
+    fetchData();
+    
+    // Increased refresh frequency for "instant" appearance
+    const interval = setInterval(() => {
+      fetchData();
+    }, 10000); // 10 seconds
+
+    return () => clearInterval(interval);
+  }, [fetchData]);
 
   const allBadges = [
     { 
@@ -179,26 +190,26 @@ export default function LandmarkSelectionPage() {
           {readyToReceiveOrders.map((order) => (
             <motion.section 
               key={order.id}
-              initial={{ opacity: 0, y: -20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mb-8 bg-success/10 border-2 border-success/20 p-6 rounded-[2.5rem] flex items-center justify-between gap-4 shadow-xl shadow-success/5"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="mb-8 bg-success p-8 rounded-[2.5rem] flex items-center justify-between gap-4 shadow-2xl shadow-success/20 border-0"
             >
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-2xl bg-success text-white flex items-center justify-center shrink-0 shadow-lg">
-                  <Check className="w-7 h-7" />
+              <div className="flex items-center gap-4 text-white">
+                <div className="w-14 h-14 rounded-2xl bg-white/20 text-white flex items-center justify-center shrink-0 shadow-inner">
+                  <Check className="w-8 h-8" />
                 </div>
                 <div>
-                  <h4 className="font-headline font-black text-success text-lg leading-tight">
+                  <h4 className="font-headline font-black text-2xl leading-tight">
                     {order.status === 'ready' ? 'Wash Complete' : 'Rider is Coming'}
                   </h4>
-                  <p className="text-xs font-bold text-on-surface-variant">
-                    {order.status === 'ready' ? 'Your clothes are ready! Waiting for rider.' : 'Your clothes are on the way!'}
+                  <p className="text-xs font-bold text-white/90">
+                    {order.status === 'ready' ? 'Your clothes are ready! Waiting for rider.' : 'Our rider is currently on the way to you!'}
                   </p>
                 </div>
               </div>
               <Link 
                 href={`/track/${order.id}`}
-                className="px-6 py-3 bg-success text-white rounded-xl font-headline font-black text-xs shadow-lg active:scale-95 transition-transform"
+                className="px-6 py-4 bg-white text-success rounded-2xl font-headline font-black text-xs shadow-lg active:scale-95 transition-transform hover:bg-success-container hover:text-on-success-container"
               >
                 TRACK
               </Link>

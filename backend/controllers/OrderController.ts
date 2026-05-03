@@ -84,6 +84,9 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
     }
 
     if (status === 'washing' && !order.payoutReleased80) {
+      if (handoverCode !== order.code2) {
+        return res.status(400).json({ error: 'Invalid handover code from rider (Code 2)' });
+      }
       order.washingAt = new Date();
       if (order.vendorId) {
         const vendor = await User.findOne({ uid: order.vendorId });
@@ -93,8 +96,10 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
           const netVendorAmount = (order.itemsPrice || 0) * platformFeeFactor;
           const payoutAmount = netVendorAmount * 0.8;
           
+          console.log(`[Payout] Releasing 80% payout for Order #${order.id} to Vendor ${vendor.uid}. Amount: ${payoutAmount}`);
           vendor.walletBalance = (vendor.walletBalance || 0) + payoutAmount;
           await vendor.save();
+          console.log(`[Payout] Vendor ${vendor.uid} wallet updated. New balance: ${vendor.walletBalance}`);
           
           await Transaction.create({
             id: uuidv4(),

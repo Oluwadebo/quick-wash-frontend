@@ -30,26 +30,6 @@ export default function PaymentSuccessPage() {
           </motion.div>
         </div>
 
-        <div className="w-full mb-10">
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="bg-surface-container-lowest rounded-2xl p-4 flex items-center justify-between shadow-sm"
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-tertiary-container flex items-center justify-center">
-                <Volume2 className="text-on-tertiary-container w-6 h-6 fill-current" />
-              </div>
-              <div>
-                <p className="font-label text-xs uppercase tracking-widest text-on-surface-variant font-bold">Audio Confirmation</p>
-                <p className="font-headline text-lg font-bold text-on-surface">&quot;O ti sanwo&quot;</p>
-              </div>
-            </div>
-            <button className="text-primary font-headline font-bold px-4 py-2 hover:bg-primary/5 rounded-lg transition-colors">Replay</button>
-          </motion.div>
-        </div>
-
         <div className="grid grid-cols-2 gap-4 w-full mb-8">
           <motion.div 
             initial={{ opacity: 0, x: -20 }}

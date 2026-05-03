@@ -589,7 +589,7 @@ function OrderPageContent() {
 
   return (
     <div className="pb-64">
-      <TopAppBar showAudioToggle />
+      <TopAppBar />
       
       <main className="pt-8 px-6 max-w-7xl mx-auto">
         <AnimatePresence>

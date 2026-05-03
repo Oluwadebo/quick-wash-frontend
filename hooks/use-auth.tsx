@@ -36,7 +36,6 @@ interface UserData {
   ninImage?: string;
   transferReference?: string;
   currentOrderId?: string;
-  yorubaAudioEnabled?: boolean;
   alerts?: any[];
 }
 
@@ -50,6 +49,7 @@ interface AuthContextType {
   logout: () => void;
   approveUser: (uid: string) => Promise<UserData>;
   updateUser: (updatedData: Partial<UserData>) => void;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -63,14 +63,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchMe = useCallback(async () => {
     try {
+      const token = localStorage.getItem('qw_token');
+      if (!token) {
+        setLoading(false);
+        return;
+      }
       const data = await api.getMe();
       if (data) {
         setUser(data);
-      } else {
-        setUser(null);
       }
     } catch (e) {
-      setUser(null);
+      console.error('[Auth] fetchMe error:', e);
+      // We don't wipe the user on a network error usually,
+      // but if the token is invalid, the backend returns something or throws.
     } finally {
       setLoading(false);
     }
@@ -176,7 +181,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem('qw_token');
     localStorage.removeItem('qw_current_order_id');
     setUser(null);
-    router.push('/auth?login=true');
+    router.replace('/auth?login=true');
   }, [router]);
 
   const updateUser = useCallback((updatedData: Partial<UserData>) => {
@@ -207,7 +212,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let timeoutId: NodeJS.Timeout;
     const resetTimer = () => {
       if (timeoutId) clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => logout(), 60 * 60 * 1000);
+      // Stay logged in for 24 hours of inactivity instead of 1 hour
+      timeoutId = setTimeout(() => logout(), 24 * 60 * 60 * 1000);
     };
     const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
     const handleActivity = () => resetTimer();
@@ -218,9 +224,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       events.forEach(event => document.removeEventListener(event, handleActivity));
     };
   }, [user, logout]);
+  
+  // Background polling for user data (balance, trust points, etc)
+  useEffect(() => {
+    if (!user) return;
+    
+    const pollInterval = setInterval(() => {
+      fetchMe();
+    }, 15000); // 15 seconds polling for user state
+    
+    return () => clearInterval(pollInterval);
+  }, [user, fetchMe]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, isProcessing, error, login, signup, logout, approveUser, updateUser }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      loading, 
+      isProcessing, 
+      error, 
+      login, 
+      signup, 
+      logout, 
+      approveUser, 
+      updateUser,
+      refreshUser: fetchMe
+    }}>
       {children}
     </AuthContext.Provider>
   );

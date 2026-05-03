@@ -215,7 +215,7 @@ export default function PriceListPage() {
   return (
     <ProtectedRoute allowedRoles={['vendor']}>
       <div className="pb-32">
-        <TopAppBar roleLabel="Vendor" showAudioToggle />
+        <TopAppBar roleLabel="Vendor" />
         
         <main className="pt-8 px-6 max-w-7xl mx-auto">
           <header className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6">

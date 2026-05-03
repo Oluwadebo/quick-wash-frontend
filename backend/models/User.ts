@@ -35,7 +35,6 @@ export interface IUser extends Document {
   ninImage?: string;  // New field for riders
   transferReference?: string; // New field for identifying transfers
   currentOrderId?: string;
-  yorubaAudioEnabled?: boolean;
   alerts?: any[];
   resetPasswordToken?: string;
   resetPasswordExpires?: Date;
@@ -61,7 +60,6 @@ const UserSchema: Schema = new Schema({
   lastPenaltyAt: { type: Date },
   lastRecoveryAt: { type: Date },
   currentOrderId: { type: String, default: null },
-  yorubaAudioEnabled: { type: Boolean, default: true },
   alerts: { type: [Schema.Types.Mixed], default: [] },
   shopName: { type: String },
   vehicleType: { type: String },

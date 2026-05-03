@@ -1,16 +1,14 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Menu, Volume2, X, User, Droplets, LogOut } from 'lucide-react';
+import { Menu, volume2, X, User, Droplets, LogOut, ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
-import YorubaAudioToggle from './YorubaAudioToggle';
 import { useAuth } from '@/hooks/use-auth';
 import Image from 'next/image';
 import { api, SiteSettings } from '@/lib/ApiService';
 
 interface TopAppBarProps {
   title?: string;
-  showAudioToggle?: boolean;
   showClose?: boolean;
   onClose?: () => void;
   roleLabel?: string;
@@ -18,7 +16,6 @@ interface TopAppBarProps {
 
 export default function TopAppBar({ 
   title, 
-  showAudioToggle = false, 
   showClose = false, 
   onClose,
   roleLabel
@@ -75,8 +72,6 @@ export default function TopAppBar({
         </div>
 
         <div className="flex items-center gap-4">
-          {showAudioToggle && <YorubaAudioToggle />}
-          
           {showClose ? (
             <button 
               onClick={onClose}

@@ -35,6 +35,12 @@
   --color-error-container: #f95630;
   --color-on-error: #ffefec;
   --color-on-error-container: #520c00;
+  
+  --color-success: #008732;
+  --color-on-success: #ffffff;
+  --color-warning: #f1c40f;
+  --color-on-warning: #332b00;
+  --color-warning-dark: #b7950b;
 
   --font-headline: var(--font-headline);
   --font-body: var(--font-headline);

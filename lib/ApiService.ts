@@ -49,7 +49,6 @@ export interface UserData {
   shopAddress?: string;
   landmark?: string;
   currentOrderId?: string;
-  yorubaAudioEnabled?: boolean;
   alerts?: any[];
 }
 
