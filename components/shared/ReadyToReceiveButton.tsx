@@ -20,7 +20,7 @@ export default function ReadyToReceiveButton({ onClick }: { onClick?: () => void
     >
       <div className="absolute inset-0 bg-white/10 opacity-0 hover:opacity-100 transition-opacity" />
       <DoorOpen className="w-8 h-8" />
-      <span>I&apos;M READY TO RECEIVE</span>
+      <span>I AM READY</span>
     </motion.button>
   );
 }

@@ -1222,9 +1222,31 @@ export default function VendorDashboard() {
                     <div className="p-6 bg-surface-container-lowest rounded-3xl border border-primary/5">
                       <p className="font-label text-[10px] font-black uppercase tracking-widest text-primary mb-2">Net Earnings</p>
                       <p className="font-headline font-black text-2xl text-primary">₦{(selectedOrder.itemsPrice * 0.9 || 0).toLocaleString()}</p>
-                      <p className="text-[8px] font-bold text-on-surface-variant italic">10% platform fee deducted</p>
+                      <p className="text-[8px] font-bold text-on-surface-variant italic">10% platform fee deducted (You get 80% when washing starts and 20% on completion)</p>
                     </div>
                   </div>
+
+                  {/* Handover Section */}
+                  {(selectedOrder.status === 'ready' || selectedOrder.status === 'rider_assign_delivery') && (
+                    <div className="p-8 bg-[#006E33]/10 rounded-[2.5rem] border-2 border-[#006E33]/20 relative overflow-hidden">
+                      <div className="absolute top-0 right-0 p-4 opacity-10">
+                        <ShieldCheck className="w-24 h-24 text-[#006E33]" />
+                      </div>
+                      <div className="relative z-10 text-center">
+                        <p className="font-label text-[10px] uppercase tracking-[0.2em] font-black text-[#006E33] mb-6">Handover Code for Rider (Code 3)</p>
+                        <div className="flex justify-center gap-3">
+                          {(selectedOrder.code3 || '----').split('').map((char: string, i: number) => (
+                            <div key={i} className="w-12 h-16 bg-white rounded-2xl flex items-center justify-center font-headline font-black text-2xl text-[#006E33] shadow-lg border border-[#006E33]/10">
+                              {char}
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-[10px] font-bold text-[#006E33]/70 mt-6 leading-relaxed">
+                          Give this code to the rider only after they have picked up the washed items.
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Customer Rating Display */}
                   {(selectedOrder.rating || selectedOrder.status === 'completed') && (
@@ -1286,7 +1308,7 @@ export default function VendorDashboard() {
                 <h3 className="text-3xl font-headline font-black text-on-surface mb-4">Close Shop</h3>
                 <p className="text-on-surface-variant font-medium mb-8">Set a time when you will be back. Customers will see this before selecting you.</p>
                 
-                <div className="space-y-6">
+                <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
                   <div className="p-6 bg-surface-container-lowest rounded-3xl border border-primary/5">
                     <p className="font-label text-[10px] font-black uppercase tracking-widest text-primary mb-2">Back at (e.g. 2:00 PM, Tomorrow)</p>
                     <input 
@@ -1345,7 +1367,7 @@ export default function VendorDashboard() {
                 <h3 className="text-3xl font-headline font-black text-on-surface mb-4">Report Issue</h3>
                 <p className="text-on-surface-variant font-medium mb-8">Something wrong with the order items or customer before you start washing? Report it here.</p>
                 
-                <div className="space-y-6">
+                <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
                   <div className="p-6 bg-surface-container-lowest rounded-3xl border border-primary/5">
                     <p className="font-label text-[10px] font-black uppercase tracking-widest text-primary mb-2">Detailed Complaint</p>
                     <textarea 
@@ -1409,7 +1431,7 @@ export default function VendorDashboard() {
                 className="relative w-full max-w-lg bg-surface-container-low rounded-[3rem] p-10 shadow-2xl border border-primary/10"
               >
                 <h3 className="text-3xl font-headline font-black text-on-surface mb-6">Select Service Type</h3>
-                <div className="grid grid-cols-2 gap-3 mb-8">
+                <div className="grid grid-cols-2 gap-3 mb-8 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
                   {globalServices.map(s => (
                     <button 
                       key={s}

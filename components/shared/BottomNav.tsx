@@ -55,7 +55,8 @@ export default function BottomNav() {
   else if (user?.role === 'rider') items = riderItems;
 
   return (
-    <nav className="fixed bottom-0 left-0 w-full z-50 flex lg:hidden justify-around items-center px-4 pt-3 pb-8 bg-zinc-900 backdrop-blur-2xl rounded-t-[2.5rem] shadow-[0_-8px_32px_rgba(0,0,0,0.2)]">
+    <nav className="fixed bottom-0 left-0 w-full z-50 flex lg:hidden justify-between items-center px-4 pt-3 pb-8 bg-zinc-900 backdrop-blur-2xl rounded-t-[2.5rem] shadow-[0_-8px_32px_rgba(0,0,0,0.2)] overflow-x-auto scrollbar-hide">
+      <div className="flex w-full justify-around items-center min-w-max px-4">
       {items.map((item) => {
         const isActive = pathname === item.href;
         
@@ -77,6 +78,7 @@ export default function BottomNav() {
           </Link>
         );
       })}
+      </div>
     </nav>
   );
 }

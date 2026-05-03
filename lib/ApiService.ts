@@ -497,13 +497,15 @@ class ApiService {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (resp.ok) return await this.safeJson(resp);
+        
         if (resp.status === 401) {
-          localStorage.removeItem('qw_token');
-          return null;
+          throw new Error('UNAUTHORIZED');
         }
-      } catch (e) {
-        console.error('[ApiService] getMe network error:', e);
-        throw e; // Propagate network error so caller knows NOT to log out
+        
+        throw new Error(`SERVER_ERROR_${resp.status}`);
+      } catch (e: any) {
+        console.error('[ApiService] getMe error:', e.message || e);
+        throw e;
       }
     }
     return null;

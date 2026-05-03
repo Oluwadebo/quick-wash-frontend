@@ -111,12 +111,27 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
     { id: 'rider_assign_pickup', label: order.riderUid ? 'Heading' : 'Searching', icon: Phone },
     { id: 'picked_up', label: 'Laundry', icon: Package },
     { id: 'washing', label: 'Washing', icon: WashingMachine },
-    { id: 'ready', label: 'Ready', icon: CheckCircle },
-    { id: 'rider_assign_delivery', label: order.riderUid ? 'Heading' : 'Searching', icon: ArrowRight },
+    { id: 'ready', label: 'Finished', icon: CheckCircle },
+    { id: 'rider_assign_delivery', label: order.riderUid ? 'Coming' : 'Searching', icon: ArrowRight },
     { id: 'picked_up_delivery', label: 'Delivering', icon: ShoppingBag },
     { id: 'delivered', label: 'Arrived', icon: DoorOpen },
     { id: 'completed', label: 'Done', icon: ShieldCheck }
   ];
+
+  const getStatusMessage = () => {
+    switch (order.status) {
+      case 'confirm': return "Order confirmed! Waiting for a rider to pick up your laundry.";
+      case 'rider_assign_pickup': return order.riderUid ? "Rider is on the way to pick up your laundry." : "Searching for a rider nearby...";
+      case 'picked_up': return "Laundry picked up! Heading to the vendor station.";
+      case 'washing': return "Vendor is currently washing your clothes. Stay fresh!";
+      case 'ready': return "Wash Complete! Your clothes are ready. Click 'I AM READY' below so a rider can pick them up.";
+      case 'rider_assign_delivery': return "Rider has been notified! Searching for a rider to deliver your clean clothes.";
+      case 'picked_up_delivery': return "Rider has picked up your clean clothes and is heading to you!";
+      case 'delivered': return "Your laundry has arrived! Please inspect and confirm.";
+      case 'completed': return "Order successfully completed. Thank you!";
+      default: return "Processing your order...";
+    }
+  };
 
   const currentStepIdx = steps.findIndex(s => s.id === order.status);
   const progress = ((currentStepIdx + 1) / steps.length) * 100;
@@ -217,7 +232,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
         </div>
       </header>
 
-      <main className="pt-28 px-6 max-w-2xl mx-auto space-y-8">
+      <main className="pt-28 px-6 max-w-2xl mx-auto space-y-8 pb-80">
         <AnimatePresence>
           {notification && (
             <Toast 
@@ -227,6 +242,18 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
             />
           )}
         </AnimatePresence>
+
+        {/* Status Message Card */}
+        <section className="bg-primary shadow-2xl shadow-primary/20 rounded-[2.5rem] p-8 text-white relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl" />
+          <div className="relative z-10">
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] opacity-60 mb-2">Current Status</p>
+            <h2 className="text-2xl font-headline font-black leading-tight tracking-tight">
+              {getStatusMessage()}
+            </h2>
+          </div>
+        </section>
+
         {/* Status Progress */}
         <section className="bg-surface-container-low rounded-[3rem] p-10 shadow-sm border border-primary/5">
           <div className="flex justify-between items-start relative">
@@ -261,7 +288,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
         </section>
 
         {/* Handover Code Section */}
-        {(order.status === 'rider_assign_pickup' || order.status === 'picked_up_delivery') && (
+        {(order.status === 'confirm' || order.status === 'rider_assign_pickup' || order.status === 'picked_up_delivery') && (
           <section className="bg-surface-container-lowest rounded-[3rem] p-10 text-center space-y-8 shadow-2xl border-4 border-primary-container relative overflow-hidden">
             <div className="absolute top-0 right-0 p-4">
               <ShieldCheck className="text-primary/10 w-24 h-24" />
@@ -269,10 +296,10 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
             
             <div className="relative z-10">
               <p className="font-label text-xs uppercase tracking-[0.3em] font-black text-on-surface-variant mb-8">
-                {order.status === 'rider_assign_pickup' ? 'Give this to Rider at Pickup' : 'Enter Code from Rider to Confirm Delivery'}
+                {order.status === 'picked_up_delivery' ? 'Enter Code from Rider to Confirm Delivery' : 'Give this to Rider at Pickup'}
               </p>
               
-              {order.status === 'rider_assign_pickup' ? (
+              {(order.status === 'confirm' || order.status === 'rider_assign_pickup') ? (
                 <div className="flex justify-center gap-4">
                   {(order.code1 || '----').split('').map((num: string, i: number) => (
                     <motion.span 
@@ -464,7 +491,10 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
                   status: 'rider_assign_delivery', 
                   customerReadyForDelivery: true,
                   color: 'bg-primary text-on-primary',
-                  customerConfirmedDeliveryAt: new Date().toISOString()
+                  customerConfirmedDeliveryAt: new Date().toISOString(),
+                  riderUid: null,
+                  riderName: null,
+                  riderPhone: null
                 } as Order;
                 await api.saveOrder(updatedOrder);
                 setOrder(updatedOrder);
@@ -487,7 +517,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
           <motion.div 
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            className="relative w-full max-w-sm bg-surface-container-low rounded-[3rem] p-10 border border-primary/10 shadow-2xl text-center"
+            className="relative w-full max-w-sm bg-surface-container-low rounded-[3rem] p-10 border border-primary/10 shadow-2xl text-center max-h-[85vh] overflow-y-auto custom-scrollbar"
           >
             <div className="w-20 h-20 bg-primary/10 text-primary rounded-full flex items-center justify-center mx-auto mb-6">
               <ShieldCheck className="w-10 h-10" />

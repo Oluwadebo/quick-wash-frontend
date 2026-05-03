@@ -321,17 +321,18 @@ function OrderPageContent() {
       return;
     }
     
-    const currentUserData = await api.getUser(currentUser.uid);
-    if (!currentUserData) {
+    // ALWAYS re-fetch current user data from API before payment to avoid stale wallet balance
+    const freshUser = await api.getUser(currentUser.uid);
+    if (!freshUser) {
       setNotification({ message: "User session error. Please login again.", type: 'error' });
       return;
     }
     
     // Check wallet balance ONLY if wallet is selected
-    if (paymentMethod === 'wallet' && (Number(currentUserData.walletBalance) || 0) < totalPrice) {
+    if (paymentMethod === 'wallet' && (Number(freshUser.walletBalance) || 0) < totalPrice) {
       setIsPaying(true);
       setNotification({ 
-        message: `Insufficient balance! Balance: ₦${(Number(currentUserData.walletBalance) || 0).toLocaleString()}. Total: ₦${totalPrice.toLocaleString()}. Redirecting to wallet...`, 
+        message: `Insufficient balance! Balance: ₦${(Number(freshUser.walletBalance) || 0).toLocaleString()}. Total: ₦${totalPrice.toLocaleString()}. Redirecting to wallet...`, 
         type: 'error' 
       });
       
@@ -364,9 +365,9 @@ function OrderPageContent() {
     
     const newOrder: Order = {
       id: newOrderId,
-      customerUid: currentUserData.uid,
-      customerName: currentUserData.fullName || 'Guest',
-      customerPhone: currentUserData.phoneNumber || '',
+      customerUid: freshUser.uid,
+      customerName: freshUser.fullName || 'Guest',
+      customerPhone: freshUser.phoneNumber || '',
       customerLandmark: pickupLandmark,
       customerAddress: pickupAddress,
       items: itemsDescription,

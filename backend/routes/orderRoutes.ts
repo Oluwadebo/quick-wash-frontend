@@ -310,8 +310,8 @@ router.patch("/:id", async (req, res) => {
     
     if (newStatus !== currentStatus) {
       if (newStatus === 'picked_up') {
-        const inputCode = req.body.handoverCode;
-        if (inputCode !== order.code1) {
+        const inputCode = String(req.body.handoverCode || '');
+        if (inputCode !== String(order.code1 || '')) {
           return res.status(400).json({ message: 'Invalid Handover Code (Code 1) for Pickup.' });
         }
         // Rider gets 1st half of fee upon pickup from customer
@@ -329,8 +329,8 @@ router.patch("/:id", async (req, res) => {
           }
         }
       } else if (newStatus === 'washing') {
-        const inputCode = req.body.handoverCode;
-        if (inputCode !== order.code2) {
+        const inputCode = String(req.body.handoverCode || '');
+        if (inputCode !== String(order.code2 || '')) {
           return res.status(400).json({ message: 'Invalid Handover Code (Code 2) for Vendor Receipt.' });
         }
         // Vendor gets 80% of net (itemsPrice * 0.9) upon starting wash
@@ -349,8 +349,8 @@ router.patch("/:id", async (req, res) => {
           }
         }
       } else if (newStatus === 'picked_up_delivery') {
-        const inputCode = req.body.handoverCode;
-        if (inputCode !== order.code3) {
+        const inputCode = String(req.body.handoverCode || '');
+        if (inputCode !== String(order.code3 || '')) {
           return res.status(400).json({ message: 'Invalid Handover Code (Code 3) for Delivery Pickup.' });
         }
         // Gate: Customer must be ready
@@ -358,8 +358,8 @@ router.patch("/:id", async (req, res) => {
           return res.status(400).json({ message: 'Customer is not yet ready to receive this order. Please wait for the "Locked and Ready" confirmation.' });
         }
       } else if (newStatus === 'delivered') {
-        const inputCode = req.body.handoverCode;
-        if (inputCode !== order.code4) {
+        const inputCode = String(req.body.handoverCode || '');
+        if (inputCode !== String(order.code4 || '')) {
           return res.status(400).json({ message: 'Invalid Handover Code (Code 4) for Customer Delivery.' });
         }
         // Rider gets 2nd half of fee upon delivery
@@ -553,18 +553,23 @@ router.post("/:id/return", async (req, res) => {
       ? await Transaction.create([transData])
       : await Transaction.create([transData], { session });
 
-    // 6. Reset order status and codes
+    // 6. Reset order status correctly based on where it was
     const oldStatus = order.status;
-    order.status = oldStatus === 'picked_up' ? 'rider_assign_pickup' : 
-                  oldStatus === 'picked_up_delivery' ? 'rider_assign_delivery' : 
-                  oldStatus;
+    if (oldStatus === 'rider_accepted' || oldStatus === 'picked_up') {
+      order.status = 'rider_assign_pickup';
+    } else if (oldStatus === 'picked_up_delivery') {
+      order.status = 'rider_assign_delivery';
+    }
+    
+    // Clear rider info but keep most codes
     order.riderUid = undefined;
     order.riderName = undefined;
     order.riderPhone = undefined;
+    order.claimedAt = undefined;
     order.returnReason = reason;
-    order.code2 = null;
-    order.code4 = null;
-    order.handoverCode = null;
+    // We keep code1, code2, code3, code4 as they are per-order secrets
+    // but we can clear the handoverInput shadow if any
+    order.handoverCode = undefined;
     order.color = 'bg-warning/20 text-warning';
     
     isNoTransaction ? await order.save() : await order.save({ session });

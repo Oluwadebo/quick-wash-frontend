@@ -72,10 +72,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = await api.getMe();
       if (data) {
         setUser(data);
+        setError(null);
       }
-    } catch (e) {
-      console.error('[Auth] fetchMe error:', e);
-      // Don't log out on network errors
+    } catch (e: any) {
+      console.error('[Auth] fetchMe error:', e.message || e);
+      if (e.message === 'UNAUTHORIZED') {
+        localStorage.removeItem('qw_token');
+        setUser(null);
+      } else {
+        // Keep user state if it exists, or just set error
+        setError('Server is temporarily unreachable. Retrying...');
+      }
     } finally {
       setLoading(false);
     }

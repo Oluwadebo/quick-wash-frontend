@@ -222,6 +222,35 @@ router.post("/login", async (req, res) => {
   }
 });
 
+// Get Current User (from token)
+router.get("/me", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ message: 'No token provided' });
+    
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    
+    const user = await User.findOne({ uid: decoded.uid }).select("-password");
+    if (!user) return res.status(404).json({ message: "User not found" });
+    
+    res.json(user.toObject());
+  } catch (err: any) {
+    res.status(401).json({ message: 'Invalid or expired token' });
+  }
+});
+
+// Stats
+router.get("/stats/overview", async (req, res) => {
+  try {
+    const userCount = await User.countDocuments();
+    // In a real app, you'd aggregate orders etc.
+    res.json({ totalUsers: userCount });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // Get all vendors
 router.get("/get-all-vendors", async (req, res) => {
   try {
@@ -265,35 +294,6 @@ router.post("/approve/:uid", async (req, res) => {
     res.json(user);
   } catch (err: any) {
     res.status(500).json({ message: err.message });
-  }
-});
-
-// Stats
-router.get("/stats/overview", async (req, res) => {
-  try {
-    const userCount = await User.countDocuments();
-    // In a real app, you'd aggregate orders etc.
-    res.json({ totalUsers: userCount });
-  } catch (err: any) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-// Get Current User (from token)
-router.get("/me", async (req, res) => {
-  try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) return res.status(401).json({ message: 'No token provided' });
-    
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
-    
-    const user = await User.findOne({ uid: decoded.uid }).select("-password");
-    if (!user) return res.status(404).json({ message: "User not found" });
-    
-    res.json(user.toObject());
-  } catch (err: any) {
-    res.status(401).json({ message: 'Invalid or expired token' });
   }
 });
 
