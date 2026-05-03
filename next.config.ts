@@ -28,10 +28,7 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   transpilePackages: ['motion'],
   async rewrites() {
-    const isDev = process.env.NODE_ENV === 'development';
-    const backendUrl = isDev 
-      ? 'http://localhost:5000' 
-      : (process.env.NEXT_PUBLIC_BACKEND_URL || 'https://quick-wash-frontend.onrender.com');
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
 
     return [
       {

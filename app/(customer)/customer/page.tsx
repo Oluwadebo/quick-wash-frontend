@@ -192,14 +192,14 @@ export default function LandmarkSelectionPage() {
               key={order.id}
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="mb-8 bg-success p-8 rounded-[2.5rem] flex items-center justify-between gap-4 shadow-2xl shadow-success/20 border-0"
+              className="mb-8 bg-[#006E33] p-8 rounded-[2.5rem] flex items-center justify-between gap-4 shadow-2xl shadow-success/20 border-0"
             >
               <div className="flex items-center gap-4 text-white">
                 <div className="w-14 h-14 rounded-2xl bg-white/20 text-white flex items-center justify-center shrink-0 shadow-inner">
                   <Check className="w-8 h-8" />
                 </div>
                 <div>
-                  <h4 className="font-headline font-black text-2xl leading-tight">
+                  <h4 className="font-headline font-black text-2xl leading-tight text-white">
                     {order.status === 'ready' ? 'Wash Complete' : 'Rider is Coming'}
                   </h4>
                   <p className="text-xs font-bold text-white/90">
@@ -209,7 +209,7 @@ export default function LandmarkSelectionPage() {
               </div>
               <Link 
                 href={`/track/${order.id}`}
-                className="px-6 py-4 bg-white text-success rounded-2xl font-headline font-black text-xs shadow-lg active:scale-95 transition-transform hover:bg-success-container hover:text-on-success-container"
+                className="px-6 py-4 bg-white text-[#006E33] rounded-2xl font-headline font-black text-xs shadow-lg active:scale-95 transition-transform hover:bg-zinc-100"
               >
                 TRACK
               </Link>

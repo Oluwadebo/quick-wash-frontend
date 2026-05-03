@@ -65,10 +65,9 @@ export default function RiderDashboard() {
         .sort((a, b) => new Date(b.createdAt || b.time || 0).getTime() - new Date(a.createdAt || a.time || 0).getTime());
       setAllMyOrders(myAll);
 
-      // Tasks assigned to this rider - include washing status
+      // My Tasks
       const myTasks = myAll
-        .filter((o: Order) => !['delivered', 'completed', 'cancelled'].includes((o.status || '').toLowerCase()))
-        .sort((a, b) => new Date(b.claimedAt || b.createdAt || 0).getTime() - new Date(a.claimedAt || a.createdAt || 0).getTime());
+        .filter((o: Order) => !['delivered', 'completed', 'cancelled'].includes((o.status || '').toLowerCase()));
       setTasks(myTasks);
 
       // Orders available for pickup (not yet assigned) - Latest first
@@ -112,20 +111,17 @@ export default function RiderDashboard() {
 
   React.useEffect(() => {
     refreshData();
-    window.addEventListener('storage', refreshData);
-    return () => window.removeEventListener('storage', refreshData);
-  }, [refreshData]);
+    
+    const interval = setInterval(() => {
+      refreshData();
+    }, 10000); // 10 seconds
 
-  // Specific polling for task status sync (e.g. customer ready status)
-  React.useEffect(() => {
-    const pollInterval = setInterval(() => {
-      // Only poll if we have active tasks that might change status
-      if (tasks.length > 0) {
-        refreshData();
-      }
-    }, 5000); // 5 seconds for critical sync
-    return () => clearInterval(pollInterval);
-  }, [tasks.length, refreshData]);
+    window.addEventListener('storage', refreshData);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('storage', refreshData);
+    };
+  }, [refreshData]);
 
   const handleAcceptOrder = async (orderId: string) => {
     if (!currentUser || isProcessing) return;
@@ -144,11 +140,13 @@ export default function RiderDashboard() {
     if (success) {
       setNotification({ message: 'Order claimed successfully! Redirecting...', type: 'success' });
       
-      // Optimistic UI update: Move order from available to tasks immediately
+      // Optimistic UI update
       const claimedOrder = availableOrders.find(o => o.id === orderId);
       if (claimedOrder) {
         setAvailableOrders(prev => prev.filter(o => o.id !== orderId));
-        setTasks(prev => [{ ...claimedOrder, status: 'rider_accepted', riderUid: currentUser.uid }, ...prev]);
+        // Keep status unless it was assignment phase
+        const nextStatus = claimedOrder.status === 'rider_assign_pickup' ? 'rider_accepted' : claimedOrder.status;
+        setTasks(prev => [{ ...claimedOrder, status: nextStatus, riderUid: currentUser.uid }, ...prev]);
       }
 
       // FEEDBACK LOOP: Mandatory 2000ms delay
@@ -171,23 +169,19 @@ export default function RiderDashboard() {
     if (!currentUser) return;
     const order = await api.getOrder(orderId);
     if (order && order.riderUid === currentUser.uid) {
-      const cancellable = ['rider_accepted', 'rider_assign_pickup', 'rider_assign_delivery'].includes(order.status);
-      if (!cancellable) {
-        setNotification({ message: 'Order cannot be rejected at this stage.', type: 'error' });
-        return;
-      }
-
       await api.saveOrder({
         ...order,
-        riderUid: null, // Clear properly
-        riderName: null,
-        riderPhone: null,
-        status: order.status === 'rider_accepted' || order.status === 'rider_assign_pickup' ? 'rider_assign_pickup' : 'rider_assign_delivery',
+        riderUid: undefined,
+        riderName: undefined,
+        riderPhone: undefined,
+        status: order.status === 'rider_assign_pickup' ? 'rider_assign_pickup' : 'rider_assign_delivery',
         color: 'bg-warning/20 text-warning'
       });
       setOrderToReject(null);
       setNotification({ message: 'Order rejected and returned to pool.', type: 'info' });
-      refreshData();
+      const allOrders = await api.getOrders();
+      setTasks(allOrders.filter((o: Order) => o.riderUid === currentUser.uid && !['delivered', 'cancelled', 'completed'].includes((o.status || '').toLowerCase())));
+      window.dispatchEvent(new Event('storage'));
     }
   };
 
@@ -224,8 +218,8 @@ export default function RiderDashboard() {
     setTasks(allOrders.filter((o: Order) => o.riderUid === currentUser?.uid && !['delivered', 'cancelled', 'completed'].includes((o.status || '').toLowerCase())));
   };
 
-  const handleVerifyPickup = React.useCallback(async (order: Order) => {
-    const input = handoverInput[order.id];
+  const handleVerifyPickup = React.useCallback(async (order: Order, overrideCode?: string) => {
+    const input = overrideCode || handoverInput[order.id];
     if (input === order.code1) {
       // Backend API handles 50% rider fee on 'picked_up' status change
       setIsProcessing(true);
@@ -243,11 +237,12 @@ export default function RiderDashboard() {
       const allOrders = await api.getOrders();
       setTasks(allOrders.filter((o: Order) => o.riderUid === currentUser?.uid && !['delivered', 'cancelled', 'completed'].includes((o.status || '').toLowerCase())));
       window.dispatchEvent(new Event('storage'));
+      setIsProcessing(false);
     }
   }, [currentUser, handoverInput]);
 
-  const handleVerifyPickupDelivery = React.useCallback(async (order: Order) => {
-    const input = handoverInput[order.id];
+  const handleVerifyPickupDelivery = React.useCallback(async (order: Order, overrideCode?: string) => {
+    const input = overrideCode || handoverInput[order.id];
     if (input === order.code3) {
       // Rider confirming they received items from vendor
       setIsProcessing(true);
@@ -265,6 +260,7 @@ export default function RiderDashboard() {
       const allOrders = await api.getOrders();
       setTasks(allOrders.filter((o: Order) => o.riderUid === currentUser?.uid && !['delivered', 'cancelled', 'completed'].includes((o.status || '').toLowerCase())));
       window.dispatchEvent(new Event('storage'));
+      setIsProcessing(false);
     }
   }, [currentUser, handoverInput]);
 
@@ -316,7 +312,7 @@ export default function RiderDashboard() {
 
   return (
     <div className="pb-32">
-      <TopAppBar roleLabel="Rider Station" showAudioToggle />
+      <TopAppBar roleLabel="Rider Station" />
       
       <main className="pt-8 px-6 max-w-7xl mx-auto">
           <header className="mb-10">
@@ -396,70 +392,39 @@ export default function RiderDashboard() {
                       Available for Pickup
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {availableOrders.map((order) => {
-                        const isDeliveryTask = order.status === 'rider_assign_delivery';
-                        return (
-                          <div key={order.id} className="bg-surface-container-low p-8 rounded-[2.5rem] border-2 border-primary/20 shadow-xl overflow-hidden relative">
-                            {isDeliveryTask && <div className="absolute top-0 right-0 bg-tertiary text-on-tertiary px-4 py-1 text-[8px] font-black uppercase tracking-widest rounded-bl-xl shadow-sm">Delivery Only</div>}
-                            <div className="flex justify-between items-start mb-6">
-                              <div>
-                                <p className="font-label text-[10px] font-black uppercase tracking-widest text-primary mb-1 leading-none">Order #{order.id}</p>
-                                <h4 className="font-headline font-black text-xl text-on-surface mb-2">{isDeliveryTask ? `Deliver for ${order.customerName}` : `Pickup from ${order.customerName}`}</h4>
-                                <div className="space-y-3">
-                                  <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
-                                      <MapPin className="w-4 h-4" />
-                                    </div>
+                      {availableOrders.map((order) => (
+                        <div key={order.id} className="bg-surface-container-low p-8 rounded-[2.5rem] border-2 border-primary/20 shadow-xl">
+                          <div className="flex justify-between items-start mb-6">
+                            <div>
+                              <p className="font-label text-[10px] font-black uppercase tracking-widest text-primary mb-1 leading-none">Order #{order.id}</p>
+                              <h4 className="font-headline font-black text-xl text-on-surface mb-2">{order.customerName}</h4>
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2 text-primary">
+                                  <MapPin className="w-3 h-3" />
                                     <div className="flex flex-col">
-                                      <p className="text-[10px] font-black uppercase tracking-widest text-primary leading-tight">
-                                        {isDeliveryTask ? 'Pickup from Vendor' : 'Pickup from Customer'}
-                                      </p>
-                                      <p className="text-sm font-bold text-on-surface">
-                                        {isDeliveryTask ? order.vendorLandmark : order.customerLandmark}
-                                      </p>
+                                      <p className="text-[10px] font-black uppercase tracking-widest leading-tight">Pickup: {order.customerLandmark}</p>
+                                      {order.customerAddress && (
+                                        <p className="text-[8px] font-medium text-on-surface-variant truncate max-w-[200px]">{order.customerAddress}</p>
+                                      )}
                                     </div>
-                                  </div>
-                                  <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-lg bg-tertiary/10 flex items-center justify-center text-tertiary shrink-0">
-                                      <ArrowRight className="w-4 h-4" />
-                                    </div>
-                                    <div className="flex flex-col">
-                                      <p className="text-[10px] font-black uppercase tracking-widest text-tertiary leading-tight">
-                                        {isDeliveryTask ? 'Deliver to Customer' : 'Deliver to Vendor'}
-                                      </p>
-                                      <p className="text-sm font-bold text-on-surface">
-                                        {isDeliveryTask ? order.customerLandmark : order.vendorLandmark}
-                                      </p>
-                                    </div>
-                                  </div>
-                                  {isDeliveryTask ? (
-                                    <div className="flex items-center gap-2 text-on-surface-variant font-bold text-[10px] bg-surface p-2 rounded-xl border border-primary/5">
-                                      <ShoppingBag className="w-3 h-3" />
-                                      <span>Items to Deliver: {order.items}</span>
-                                    </div>
-                                  ) : (
-                                    <div className="flex items-center gap-2 text-on-surface-variant font-bold text-[10px] bg-surface p-2 rounded-xl border border-primary/5">
-                                      <Package className="w-3 h-3" />
-                                      <span>Pickup for: {order.vendorName}</span>
-                                    </div>
-                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 text-tertiary">
+                                  <Package className="w-3 h-3" />
+                                  <p className="text-[10px] font-black uppercase tracking-widest">Vendor: {order.vendorName} ({order.vendorLandmark})</p>
                                 </div>
                               </div>
-                              <div className="text-right">
-                                <span className="bg-primary text-on-primary px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest inline-block mb-1">₦{order.riderFee?.toLocaleString() || '1,000'} FEE</span>
-                                <p className="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">{formatRelativeTime(order.time)}</p>
-                              </div>
                             </div>
-                            <button 
-                              onClick={() => handleAcceptOrder(order.id)}
-                              disabled={currentUser?.status === 'restricted' || isProcessing}
-                              className="w-full h-14 signature-gradient text-white rounded-xl font-headline font-black text-sm shadow-lg active:scale-95 transition-transform disabled:opacity-50 disabled:active:scale-100"
-                            >
-                              {currentUser?.status === 'restricted' ? 'ACCOUNT RESTRICTED' : isProcessing ? 'PROCESSING...' : 'CLAIM ORDER NOW'}
-                            </button>
+                            <span className="bg-primary text-on-primary px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">₦1,000 FEE</span>
                           </div>
-                        );
-                      })}
+                          <button 
+                            onClick={() => handleAcceptOrder(order.id)}
+                            disabled={currentUser?.status === 'restricted'}
+                            className="w-full h-14 signature-gradient text-white rounded-xl font-headline font-black text-sm shadow-lg active:scale-95 transition-transform disabled:opacity-50 disabled:active:scale-100"
+                          >
+                            {currentUser?.status === 'restricted' ? 'ACCOUNT RESTRICTED' : 'ACCEPT ORDER'}
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}
@@ -585,7 +550,7 @@ export default function RiderDashboard() {
                                     onChange={(e) => {
                                       const val = e.target.value.replace(/\D/g, '');
                                       setHandoverInput(prev => ({ ...prev, [order.id]: val }));
-                                      if (val.length === 4) handleVerifyPickup({ ...order, status: 'rider_assign_pickup' });
+                                      if (val.length === 4) handleVerifyPickup({ ...order, status: 'rider_assign_pickup' }, val);
                                     }}
                                     className="w-24 h-16 bg-surface-container-highest rounded-2xl px-4 text-center font-headline font-black text-xl outline-none focus:ring-4 ring-primary/20"
                                     maxLength={4}
@@ -617,7 +582,7 @@ export default function RiderDashboard() {
                                         onChange={(e) => {
                                           const val = e.target.value.replace(/\D/g, '');
                                           setHandoverInput(prev => ({ ...prev, [order.id]: val }));
-                                          if (val.length === 4) handleVerifyPickupDelivery({ ...order, status: 'rider_assign_delivery' });
+                                          if (val.length === 4) handleVerifyPickupDelivery({ ...order, status: 'rider_assign_delivery' }, val);
                                         }}
                                         className="w-24 h-16 bg-surface-container-highest rounded-2xl px-4 text-center font-headline font-black text-xl outline-none focus:ring-4 ring-tertiary/20"
                                         maxLength={4}
@@ -643,7 +608,7 @@ export default function RiderDashboard() {
                               )}
                             </div>
 
-                            {(order.status === 'rider_accepted' || order.status === 'rider_assign_pickup' || order.status === 'rider_assign_delivery' || order.status === 'ready') && (
+                            {(order.status === 'rider_assign_pickup' || order.status === 'rider_assign_delivery') && (
                               <button 
                                 onClick={() => {
                                   setSelectedOrderId(order.id);

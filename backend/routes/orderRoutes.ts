@@ -288,55 +288,6 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-router.post("/:id/claim", async (req, res) => {
-  const session = await mongoose.startSession();
-  let isNoTransaction = false;
-  try {
-    session.startTransaction();
-  } catch (e) {
-    isNoTransaction = true;
-  }
-
-  try {
-    const { id } = req.params;
-    const { riderUid, riderName, riderPhone } = req.body;
-
-    const query = { id };
-    const order = isNoTransaction
-      ? await Order.findOne(query)
-      : await Order.findOne(query).session(session);
-
-    if (!order) {
-      if (!isNoTransaction) await session.abortTransaction();
-      return res.status(404).json({ message: 'Order not found' });
-    }
-
-    // Check if already claimed
-    if (order.riderUid) {
-      if (!isNoTransaction) await session.abortTransaction();
-      return res.status(400).json({ message: 'Order already claimed by another rider.' });
-    }
-
-    // Assign rider
-    order.riderUid = riderUid;
-    order.riderName = riderName;
-    order.riderPhone = riderPhone;
-    order.status = order.status === 'rider_assign_pickup' ? 'rider_accepted' : 'rider_assign_delivery';
-    order.claimedAt = new Date();
-
-    isNoTransaction ? await order.save() : await order.save({ session });
-
-    if (!isNoTransaction) await session.commitTransaction();
-    console.log(`[Order] Order ${order.id} claimed successfully by ${riderName} (${riderUid})`);
-    res.json(order.toObject());
-  } catch (err: any) {
-    if (!isNoTransaction) await session.abortTransaction();
-    res.status(500).json({ message: err.message });
-  } finally {
-    session.endSession();
-  }
-});
-
 router.patch("/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -364,13 +315,13 @@ router.patch("/:id", async (req, res) => {
           return res.status(400).json({ message: 'Invalid Handover Code (Code 1) for Pickup.' });
         }
         // Rider gets 1st half of fee upon pickup from customer
-        if (order.riderUid && !order.riderPayout1Released) {
+        if (order.riderUid && !order.riderPayoutReleased50) {
           const rider = await User.findOne({ uid: order.riderUid });
           if (rider) {
             const firstHalf = (order.riderFee || 0) * 0.5;
             rider.walletBalance = (rider.walletBalance || 0) + firstHalf;
             await rider.save();
-            order.riderPayout1Released = true; // Use separate flag
+            order.riderPayoutReleased50 = true;
             await Transaction.create({
               id: uuidv4(), userId: rider.uid, type: 'deposit', amount: firstHalf,
               desc: `Order #${order.id} Pickup Fee (50%)`, status: 'completed', date: new Date()
@@ -386,7 +337,6 @@ router.patch("/:id", async (req, res) => {
         if (order.vendorId && !order.payoutReleased80) {
           const vendor = await User.findOne({ uid: order.vendorId });
           if (vendor) {
-            console.log(`[Payout] Releasing 80% for Order #${order.id} to Vendor ${vendor.uid}`);
             const netItemsPrice = (order.itemsPrice || 0) * 0.9;
             const payout80 = netItemsPrice * 0.8;
             vendor.walletBalance = (vendor.walletBalance || 0) + payout80;
@@ -413,13 +363,13 @@ router.patch("/:id", async (req, res) => {
           return res.status(400).json({ message: 'Invalid Handover Code (Code 4) for Customer Delivery.' });
         }
         // Rider gets 2nd half of fee upon delivery
-        if (order.riderUid && !order.riderPayout2Released) {
+        if (order.riderUid && !order.riderPayoutReleased100) {
           const rider = await User.findOne({ uid: order.riderUid });
           if (rider) {
             const secondHalf = (order.riderFee || 0) * 0.5;
             rider.walletBalance = (rider.walletBalance || 0) + secondHalf;
             await rider.save();
-            order.riderPayout2Released = true; // Use separate flag
+            order.riderPayoutReleased100 = true;
             await Transaction.create({
               id: uuidv4(), userId: rider.uid, type: 'deposit', amount: secondHalf,
               desc: `Order #${order.id} Delivery Fee (50%)`, status: 'completed', date: new Date()
@@ -700,6 +650,36 @@ router.post("/dispute", async (req, res) => {
           order.payoutReleased20 = true;
         }
       }
+    }
+
+    await order.save();
+    res.json(order.toObject());
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.post("/:id/claim", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { riderUid, riderName, riderPhone } = req.body;
+
+    const order = await Order.findOne({ id: id });
+    if (!order) return res.status(404).json({ message: "Order not found" });
+
+    if (order.riderUid && order.riderUid !== riderUid) {
+      return res.status(400).json({ message: "Order already claimed by another rider" });
+    }
+
+    order.riderUid = riderUid;
+    order.riderName = riderName;
+    order.riderPhone = riderPhone;
+    order.claimedAt = new Date().toISOString();
+
+    // Only transition to rider_accepted if it's the pickup phase
+    if (order.status === 'rider_assign_pickup') {
+      order.status = 'rider_accepted';
+      order.color = 'bg-primary/20 text-primary';
     }
 
     await order.save();

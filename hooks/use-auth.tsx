@@ -62,20 +62,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   const fetchMe = useCallback(async () => {
+    const token = localStorage.getItem('qw_token');
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
     try {
-      const token = localStorage.getItem('qw_token');
-      if (!token) {
-        setLoading(false);
-        return;
-      }
       const data = await api.getMe();
       if (data) {
         setUser(data);
       }
     } catch (e) {
       console.error('[Auth] fetchMe error:', e);
-      // We don't wipe the user on a network error usually,
-      // but if the token is invalid, the backend returns something or throws.
+      // Don't log out on network errors
     } finally {
       setLoading(false);
     }
@@ -123,9 +123,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify(data),
       });
 
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.message || 'Signup failed');
+      if (!response.ok) {
+        const errText = await response.text();
+        let message = 'Signup failed';
+        try {
+          const errJson = JSON.parse(errText);
+          message = errJson.message || message;
+        } catch (e) {
+          message = errText || message;
+        }
+        throw new Error(message);
+      }
 
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error('Server returned non-JSON response');
+      }
+
+      const result = await response.json();
       const { user: newUser, token } = result;
       if (token) localStorage.setItem('qw_token', token);
 
@@ -152,10 +167,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ identifier, password }),
       });
+      
+      if (!response.ok) {
+        const errText = await response.text();
+        let message = 'Login failed';
+        try {
+          const errJson = JSON.parse(errText);
+          message = errJson.message || message;
+        } catch (e) {
+          message = errText || message;
+        }
+        throw new Error(message);
+      }
+
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error('Server returned non-JSON response');
+      }
 
       const result = await response.json();
-      if (!response.ok) throw new Error(result.message || 'Login failed');
-
       const { user: foundUser, token } = result;
       if (token) localStorage.setItem('qw_token', token);
 
@@ -231,7 +261,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     
     const pollInterval = setInterval(() => {
       fetchMe();
-    }, 15000); // 15 seconds polling for user state
+    }, 5000); // 5 seconds polling for faster updates
     
     return () => clearInterval(pollInterval);
   }, [user, fetchMe]);

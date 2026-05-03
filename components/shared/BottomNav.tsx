@@ -26,6 +26,7 @@ interface NavItem {
 const customerItems: NavItem[] = [
   { label: 'Home', icon: Home, href: '/customer' },
   { label: 'Wash', icon: WashingMachine, href: '/vendors' },
+  { label: 'Wallet', icon: Wallet, href: '/wallet' },
   { label: 'Track', icon: Map, href: '/track' },
   { label: 'Profile', icon: User, href: '/profile' },
 ];

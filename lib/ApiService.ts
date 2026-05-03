@@ -49,7 +49,6 @@ export interface UserData {
   shopAddress?: string;
   landmark?: string;
   currentOrderId?: string;
-  yorubaAudioEnabled?: boolean;
   alerts?: any[];
 }
 
@@ -136,6 +135,21 @@ class ApiService {
 
   // --- USERS ---
 
+  private async safeJson(resp: Response) {
+    const contentType = resp.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      try {
+        return await resp.json();
+      } catch (e) {
+        console.error('[ApiService] JSON parse error:', e);
+        return null;
+      }
+    }
+    const text = await resp.text();
+    console.error('[ApiService] Expected JSON but got:', text.substring(0, 100));
+    return null;
+  }
+
   async getUsers(): Promise<UserData[]> {
     await this.delay();
     if (typeof window !== 'undefined') {
@@ -145,7 +159,7 @@ class ApiService {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (resp.ok) {
-          return await resp.json();
+          return await this.safeJson(resp) || [];
         }
       } catch (e) {
         console.error('Failed to fetch users:', e);
@@ -159,7 +173,7 @@ class ApiService {
     try {
       const resp = await fetch(`${API_URLS.base}/vendors`);
       if (resp.ok) {
-        return await resp.json();
+        return await this.safeJson(resp) || [];
       }
     } catch (e) {
       console.error('Failed to fetch vendors:', e);
@@ -176,7 +190,7 @@ class ApiService {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (resp.ok) {
-          return await resp.json();
+          return await this.safeJson(resp);
         }
       } catch (e) {
         console.error('Failed to fetch user:', e);
@@ -199,9 +213,7 @@ class ApiService {
           body: JSON.stringify(data)
         });
         if (resp.ok) {
-          const updated = await resp.json();
-          // If updating self, sync localStorage token-related info if needed, but usually we just re-fetch
-          return updated;
+          return await this.safeJson(resp);
         }
         throw new Error(await resp.text());
       } catch (e: any) {
@@ -261,7 +273,7 @@ class ApiService {
           }
         });
         
-        if (resp.ok) return await resp.json();
+        if (resp.ok) return await this.safeJson(resp) || [];
         return [];
       } catch (e: any) {
         return []; 
@@ -282,7 +294,7 @@ class ApiService {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         
-        if (resp.ok) return await resp.json();
+        if (resp.ok) return await this.safeJson(resp);
         
         if (resp.status === 404) {
           console.warn(`[DB] Order not found: ${id}`);
@@ -313,7 +325,7 @@ class ApiService {
           },
           body: JSON.stringify(order)
         });
-        if (resp.ok) return await resp.json();
+        if (resp.ok) return await this.safeJson(resp);
         throw new Error(await resp.text());
       } catch (e: any) {
         throw new Error(e.message);
@@ -368,7 +380,7 @@ class ApiService {
           },
           body: JSON.stringify(body)
         });
-        if (resp.ok) return await resp.json();
+        if (resp.ok) return await this.safeJson(resp);
         throw new Error(await resp.text());
       } catch (e: any) {
         throw new Error(e.message);
@@ -409,7 +421,7 @@ class ApiService {
         },
         body: JSON.stringify({ action })
       });
-      if (resp.ok) return await resp.json();
+      if (resp.ok) return await this.safeJson(resp);
     }
     throw new Error('Trust adjustment failed');
   }
@@ -444,7 +456,7 @@ class ApiService {
   }
 
   // --- WALLET ---
-  async recordTransaction(uid: string, transaction: any) {
+  async recordTransaction(userId: string, transaction: any) {
     if (typeof window !== 'undefined') {
       try {
         const token = localStorage.getItem('qw_token');
@@ -454,12 +466,26 @@ class ApiService {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ ...transaction, userId: uid })
+          body: JSON.stringify({ ...transaction, userId })
         });
+        window.dispatchEvent(new Event('storage'));
       } catch (e) {
         console.error('Transaction API error:', e);
       }
     }
+  }
+
+  async getUserTransactions(userId: string): Promise<any[]> {
+    if (typeof window !== 'undefined') {
+      try {
+        const token = localStorage.getItem('qw_token');
+        const resp = await fetch(`${API_URLS.base}/transactions?userId=${userId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (resp.ok) return await this.safeJson(resp) || [];
+      } catch (e) {}
+    }
+    return [];
   }
 
   async getMe(): Promise<UserData | null> {
@@ -470,8 +496,15 @@ class ApiService {
         const resp = await fetch(`${API_URLS.base}/users/me`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
-        if (resp.ok) return await resp.json();
-      } catch (e) {}
+        if (resp.ok) return await this.safeJson(resp);
+        if (resp.status === 401) {
+          localStorage.removeItem('qw_token');
+          return null;
+        }
+      } catch (e) {
+        console.error('[ApiService] getMe network error:', e);
+        throw e; // Propagate network error so caller knows NOT to log out
+      }
     }
     return null;
   }
@@ -485,7 +518,7 @@ class ApiService {
           'Authorization': `Bearer ${token}`
         }
       });
-      if (resp.ok) return await resp.json();
+      if (resp.ok) return await this.safeJson(resp);
     }
     throw new Error('Approval failed');
   }
@@ -504,7 +537,7 @@ class ApiService {
           },
           body: JSON.stringify({ rating, review, ratedAt: new Date().toISOString() })
         });
-        if (resp.ok) return await resp.json();
+        if (resp.ok) return await this.safeJson(resp);
       } catch (e) {}
     }
     throw new Error('Rating failed');
@@ -518,7 +551,7 @@ class ApiService {
         const resp = await fetch(API_URLS.stats, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
-        if (resp.ok) return await resp.json();
+        if (resp.ok) return await this.safeJson(resp);
       } catch (e) {}
     }
     return null;
@@ -534,7 +567,7 @@ class ApiService {
         const resp = await fetch(`${API_URLS.base}/vendor/prices/${vendorUid}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
-        if (resp.ok) return await resp.json();
+        if (resp.ok) return await this.safeJson(resp) || [];
       } catch (e) {}
     }
     return [];
@@ -545,7 +578,7 @@ class ApiService {
     if (typeof window !== 'undefined') {
       try {
         const token = localStorage.getItem('qw_token');
-        await fetch(`${API_URLS.base}/vendor/prices/${vendorUid}`, {
+        const resp = await fetch(`${API_URLS.base}/vendor/prices/${vendorUid}`, {
           method: 'POST',
           headers: { 
             'Authorization': `Bearer ${token}`,
@@ -553,6 +586,7 @@ class ApiService {
           },
           body: JSON.stringify({ prices: priceList })
         });
+        if (resp.ok) return await this.safeJson(resp);
       } catch (e) {}
     }
   }
@@ -566,7 +600,7 @@ class ApiService {
         const resp = await fetch(`${API_URLS.base}/settings`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
-        if (resp.ok) return await resp.json();
+        if (resp.ok) return await this.safeJson(resp);
       } catch (e) {}
     }
     
@@ -594,7 +628,7 @@ class ApiService {
         const resp = await fetch(`${API_URLS.base}/drafts/${userId}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
-        if (resp.ok) return await resp.json();
+        if (resp.ok) return await this.safeJson(resp) || [];
       } catch (e) {}
     }
     return [];
@@ -604,7 +638,7 @@ class ApiService {
     if (typeof window !== 'undefined') {
       try {
         const token = localStorage.getItem('qw_token');
-        await fetch(`${API_URLS.base}/drafts`, {
+        const resp = await fetch(`${API_URLS.base}/drafts`, {
           method: 'POST',
           headers: { 
             'Authorization': `Bearer ${token}`,
@@ -612,6 +646,7 @@ class ApiService {
           },
           body: JSON.stringify({ userId, vendorId, items })
         });
+        if (resp.ok) return await this.safeJson(resp);
       } catch (e) {}
     }
   }
@@ -620,10 +655,11 @@ class ApiService {
     if (typeof window !== 'undefined') {
       try {
         const token = localStorage.getItem('qw_token');
-        await fetch(`${API_URLS.base}/drafts/${userId}/${vendorId}`, {
+        const resp = await fetch(`${API_URLS.base}/drafts/${userId}/${vendorId}`, {
           method: 'DELETE',
           headers: { 'Authorization': `Bearer ${token}` }
         });
+        if (resp.ok) return await this.safeJson(resp);
       } catch (e) {}
     }
   }
@@ -641,7 +677,7 @@ class ApiService {
           },
           body: JSON.stringify(data)
         });
-        if (resp.ok) return await resp.json();
+        if (resp.ok) return await this.safeJson(resp);
       } catch (e) {}
     }
     throw new Error('Settings update failed');

@@ -462,13 +462,15 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
                 const updatedOrder = { 
                   ...order, 
                   status: 'rider_assign_delivery', 
+                  customerReadyForDelivery: true,
                   color: 'bg-primary text-on-primary',
                   customerConfirmedDeliveryAt: new Date().toISOString()
-                };
+                } as Order;
                 await api.saveOrder(updatedOrder);
                 setOrder(updatedOrder);
                 setNotification({ message: 'Riders have been notified that you are ready to receive your laundry!', type: 'success' });
                 setTimeout(() => setNotification(null), 3000);
+                window.dispatchEvent(new Event('storage'));
               }}
             />
           </div>
