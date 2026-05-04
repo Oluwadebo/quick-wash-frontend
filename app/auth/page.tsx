@@ -55,7 +55,6 @@ function AuthContent() {
     ninImage: null as string | null,
     shopImage: null as string | null,
     address: '',
-    whatsappNumber: '',
     bankAccountName: '',
     bankAccountNumber: '',
     bankName: '',
@@ -155,7 +154,6 @@ function AuthContent() {
         ninImage: role === 'rider' ? (formData.ninImage || undefined) : undefined,
         shopImage: role === 'vendor' ? (formData.shopImage || undefined) : undefined,
         address: role === 'rider' ? formData.address : undefined,
-        whatsappNumber: role === 'vendor' ? formData.whatsappNumber : undefined,
         bankAccountName: (role === 'vendor' || role === 'rider') ? formData.bankAccountName : undefined,
         bankAccountNumber: (role === 'vendor' || role === 'rider') ? formData.bankAccountNumber : undefined,
         bankName: (role === 'vendor' || role === 'rider') ? formData.bankName : undefined,
@@ -488,17 +486,6 @@ function AuthContent() {
                           className="hidden"
                         />
                       </div>
-                    <div className="relative">
-                      <Phone className="absolute left-5 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5" />
-                      <input 
-                        type="tel" 
-                        placeholder="WhatsApp Number (For Customers)"
-                        required={role === 'vendor' && !isLogin}
-                        value={formData.whatsappNumber}
-                        onChange={(e) => setFormData({...formData, whatsappNumber: e.target.value})}
-                        className="w-full h-16 bg-surface-container-low rounded-2xl pl-14 pr-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"
-                      />
-                    </div>
                       <div className="grid grid-cols-1 gap-4">
                         <input 
                           type="text" 

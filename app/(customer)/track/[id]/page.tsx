@@ -64,12 +64,6 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
   if (loading) return <div className="pt-32 text-center font-headline font-black text-on-surface">Loading Dashboard...</div>;
   if (!order) return <div className="pt-32 text-center font-headline font-black text-on-surface">Order not found.</div>;
 
-  const handleWhatsApp = () => {
-    const phone = rider?.phoneNumber || rider?.whatsappNumber || '08012345678';
-    const msg = encodeURIComponent(`Hello, I am checking on my Quick-Wash order #${order.id}.`);
-    window.open(`https://wa.me/${phone}?text=${msg}`, '_blank');
-  };
-
   const handleCancelOrder = async () => {
     if (order?.status === 'confirm' || order?.status === 'rider_assign_pickup' || order?.status === 'rider_accepted') {
       try {
@@ -386,18 +380,9 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
                 <Phone className="w-5 h-5" />
               </button>
               <button 
-                onClick={() => {
-                  navigator.clipboard.writeText(rider.phoneNumber);
-                  setNotification({ message: 'Phone number copied to clipboard', type: 'info' });
-                  setTimeout(() => setNotification(null), 2000);
-                }}
-                className="w-12 h-12 rounded-xl bg-surface-container-highest text-on-surface-variant flex items-center justify-center active:scale-90 transition-transform"
-              >
-                <Copy className="w-5 h-5" />
-              </button>
-              <button 
                 onClick={() => setActiveChatOrder(order)}
                 className="w-12 h-12 rounded-xl bg-primary shadow-lg text-on-primary flex items-center justify-center active:scale-90 transition-transform"
+                title="Open Platform Chat"
               >
                 <MessageCircle className="w-6 h-6" />
               </button>

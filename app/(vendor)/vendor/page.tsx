@@ -61,7 +61,7 @@ export default function VendorDashboard() {
   const [isProfileModalOpen, setIsProfileModalOpen] = React.useState(false);
   const [profileForm, setProfileForm] = React.useState({ fullName: '', phoneNumber: '' });
   const [isShopModalOpen, setIsShopModalOpen] = React.useState(false);
-  const [shopForm, setShopForm] = React.useState({ shopName: '', whatsappNumber: '', landmark: '' });
+  const [shopForm, setShopForm] = React.useState({ shopName: '', landmark: '' });
   const [isBankModalOpen, setIsBankModalOpen] = React.useState(false);
   const [bankForm, setBankForm] = React.useState({ bankName: '', bankAccountNumber: '', bankAccountName: '' });
   const [isProcessing, setIsProcessing] = React.useState(false);
@@ -1112,7 +1112,6 @@ export default function VendorDashboard() {
                           onClick={() => {
                             setShopForm({
                               shopName: currentUser?.shopName || '',
-                              whatsappNumber: currentUser?.whatsappNumber || '',
                               landmark: currentUser?.landmark || ''
                             });
                             setIsShopModalOpen(true);
@@ -1133,10 +1132,6 @@ export default function VendorDashboard() {
                       <div className="p-4 bg-white rounded-2xl border border-primary/5">
                         <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">Landmark</p>
                         <p className="font-headline font-bold text-on-surface">{currentUser?.landmark || 'Not set'}</p>
-                      </div>
-                      <div className="p-4 bg-white rounded-2xl border border-primary/5">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">WhatsApp</p>
-                        <p className="font-headline font-bold text-on-surface">{currentUser?.whatsappNumber || 'Not set'}</p>
                       </div>
                     </div>
                   </div>
@@ -1805,15 +1800,6 @@ export default function VendorDashboard() {
                       type="text"
                       value={shopForm.shopName}
                       onChange={(e) => setShopForm({...shopForm, shopName: e.target.value})}
-                      className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none border border-primary/5 focus:ring-2 ring-primary"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-primary ml-2">WhatsApp Number</label>
-                    <input 
-                      type="text"
-                      value={shopForm.whatsappNumber}
-                      onChange={(e) => setShopForm({...shopForm, whatsappNumber: e.target.value})}
                       className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none border border-primary/5 focus:ring-2 ring-primary"
                     />
                   </div>

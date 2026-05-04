@@ -19,7 +19,6 @@ interface VendorCardProps {
   landmark?: string;
   address?: string;
   isStudentFriendly?: boolean;
-  whatsappNumber?: string;
   isRaining?: boolean;
   isShopClosed?: boolean;
   returnTime?: string;
@@ -37,7 +36,6 @@ export default function VendorCard({
   landmark,
   address,
   isStudentFriendly = true,
-  whatsappNumber = '2348000000000',
   isRaining = false,
   isShopClosed = false,
   returnTime
@@ -132,16 +130,7 @@ export default function VendorCard({
         </div>
 
         {/* Actions */}
-        <div className="grid grid-cols-2 gap-4">
-          <a
-            href={`https://wa.me/${whatsappNumber}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center justify-center gap-3 bg-[#25D366] text-white py-5 rounded-2xl font-headline font-black text-sm shadow-lg shadow-[#25D366]/20 active:scale-[0.98] transition-all"
-          >
-            <MessageCircle className="w-6 h-6 fill-current" />
-            WhatsApp
-          </a>
+        <div className="grid grid-cols-1 gap-4">
           <Link
             href={isCurrentlyClosed ? '#' : `/order?vendor=${id}&new=true`}
             onClick={(e) => isCurrentlyClosed && e.preventDefault()}
