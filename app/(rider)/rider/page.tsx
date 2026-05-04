@@ -394,33 +394,33 @@ export default function RiderDashboard() {
                 animate={{ opacity: 1, y: 0 }}
                 className="space-y-12"
               >
-                {/* Available Orders */}
-                {availableOrders.length > 0 && (
+                {/* Available Pickup Orders (Customer to Vendor) */}
+                {availableOrders.filter(o => o.status === 'rider_assign_pickup').length > 0 && (
                   <div>
                     <h3 className="font-headline font-black text-xl mb-6 flex items-center gap-3">
-                      <Zap className="text-warning fill-current w-6 h-6" />
-                      Available for Pickup
+                      <ShoppingBag className="text-primary w-6 h-6" />
+                      Available Pickup Requests
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {availableOrders.map((order) => (
+                      {availableOrders.filter(o => o.status === 'rider_assign_pickup').map((order) => (
                         <div key={order.id} className="bg-surface-container-low p-8 rounded-[2.5rem] border-2 border-primary/20 shadow-xl">
                           <div className="flex justify-between items-start mb-6">
                             <div>
                               <p className="font-label text-[10px] font-black uppercase tracking-widest text-primary mb-1 leading-none">Order #{order.id}</p>
-                              <h4 className="font-headline font-black text-xl text-on-surface mb-2">{order.customerName}</h4>
+                              <h4 className="font-headline font-black text-xl text-on-surface mb-2 truncate max-w-[200px]">{order.customerName}</h4>
                               <div className="space-y-2">
                                 <div className="flex items-center gap-2 text-primary">
                                   <MapPin className="w-3 h-3" />
                                     <div className="flex flex-col">
-                                      <p className="text-[10px] font-black uppercase tracking-widest leading-tight">Pickup: {order.customerLandmark}</p>
+                                      <p className="text-[10px] font-black uppercase tracking-widest leading-tight">PICKUP: {order.customerLandmark || 'Location N/A'}</p>
                                       {order.customerAddress && (
                                         <p className="text-[8px] font-medium text-on-surface-variant truncate max-w-[200px]">{order.customerAddress}</p>
                                       )}
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-2 text-tertiary">
+                                <div className="flex items-center gap-2 text-on-surface-variant">
                                   <Package className="w-3 h-3" />
-                                  <p className="text-[10px] font-black uppercase tracking-widest">Vendor: {order.vendorName} ({order.vendorLandmark})</p>
+                                  <p className="text-[10px] font-black uppercase tracking-widest leading-tight">TO VENDOR: {order.vendorName} ({order.vendorLandmark})</p>
                                 </div>
                               </div>
                             </div>
@@ -429,9 +429,52 @@ export default function RiderDashboard() {
                           <button 
                             onClick={() => handleAcceptOrder(order.id)}
                             disabled={currentUser?.status === 'restricted'}
-                            className="w-full h-14 signature-gradient text-white rounded-xl font-headline font-black text-sm shadow-lg active:scale-95 transition-transform disabled:opacity-50 disabled:active:scale-100"
+                            className="w-full h-14 signature-gradient text-white rounded-xl font-headline font-black text-sm shadow-xl active:scale-95 transition-all disabled:opacity-50"
                           >
                             {currentUser?.status === 'restricted' ? 'ACCOUNT RESTRICTED' : 'ACCEPT ORDER'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Available Delivery Orders (Vendor to Customer) */}
+                {availableOrders.filter(o => o.status === 'rider_assign_delivery').length > 0 && (
+                  <div>
+                    <h3 className="font-headline font-black text-xl mb-6 flex items-center gap-3">
+                      <Bike className="text-secondary w-6 h-6" />
+                      Vendor Delivery Requests
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {availableOrders.filter(o => o.status === 'rider_assign_delivery').map((order) => (
+                        <div key={order.id} className="bg-surface-container-low p-8 rounded-[2.5rem] border-2 border-secondary/20 shadow-xl">
+                          <div className="flex justify-between items-start mb-6">
+                            <div>
+                              <p className="font-label text-[10px] font-black uppercase tracking-widest text-secondary mb-1 leading-none">Order #{order.id}</p>
+                              <h4 className="font-headline font-black text-xl text-on-surface mb-2 truncate max-w-[200px]">{order.customerName}</h4>
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2 text-secondary">
+                                  <MapPin className="w-3 h-3" />
+                                  <div className="flex flex-col">
+                                    <p className="text-[10px] font-black uppercase tracking-widest leading-tight">FROM VENDOR: {order.vendorLandmark}</p>
+                                    <p className="text-[8px] font-medium text-on-surface-variant">{order.vendorName}</p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2 text-on-surface-variant">
+                                  <Package className="w-3 h-3" />
+                                  <p className="text-[10px] font-black uppercase tracking-widest">TO CUSTOMER: {order.customerLandmark}</p>
+                                </div>
+                              </div>
+                            </div>
+                            <span className="bg-secondary text-white px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">₦1,000 FEE</span>
+                          </div>
+                          <button 
+                            onClick={() => handleAcceptOrder(order.id)}
+                            disabled={currentUser?.status === 'restricted'}
+                            className="w-full h-14 bg-secondary text-white rounded-xl font-headline font-black text-sm shadow-xl active:scale-95 transition-all disabled:opacity-50"
+                          >
+                            {currentUser?.status === 'restricted' ? 'ACCOUNT RESTRICTED' : 'ACCEPT DELIVERY'}
                           </button>
                         </div>
                       ))}
@@ -612,30 +655,13 @@ export default function RiderDashboard() {
                               )}
 
                               {order.status === 'picked_up_delivery' && (
-                                <div className="flex-[2] flex flex-col gap-3">
-                                  <div className="flex gap-3">
-                                    <input 
-                                      type="text" 
-                                      placeholder="Code 4 from Customer"
-                                      value={handoverInput[order.id] || ''}
-                                      onChange={(e) => {
-                                        const val = e.target.value.replace(/\D/g, '');
-                                        setHandoverInput(prev => ({ ...prev, [order.id]: val }));
-                                        if (val.length === 4) {
-                                          handleStatusUpdate(order.id, 'delivered', 'bg-success text-on-success', { handoverCode: val });
-                                          setHandoverInput(prev => ({ ...prev, [order.id]: '' }));
-                                          setNotification({ message: 'Laundry delivered successfully!', type: 'success' });
-                                          setTimeout(() => setNotification(null), 3000);
-                                        }
-                                      }}
-                                      className="flex-1 h-16 bg-surface-container-highest rounded-2xl px-6 font-headline font-black tracking-[0.2em] outline-none focus:ring-4 ring-tertiary/20 text-center"
-                                      maxLength={4}
-                                    />
-                                    <div className="w-16 h-16 bg-tertiary/10 text-tertiary rounded-2xl flex items-center justify-center">
-                                      <ShieldCheck className="w-8 h-8" />
-                                    </div>
+                                <div className="flex-[2] flex flex-col gap-2">
+                                  <div className="h-16 bg-tertiary/10 text-tertiary rounded-2xl flex items-center justify-between px-6 border border-tertiary/20 shadow-sm">
+                                    <span className="text-[10px] font-black uppercase tracking-widest">Customer Code:</span>
+                                    <span className="text-2xl font-black">{order.code4 || '----'}</span>
+                                    <ShieldCheck className="w-6 h-6 opacity-50" />
                                   </div>
-                                  <p className="text-[10px] font-black text-tertiary uppercase tracking-widest text-center">Verify handover from Customer</p>
+                                  <p className="text-[8px] font-black text-tertiary uppercase tracking-widest text-center">Give this code to customer to complete delivery</p>
                                 </div>
                               )}
                             </div>
