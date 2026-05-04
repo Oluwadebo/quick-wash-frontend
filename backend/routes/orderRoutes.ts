@@ -457,6 +457,7 @@ router.patch("/:id", async (req, res) => {
         }
       } else if (newStatus === 'completed') {
         // Vendor gets remaining 20% of net upon completion
+        // Platform gets 10% commission of itemsPrice
         if (order.vendorId && !order.payoutReleased20) {
           // Atomic update check
           const updatedOrder = isNoTransaction
@@ -468,25 +469,66 @@ router.patch("/:id", async (req, res) => {
               ? await User.findOne({ uid: order.vendorId })
               : await User.findOne({ uid: order.vendorId }).session(session);
             if (vendor) {
-              const netItemsPrice = (order.itemsPrice || 0) * 0.9;
+              const itemsPrice = order.itemsPrice || 0;
+              const netItemsPrice = itemsPrice * 0.9;
               const payout20 = netItemsPrice * 0.2;
+              const platformCommission = itemsPrice * 0.1;
+
               vendor.walletBalance = (vendor.walletBalance || 0) + payout20;
               isNoTransaction ? await vendor.save() : await vendor.save({ session });
 
+              // Payout Transaction for Vendor
               const transData = {
                 id: uuidv4(), userId: vendor.uid, type: 'deposit', amount: payout20,
                 desc: `Order #${order.id} Final Funds (20% of Net)`, status: 'completed', date: new Date(),
                 reference: `VENDOR-PAY-20-${order.id}`
               };
+
+              // Commission Transaction for System
+              const commissionData = {
+                id: uuidv4(),
+                userId: "admin-root-001", // System Admin UID
+                type: 'commission',
+                amount: platformCommission,
+                desc: `Platform Commission (10%) - Order #${order.id}`,
+                status: 'completed',
+                date: new Date(),
+                reference: `COMMISSION-${order.id}`
+              };
+
               try {
-                isNoTransaction ? await Transaction.create([transData]) : await Transaction.create([transData], { session });
+                if (isNoTransaction) {
+                  await Transaction.create([transData]);
+                  await Transaction.create([commissionData]);
+                } else {
+                  await Transaction.create([transData], { session });
+                  await Transaction.create([commissionData], { session });
+                }
+                
+                // Also update admin wallet balance for history correctness
+                const admin = isNoTransaction
+                  ? await User.findOne({ uid: "admin-root-001" })
+                  : await User.findOne({ uid: "admin-root-001" }).session(session);
+                if (admin) {
+                  admin.walletBalance = (admin.walletBalance || 0) + platformCommission;
+                  isNoTransaction ? await admin.save() : await admin.save({ session });
+                }
               } catch (e: any) {
-                if (e.code === 11000) console.warn(`[Order] Duplicate vendor 20% transaction prevented for Order ${order.id}`);
+                if (e.code === 11000) console.warn(`[Order] Duplicate transaction prevented for Order ${order.id}`);
                 else throw e;
               }
             }
           }
         }
+      }
+    }
+
+    // Security: Restrict Dispute Creation for Vendors/Riders
+    if (req.body.disputed && !order.disputed) {
+      const allowedStatusForDispute = ['picked_up', 'washing', 'ready', 'picked_up_delivery', 'delivered'];
+      if (!allowedStatusForDispute.includes(order.status.toLowerCase())) {
+        if (!isNoTransaction) await session.abortTransaction();
+        return res.status(400).json({ message: 'Complaints can only be made after the order has been picked up or is currently being washed.' });
       }
     }
 

@@ -9,6 +9,7 @@ import ProtectedRoute from '@/components/shared/ProtectedRoute';
 import { useAuth } from '@/hooks/use-auth';
 import { formatRelativeTime } from '@/lib/time';
 import { api, Order, UserData } from '@/lib/ApiService';
+import ChatWindow from '@/components/shared/ChatWindow';
 import { 
   X, History, Wallet, ShoppingBag, MapPin, Navigation, Package, CheckCircle, 
   Clock, Phone, ArrowRight, Bike, Zap, AlertTriangle, MessageCircle, ShieldAlert,
@@ -43,6 +44,7 @@ export default function RiderDashboard() {
   const [handoverInput, setHandoverInput] = React.useState<{ [key: string]: string }>({});
   const [orderToReject, setOrderToReject] = React.useState<string | null>(null);
   const [notification, setNotification] = React.useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
+  const [activeChatOrder, setActiveChatOrder] = React.useState<Order | null>(null);
   const [isProcessing, setIsProcessing] = React.useState(false);
   const [isReturnModalOpen, setIsReturnModalOpen] = React.useState(false);
   const [returnReason, setReturnReason] = React.useState('');
@@ -403,24 +405,22 @@ export default function RiderDashboard() {
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       {availableOrders.filter(o => o.status === 'rider_assign_pickup').map((order) => (
-                        <div key={order.id} className="bg-surface-container-low p-8 rounded-[2.5rem] border-2 border-primary/20 shadow-xl">
-                          <div className="flex justify-between items-start mb-6">
+                        <div key={order.id} className="bg-surface-container-low p-8 rounded-[2.5rem] border-2 border-primary/20 shadow-xl relative overflow-hidden group hover:border-primary/40 transition-all">
+                          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                            <ShoppingBag className="w-24 h-24 text-primary" />
+                          </div>
+                          <div className="flex justify-between items-start mb-6 relative z-10">
                             <div>
-                              <p className="font-label text-[10px] font-black uppercase tracking-widest text-primary mb-1 leading-none">Order #{order.id}</p>
+                              <p className="font-label text-[10px] font-black uppercase tracking-widest text-primary mb-1 leading-none">Pickup Request #{order.id}</p>
                               <h4 className="font-headline font-black text-xl text-on-surface mb-2 truncate max-w-[200px]">{order.customerName}</h4>
                               <div className="space-y-2">
-                                <div className="flex items-center gap-2 text-primary">
-                                  <MapPin className="w-3 h-3" />
-                                    <div className="flex flex-col">
-                                      <p className="text-[10px] font-black uppercase tracking-widest leading-tight">PICKUP: {order.customerLandmark || 'Location N/A'}</p>
-                                      {order.customerAddress && (
-                                        <p className="text-[8px] font-medium text-on-surface-variant truncate max-w-[200px]">{order.customerAddress}</p>
-                                      )}
-                                    </div>
+                                <div className="flex items-center gap-2 text-primary font-bold">
+                                  <MapPin className="w-4 h-4" />
+                                  <p className="text-[10px] font-black uppercase tracking-widest leading-tight">FROM: {order.customerLandmark || 'Location N/A'}</p>
                                 </div>
                                 <div className="flex items-center gap-2 text-on-surface-variant">
-                                  <Package className="w-3 h-3" />
-                                  <p className="text-[10px] font-black uppercase tracking-widest leading-tight">TO VENDOR: {order.vendorName} ({order.vendorLandmark})</p>
+                                  <ArrowRight className="w-3 h-3" />
+                                  <p className="text-[10px] font-black uppercase tracking-widest leading-tight">TO: {order.vendorLandmark}</p>
                                 </div>
                               </div>
                             </div>
@@ -429,9 +429,9 @@ export default function RiderDashboard() {
                           <button 
                             onClick={() => handleAcceptOrder(order.id)}
                             disabled={currentUser?.status === 'restricted'}
-                            className="w-full h-14 signature-gradient text-white rounded-xl font-headline font-black text-sm shadow-xl active:scale-95 transition-all disabled:opacity-50"
+                            className="w-full h-14 signature-gradient text-white rounded-xl font-headline font-black text-sm shadow-xl active:scale-95 transition-all disabled:opacity-50 relative z-10"
                           >
-                            {currentUser?.status === 'restricted' ? 'ACCOUNT RESTRICTED' : 'ACCEPT ORDER'}
+                            {currentUser?.status === 'restricted' ? 'ACCOUNT RESTRICTED' : 'ACCEPT PICKUP'}
                           </button>
                         </div>
                       ))}
@@ -448,21 +448,23 @@ export default function RiderDashboard() {
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       {availableOrders.filter(o => o.status === 'rider_assign_delivery').map((order) => (
-                        <div key={order.id} className="bg-surface-container-low p-8 rounded-[2.5rem] border-2 border-secondary/20 shadow-xl">
-                          <div className="flex justify-between items-start mb-6">
+                        <div key={order.id} className="bg-surface-container-low p-8 rounded-[2.5rem] border-2 border-secondary/20 shadow-xl relative overflow-hidden">
+                          <div className="absolute top-0 right-0 p-4 opacity-10">
+                            <Navigation className="w-20 h-20 text-secondary" />
+                          </div>
+                          <div className="flex justify-between items-start mb-6 relative z-10">
                             <div>
                               <p className="font-label text-[10px] font-black uppercase tracking-widest text-secondary mb-1 leading-none">Order #{order.id}</p>
                               <h4 className="font-headline font-black text-xl text-on-surface mb-2 truncate max-w-[200px]">{order.customerName}</h4>
                               <div className="space-y-2">
-                                <div className="flex items-center gap-2 text-secondary">
-                                  <MapPin className="w-3 h-3" />
+                                <div className="flex items-center gap-2 text-secondary font-bold">
+                                  <ShoppingBag className="w-4 h-4" />
                                   <div className="flex flex-col">
                                     <p className="text-[10px] font-black uppercase tracking-widest leading-tight">FROM VENDOR: {order.vendorLandmark}</p>
-                                    <p className="text-[8px] font-medium text-on-surface-variant">{order.vendorName}</p>
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-2 text-on-surface-variant">
-                                  <Package className="w-3 h-3" />
+                                  <MapPin className="w-3 h-3" />
                                   <p className="text-[10px] font-black uppercase tracking-widest">TO CUSTOMER: {order.customerLandmark}</p>
                                 </div>
                               </div>
@@ -472,9 +474,9 @@ export default function RiderDashboard() {
                           <button 
                             onClick={() => handleAcceptOrder(order.id)}
                             disabled={currentUser?.status === 'restricted'}
-                            className="w-full h-14 bg-secondary text-white rounded-xl font-headline font-black text-sm shadow-xl active:scale-95 transition-all disabled:opacity-50"
+                            className="w-full h-14 bg-secondary text-white rounded-xl font-headline font-black text-sm shadow-xl active:scale-95 transition-all disabled:opacity-50 relative z-10"
                           >
-                            {currentUser?.status === 'restricted' ? 'ACCOUNT RESTRICTED' : 'ACCEPT DELIVERY'}
+                            {currentUser?.status === 'restricted' ? 'ACCOUNT RESTRICTED' : 'CLAIM DELIVERY'}
                           </button>
                         </div>
                       ))}
@@ -580,6 +582,13 @@ export default function RiderDashboard() {
 
                           <div className="flex flex-col gap-4 mt-8 pt-8 border-t border-primary/5">
                             <div className="flex gap-3">
+                              <button 
+                                onClick={() => setActiveChatOrder(order)}
+                                className="flex-1 h-16 bg-surface-container-highest text-on-surface rounded-2xl font-headline font-black text-[10px] flex items-center justify-center gap-2 active:scale-95 transition-transform shadow-sm px-2"
+                              >
+                                <MessageCircle className="w-4 h-4 text-primary" /> CHAT
+                              </button>
+
                               <button 
                                 onClick={() => handleStartNavigation(destinationLandmark || '')}
                                 className="flex-1 h-16 bg-surface-container-highest text-on-surface rounded-2xl font-headline font-black text-[10px] flex items-center justify-center gap-2 active:scale-95 transition-transform shadow-sm px-2"
@@ -1198,6 +1207,38 @@ export default function RiderDashboard() {
                     {isProcessing ? 'SAVING...' : 'SAVE CHANGES'}
                   </button>
                 </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Chat Modal */}
+      <AnimatePresence>
+        {activeChatOrder && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }}
+              onClick={() => setActiveChatOrder(null)}
+              className="absolute inset-0 bg-surface/80 backdrop-blur-xl"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }} 
+              animate={{ opacity: 1, scale: 1, y: 0 }} 
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-lg bg-white rounded-[3rem] shadow-2xl border border-primary/10 overflow-hidden"
+            >
+              <div className="h-[600px]">
+                {currentUser && (
+                  <ChatWindow 
+                    orderId={activeChatOrder.id} 
+                    currentUser={currentUser} 
+                    recipientName="Customer & Vendor"
+                    onClose={() => setActiveChatOrder(null)}
+                  />
+                )}
               </div>
             </motion.div>
           </div>

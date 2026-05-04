@@ -18,6 +18,7 @@ import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import { api, SiteSettings } from '@/lib/ApiService';
 import { API_URLS } from '@/lib/api-config';
+import ChatWindow from '@/components/shared/ChatWindow';
 
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -32,6 +33,7 @@ export default function AdminDashboard() {
   const tabParam = searchParams.get('tab') as AdminTab;
   const { approveUser, user: currentUser } = useAuth();
   const [activeTab, setActiveTab] = React.useState<AdminTab>('overview');
+  const [activeChatOrder, setActiveChatOrder] = React.useState<any>(null);
 
   React.useEffect(() => {
     setActiveTab(tabParam || 'overview');
@@ -1135,7 +1137,10 @@ export default function AdminDashboard() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     {isSuperAdmin && (
                       <div className="bg-primary text-on-primary p-8 rounded-[2.5rem] shadow-xl">
-                        <p className="font-label text-[10px] font-black uppercase tracking-widest opacity-80 mb-2">Platform Commission</p>
+                        <div className="flex justify-between items-start mb-2">
+                          <p className="font-label text-[10px] font-black uppercase tracking-widest opacity-80">Platform Commission</p>
+                          <button onClick={() => setHistoryModal({ open: true, type: 'commission' as any })} className="text-[10px] font-black text-on-primary hover:underline">HISTORY</button>
+                        </div>
                         <h3 className="text-4xl font-headline font-black">
                           ₦{allTransactions
                             .filter(t => t.type === 'commission' && t.status === 'completed')
@@ -1275,24 +1280,31 @@ export default function AdminDashboard() {
                             )}
                           </div>
 
-                          <div className="flex gap-3">
-                            <button 
-                              onClick={() => {
-                                setResolvingOrder(o);
-                                setRefundAmount(o.totalPrice);
-                                setIsRefundModalOpen(true);
-                              }}
-                              className="flex-1 h-12 bg-primary text-on-primary rounded-xl font-headline font-bold text-xs active:scale-95 transition-transform"
-                            >
-                              Resolve/Refund
-                            </button>
-                            <button 
-                              onClick={() => handleResolveDispute(o.id, 'reject')}
-                              className="flex-1 h-12 bg-surface-container-highest text-on-surface rounded-xl font-headline font-bold text-xs active:scale-95 transition-transform"
-                            >
-                              Reject Dispute
-                            </button>
-                          </div>
+                            <div className="flex gap-3">
+                              <button 
+                                onClick={() => setActiveChatOrder(o)}
+                                className="w-12 h-12 bg-surface-container-highest text-primary rounded-xl flex items-center justify-center active:scale-95 transition-transform"
+                                title="Open Dispute Chat"
+                              >
+                                <MessageSquare className="w-5 h-5" />
+                              </button>
+                              <button 
+                                onClick={() => {
+                                  setResolvingOrder(o);
+                                  setRefundAmount(o.totalPrice);
+                                  setIsRefundModalOpen(true);
+                                }}
+                                className="flex-1 h-12 bg-primary text-on-primary rounded-xl font-headline font-bold text-xs active:scale-95 transition-transform"
+                              >
+                                Resolve/Refund
+                              </button>
+                              <button 
+                                onClick={() => handleResolveDispute(o.id, 'reject')}
+                                className="flex-1 h-12 bg-surface-container-highest text-on-surface rounded-xl font-headline font-bold text-xs active:scale-95 transition-transform"
+                              >
+                                Reject Dispute
+                              </button>
+                            </div>
                         </div>
                       ))}
                       {orders.filter(o => o.status === 'disputed').length === 0 && (
@@ -2267,7 +2279,7 @@ export default function AdminDashboard() {
                     <div className="flex justify-between items-center mb-8">
                       <div>
                         <h2 className="text-3xl font-headline font-black text-on-surface tracking-tighter uppercase italic">
-                          {historyModal.type === 'payout' ? 'Payouts' : 'Withdrawals'} History
+                          {historyModal.type === 'payout' ? 'Payouts' : historyModal.type === 'commission' ? 'Commission' : 'Withdrawals'} History
                         </h2>
                         <p className="text-on-surface-variant font-medium text-sm">Archived log of platform {historyModal.type}s.</p>
                       </div>
@@ -2281,21 +2293,29 @@ export default function AdminDashboard() {
 
                     <div className="flex-1 overflow-y-auto space-y-4 pr-4 custom-scrollbar">
                       {allTransactions
-                        .filter(t => historyModal.type === 'payout' ? t.type === 'payout' : t.type === 'withdrawal')
+                        .filter(t => {
+                          if (historyModal.type === 'payout') return t.type === 'payout';
+                          if (historyModal.type === 'commission') return t.type === 'commission';
+                          return t.type === 'withdrawal';
+                        })
                         .map((t) => (
                         <div key={t._id} className="p-6 bg-surface-container-lowest rounded-3xl border border-primary/5 flex justify-between items-center">
                           <div className="flex items-center gap-4">
-                            <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center", historyModal.type === 'payout' ? "bg-primary/10 text-primary" : "bg-warning/10 text-warning")}>
+                            <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center", 
+                              historyModal.type === 'payout' ? "bg-primary/10 text-primary" : 
+                              historyModal.type === 'commission' ? "bg-primary/10 text-primary" : 
+                              "bg-warning/10 text-warning"
+                            )}>
                               <History className="w-6 h-6" />
                             </div>
                             <div>
-                              <p className="font-headline font-bold text-lg">{t.desc}</p>
-                              <p className="text-xs text-on-surface-variant">{new Date(t.date).toLocaleDateString()} • {new Date(t.date).toLocaleTimeString()}</p>
-                              <p className="text-[10px] font-bold text-primary truncate max-w-[150px]">Ref: {t.reference || 'N/A'}</p>
+                               <p className="font-headline font-bold text-lg">{t.title || t.desc}</p>
+                               <p className="text-xs text-on-surface-variant">{new Date(t.date || t.createdAt).toLocaleDateString()} • {new Date(t.date || t.createdAt).toLocaleTimeString()}</p>
+                               <p className="text-[10px] font-bold text-primary truncate max-w-[150px]">Ref: {t.reference || t.orderId || 'N/A'}</p>
                             </div>
                           </div>
                           <div className="text-right">
-                            <p className="text-xl font-headline font-black">₦{t.amount.toLocaleString()}</p>
+                            <p className="text-xl font-headline font-black text-primary">₦{t.amount.toLocaleString()}</p>
                             <span className={cn(
                               "text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-md",
                               t.status === 'completed' ? "text-success bg-success/10" : 
@@ -2304,7 +2324,11 @@ export default function AdminDashboard() {
                           </div>
                         </div>
                       ))}
-                      {allTransactions.filter(t => historyModal.type === 'payout' ? t.type === 'payout' : t.type === 'withdrawal').length === 0 && (
+                      {allTransactions.filter(t => {
+                        if (historyModal.type === 'payout') return t.type === 'payout';
+                        if (historyModal.type === 'commission') return t.type === 'commission';
+                        return t.type === 'withdrawal';
+                      }).length === 0 && (
                         <div className="text-center py-20 bg-surface-container-lowest rounded-3xl border border-dashed border-primary/20">
                           <p className="font-headline font-bold text-on-surface-variant">No {historyModal.type} history found.</p>
                         </div>
@@ -2317,6 +2341,38 @@ export default function AdminDashboard() {
                   </motion.div>
                 </div>
               )}
+
+              {/* Dispute Chat Modal */}
+              <AnimatePresence>
+                {activeChatOrder && (
+                  <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
+                    <motion.div 
+                      initial={{ opacity: 0 }} 
+                      animate={{ opacity: 1 }} 
+                      exit={{ opacity: 0 }}
+                      onClick={() => setActiveChatOrder(null)}
+                      className="absolute inset-0 bg-surface/80 backdrop-blur-xl"
+                    />
+                    <motion.div 
+                      initial={{ opacity: 0, scale: 0.9, y: 20 }} 
+                      animate={{ opacity: 1, scale: 1, y: 0 }} 
+                      exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                      className="relative w-full max-w-lg bg-white rounded-[3rem] shadow-2xl border border-primary/10 overflow-hidden"
+                    >
+                      <div className="h-[600px]">
+                        {currentUser && (
+                          <ChatWindow 
+                            orderId={activeChatOrder.id} 
+                            currentUser={currentUser} 
+                            recipientName="Vendor & Customer"
+                            onClose={() => setActiveChatOrder(null)}
+                          />
+                        )}
+                      </div>
+                    </motion.div>
+                  </div>
+                )}
+              </AnimatePresence>
       </div>
       {/* Notifications */}
       <AnimatePresence>

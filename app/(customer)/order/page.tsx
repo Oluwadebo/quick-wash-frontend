@@ -78,17 +78,26 @@ const defaultItems = [
 
 const generateId = () => Math.floor(1000 + Math.random() * 9000).toString();
 
-const calculateRiderFee = (landmark?: string) => {
+const calculateRiderFee = (customerLandmark?: string, vendorLandmark?: string) => {
   const distances: { [key: string]: number } = {
     'Under-G': 2,
     'Adenike': 3,
     'Isale-General': 5,
     'Stadium': 4,
     'Bovina': 6,
-    'LAUTECH Gate': 1
+    'LAUTECH Gate': 1.5,
+    'Odo-Okun': 4.5,
+    'Fapote': 3.5,
+    'Yoaco': 2.5,
+    'General': 5.5
   };
-  const dist = (landmark && distances[landmark]) || 3;
-  return 500 + (dist * 100);
+  const cDist = (customerLandmark && distances[customerLandmark]) || 3.2;
+  const vDist = (vendorLandmark && distances[vendorLandmark]) || 2.4;
+  
+  // Base ₦300 + distance factors
+  const fee = 300 + (cDist * 85) + (vDist * 65);
+  // Round to nearest 50
+  return Math.max(500, Math.round(fee / 50) * 50);
 };
 
 export default function OrderPage() {
@@ -299,12 +308,12 @@ function OrderPageContent() {
   const [riderFee, setRiderFee] = React.useState(0);
   const totalPrice = totalItems > 0 ? (Number(itemsPrice) || 0) + (Number(riderFee) || 0) : 0;
 
-  // Update rider fee when landmark changes
+  // Update rider fee when landmark or vendor changes
   React.useEffect(() => {
-    if (pickupLandmark) {
-      setRiderFee(calculateRiderFee(pickupLandmark));
+    if (pickupLandmark || vendor?.landmark) {
+      setRiderFee(calculateRiderFee(pickupLandmark, vendor?.landmark));
     }
-  }, [pickupLandmark]);
+  }, [pickupLandmark, vendor]);
 
   // Load existing order details if any
   const [existingOrder, setExistingOrder] = React.useState<Order | null>(null);

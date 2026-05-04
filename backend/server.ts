@@ -23,6 +23,7 @@ import walletRoutes from "./routes/walletRoutes";
 import transactionRoutes from "./routes/transactionRoutes";
 import inviteRoutes from "./routes/inviteRoutes";
 import draftRoutes from "./routes/draftRoutes";
+import chatRoutes from "./routes/chatRoutes";
 
 dotenv.config();
 
@@ -94,6 +95,7 @@ app.use("/api/vendor/prices", priceRoutes);
 app.use("/api/transactions", transactionRoutes);
 app.use("/api/system", systemRoutes);
 app.use("/api/drafts", draftRoutes);
+app.use("/api/chat", chatRoutes);
 // Mount systemRoutes at root to allow /api/stats and /api/settings
 app.use("/api", systemRoutes); 
 

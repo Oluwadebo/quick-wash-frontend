@@ -706,6 +706,38 @@ class ApiService {
     }
     throw new Error('Settings update failed');
   }
+
+  // --- CHAT ---
+  async getMessages(orderId: string): Promise<any[]> {
+    if (typeof window !== 'undefined') {
+      try {
+        const token = localStorage.getItem('qw_token');
+        const resp = await fetch(`${API_URLS.base}/chat/${orderId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (resp.ok) return await this.safeJson(resp) || [];
+      } catch (e) {}
+    }
+    return [];
+  }
+
+  async sendMessage(data: { orderId: string, senderId: string, senderRole: string, text: string, image?: string }): Promise<any> {
+    if (typeof window !== 'undefined') {
+      try {
+        const token = localStorage.getItem('qw_token');
+        const resp = await fetch(`${API_URLS.base}/chat`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(data)
+        });
+        if (resp.ok) return await this.safeJson(resp);
+      } catch (e) {}
+    }
+    return null;
+  }
 }
 
 export const api = new ApiService();

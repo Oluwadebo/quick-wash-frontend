@@ -3,7 +3,7 @@
 import React from 'react';
 import TopAppBar from '@/components/shared/TopAppBar';
 import LandmarkSelector from '@/components/shared/LandmarkSelector';
-import { Search, MapPin, ChevronRight, Plus, HelpCircle, Zap, ShoppingBag, Sun, Leaf, Handshake, Shield, Droplets, Check, Wallet, Shirt, History, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Search, MapPin, ChevronRight, Plus, HelpCircle, Zap, ShoppingBag, Sun, Leaf, Handshake, Shield, Droplets, Check, Wallet, Shirt, History, AlertTriangle, CheckCircle, MessageSquare } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'motion/react';
@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
 import { api, Order, UserData } from '@/lib/ApiService';
 import { useAuth } from '@/hooks/use-auth';
+import ChatWindow from '@/components/shared/ChatWindow';
 
 export default function LandmarkSelectionPage() {
   const { user: authUser, refreshUser } = useAuth();
@@ -24,6 +25,7 @@ export default function LandmarkSelectionPage() {
   const [readyToReceiveOrders, setReadyToReceiveOrders] = React.useState<Order[]>([]);
   const [activeBadgeId, setActiveBadgeId] = React.useState<string | null>(null);
   const [notification, setNotification] = React.useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
+  const [activeChatOrder, setActiveChatOrder] = React.useState<Order | null>(null);
 
   const showNotification = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setNotification({ message, type });
@@ -352,19 +354,30 @@ export default function LandmarkSelectionPage() {
             </div>
             <div className="space-y-4">
               {recentOrders.slice(0, 2).map((order) => (
-                <Link 
+                <div 
                   key={order.id} 
-                  href={`/track/${order.id}`}
                   className="block bg-surface-container-low p-6 rounded-3xl border border-primary/5 hover:border-primary/20 transition-all"
                 >
                   <div className="flex justify-between items-start mb-2">
-                    <h4 className="font-headline font-black text-on-surface">Order #{order.id}</h4>
+                    <Link href={`/track/${order.id}`} className="flex-1">
+                      <h4 className="font-headline font-black text-on-surface hover:text-primary transition-colors">Order #{order.id}</h4>
+                    </Link>
                     <span className={cn("px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest", order.color)}>
                       {order.status}
                     </span>
                   </div>
-                  <p className="text-xs text-on-surface-variant font-medium line-clamp-1">{order.items}</p>
-                </Link>
+                  <div className="flex justify-between items-center gap-4">
+                    <p className="text-xs text-on-surface-variant font-medium line-clamp-1 flex-1">{order.items}</p>
+                    {order.status !== 'completed' && order.status !== 'cancelled' && (
+                      <button 
+                        onClick={() => setActiveChatOrder(order)}
+                        className="p-2 bg-primary/10 text-primary rounded-xl hover:bg-primary/20 transition-colors"
+                      >
+                        <MessageSquare className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
               ))}
             </div>
           </section>
@@ -494,6 +507,37 @@ export default function LandmarkSelectionPage() {
             {notification.type === 'error' && <AlertTriangle className="w-5 h-5 text-white" />}
             {notification.message}
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {activeChatOrder && (
+          <div className="fixed inset-0 z-[250] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }}
+              onClick={() => setActiveChatOrder(null)}
+              className="absolute inset-0 bg-surface/80 backdrop-blur-xl"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }} 
+              animate={{ opacity: 1, scale: 1, y: 0 }} 
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-lg bg-white rounded-[3rem] shadow-2xl border border-primary/10 overflow-hidden"
+            >
+              <div className="h-[600px]">
+                {user && (
+                  <ChatWindow 
+                    orderId={activeChatOrder.id} 
+                    currentUser={user} 
+                    recipientName={`${activeChatOrder.vendorId.slice(0,8)}... (Support)`}
+                    onClose={() => setActiveChatOrder(null)}
+                  />
+                )}
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>

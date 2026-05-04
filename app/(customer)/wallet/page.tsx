@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
 import { api } from '@/lib/ApiService';
 import { API_URLS } from '@/lib/api-config';
-import Toast from '@/components/shared/Toast';
+import { Toast } from '@/components/shared/Toast';
 
 export default function WalletPage() {
   const { user, refreshUser } = useAuth();

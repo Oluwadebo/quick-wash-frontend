@@ -16,6 +16,7 @@ import { Toast } from '@/components/shared/Toast';
 import { api, Order, UserData } from '@/lib/ApiService';
 
 import { useAuth } from '@/hooks/use-auth';
+import ChatWindow from '@/components/shared/ChatWindow';
 
 export default function OrderTrackingPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = React.use(params);
@@ -31,6 +32,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
   const [showCancelModal, setShowCancelModal] = React.useState(false);
   const [rating, setRating] = React.useState(5);
   const [issueDescription, setIssueDescription] = React.useState('');
+  const [activeChatOrder, setActiveChatOrder] = React.useState<Order | null>(null);
 
   React.useEffect(() => {
     const refresh = async () => {
@@ -394,14 +396,45 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
                 <Copy className="w-5 h-5" />
               </button>
               <button 
-                onClick={handleWhatsApp}
-                className="w-12 h-12 rounded-xl bg-[#25D366] text-white flex items-center justify-center shadow-lg active:scale-90 transition-transform"
+                onClick={() => setActiveChatOrder(order)}
+                className="w-12 h-12 rounded-xl bg-primary shadow-lg text-on-primary flex items-center justify-center active:scale-90 transition-transform"
               >
-                <MessageCircle className="w-6 h-6 fill-current" />
+                <MessageCircle className="w-6 h-6" />
               </button>
             </div>
           )}
         </section>
+
+        <AnimatePresence>
+          {activeChatOrder && (
+            <div className="fixed inset-0 z-[250] flex items-center justify-center p-6">
+              <motion.div 
+                initial={{ opacity: 0 }} 
+                animate={{ opacity: 1 }} 
+                exit={{ opacity: 0 }}
+                onClick={() => setActiveChatOrder(null)}
+                className="absolute inset-0 bg-surface/80 backdrop-blur-xl"
+              />
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9, y: 20 }} 
+                animate={{ opacity: 1, scale: 1, y: 0 }} 
+                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                className="relative w-full max-w-lg bg-white rounded-[3rem] shadow-2xl border border-primary/10 overflow-hidden"
+              >
+                <div className="h-[600px]">
+                  {authUser && (
+                    <ChatWindow 
+                      orderId={activeChatOrder.id} 
+                      currentUser={authUser} 
+                      recipientName="Rider & Vendor (Support)"
+                      onClose={() => setActiveChatOrder(null)}
+                    />
+                  )}
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
 
         {/* Protection Info */}
         <section className="bg-tertiary-container/10 rounded-[2.5rem] p-8 border border-tertiary-container/30">

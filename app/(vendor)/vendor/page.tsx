@@ -8,10 +8,11 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
 import { formatRelativeTime } from '@/lib/time';
-import { X, History, Wallet, ShoppingBag, Volume2, TrendingUp, Star, ShieldCheck, Clock, Package, ArrowRight, Play, AlertTriangle, Edit3, Trash2, Plus, Shirt, ArrowUpRight, ArrowDownLeft, Eye, EyeOff, CheckCircle2, CloudRain, Droplets, Camera, Info, BarChart3, WashingMachine, Lock, Zap, Shield } from 'lucide-react';
+import { X, History, Wallet, ShoppingBag, Volume2, TrendingUp, Star, ShieldCheck, Clock, Package, ArrowRight, Play, AlertTriangle, Edit3, Trash2, Plus, Shirt, ArrowUpRight, ArrowDownLeft, Eye, EyeOff, CheckCircle2, CloudRain, Droplets, Camera, Info, BarChart3, WashingMachine, Lock, Zap, Shield, MessageSquare } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
 import { api, Order, UserData } from '@/lib/ApiService';
 import { Toast } from '@/components/shared/Toast';
+import ChatWindow from '@/components/shared/ChatWindow';
 
 const generateCode = () => Math.floor(1000 + Math.random() * 9000).toString();
 
@@ -48,6 +49,7 @@ export default function VendorDashboard() {
   const [complaintOrder, setComplaintOrder] = React.useState<Order | null>(null);
   const [complaintMsg, setComplaintMsg] = React.useState('');
   const [walletHistory, setWalletHistory] = React.useState<any[]>([]);
+  const [activeChatOrder, setActiveChatOrder] = React.useState<Order | null>(null);
 
   const [stats, setStats] = React.useState({
     totalEarnings: 0,
@@ -620,7 +622,7 @@ export default function VendorDashboard() {
                     </p>
 
                     <div className="flex gap-4">
-                      {order.status.toLowerCase() === 'rider_assign_pickup' && (
+                      {['picked_up', 'washing', 'ready', 'picked_up_delivery'].includes(order.status.toLowerCase()) && (
                         <button 
                           onClick={() => setComplaintOrder(order)}
                           className="h-14 px-6 bg-error/10 text-error rounded-xl font-headline font-black text-[10px] uppercase tracking-widest active:scale-95 transition-transform"
@@ -677,7 +679,7 @@ export default function VendorDashboard() {
                       )}
                     </div>
                     <div className="flex gap-4">
-                      {order.status === 'picked_up' && (
+                      {['picked_up', 'washing', 'ready', 'picked_up_delivery'].includes(order.status.toLowerCase()) && (
                         <button 
                           onClick={() => setComplaintOrder(order)}
                           className="h-14 px-6 bg-error/10 text-error rounded-xl font-headline font-black text-[10px] uppercase tracking-widest active:scale-95 transition-transform border border-error/5 hover:bg-error/20"
@@ -690,6 +692,12 @@ export default function VendorDashboard() {
                         className="h-14 px-8 bg-surface-container-highest text-on-surface rounded-xl font-headline font-black text-sm active:scale-95 transition-transform"
                       >
                         DETAILS
+                      </button>
+                      <button 
+                        onClick={() => setActiveChatOrder(order)}
+                        className="w-14 h-14 bg-primary/10 text-primary rounded-xl flex items-center justify-center active:scale-95 transition-transform"
+                      >
+                        <MessageSquare className="w-6 h-6" />
                       </button>
                     </div>
                   </div>
@@ -1961,6 +1969,34 @@ export default function VendorDashboard() {
                       className="flex-1 h-14 bg-primary text-white rounded-2xl font-headline font-black text-sm shadow-lg shadow-primary/20"
                     >SAVE</button>
                   </div>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Chat Modal */}
+        <AnimatePresence>
+          {activeChatOrder && (
+            <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
+              <motion.div 
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                onClick={() => setActiveChatOrder(null)}
+                className="absolute inset-0 bg-surface/80 backdrop-blur-xl"
+              />
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                className="relative w-full max-w-lg bg-white rounded-[3rem] shadow-2xl border border-primary/10 overflow-hidden"
+              >
+                <div className="h-[600px]">
+                  {currentUser && (
+                    <ChatWindow 
+                      orderId={activeChatOrder.id} 
+                      currentUser={currentUser} 
+                      recipientName={activeChatOrder.customerName}
+                      onClose={() => setActiveChatOrder(null)}
+                    />
+                  )}
                 </div>
               </motion.div>
             </div>
