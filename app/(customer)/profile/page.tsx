@@ -3,8 +3,8 @@
 import React from 'react';
 import TopAppBar from '@/components/shared/TopAppBar';
 import Link from 'next/link';
-import { Bell, Settings, Verified, Droplets, Group, Sun, Handshake, Leaf, Lock, CheckCircle, Shield, LogOut } from 'lucide-react';
-import { motion } from 'motion/react';
+import { Bell, Settings, Verified, Droplets, Group, Sun, Handshake, Leaf, Lock, CheckCircle, Shield, LogOut, X, AlertTriangle } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
@@ -28,8 +28,13 @@ export default function ProfilePage() {
   const [recentOrders, setRecentOrders] = React.useState<any[]>([]);
   const [totalWashes, setTotalWashes] = React.useState(0);
   const [showAllBadges, setShowAllBadges] = React.useState(false);
-
   const [activeBadgeId, setActiveBadgeId] = React.useState<string | null>(null);
+  const [notification, setNotification] = React.useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
+
+  const showNotification = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 4000);
+  };
 
   const refreshData = React.useCallback(async () => {
     if (authUser?.uid) {
@@ -194,7 +199,7 @@ export default function ProfilePage() {
                     navigator.share({ title: 'Quick-Wash Referral', text, url: window.location.origin });
                   } else {
                     navigator.clipboard.writeText(text);
-                    alert('Referral code copied to clipboard!');
+                    showNotification('Referral code copied to clipboard!', 'success');
                   }
                 }}
                 className="z-10 mt-2 bg-on-secondary text-secondary font-label font-bold text-xs py-2 px-4 rounded-xl w-max active:scale-95 transition-transform"
@@ -301,6 +306,26 @@ export default function ProfilePage() {
           </div>
         </section>
       </main>
+
+      {/* Notification Toast */}
+      <AnimatePresence>
+        {notification && (
+          <motion.div 
+            initial={{ opacity: 0, y: 50, x: '-50%' }}
+            animate={{ opacity: 1, y: 0, x: '-50%' }}
+            exit={{ opacity: 0, y: 50, x: '-50%' }}
+            className={cn(
+              "fixed bottom-24 left-1/2 px-6 py-4 rounded-2xl shadow-2xl z-[200] flex items-center gap-3 font-headline font-black text-sm min-w-[300px] justify-center",
+              notification.type === 'success' ? "bg-success text-on-success" : 
+              notification.type === 'error' ? "bg-error text-on-error" : "bg-primary text-on-primary"
+            )}
+          >
+            {notification.type === 'success' && <CheckCircle className="w-5 h-5 text-white" />}
+            {notification.type === 'error' && <AlertTriangle className="w-5 h-5 text-white" />}
+            {notification.message}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

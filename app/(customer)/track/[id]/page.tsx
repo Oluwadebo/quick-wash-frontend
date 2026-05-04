@@ -28,6 +28,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
   const [handoverInput, setHandoverInput] = React.useState('');
   const [showIssueInput, setShowIssueInput] = React.useState(false);
   const [showRatingModal, setShowRatingModal] = React.useState(false);
+  const [showCancelModal, setShowCancelModal] = React.useState(false);
   const [rating, setRating] = React.useState(5);
   const [issueDescription, setIssueDescription] = React.useState('');
 
@@ -35,8 +36,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
     const refresh = async () => {
       if (!authUser?.uid) return;
 
-      const allOrders = await api.getOrders();
-      const found = allOrders.find((o: Order) => o.id === resolvedParams.id);
+      const found = await api.getOrder(resolvedParams.id);
       
       // STRICT UID FILTERING
       if (found && found.customerUid !== authUser.uid) {
@@ -45,7 +45,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
         return;
       }
 
-      setOrder(found || null);
+      if (found) setOrder(found);
       
       if (found?.riderUid) {
         const riderInfo = await api.getUser(found.riderUid);
@@ -56,12 +56,10 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
 
     refresh();
     const interval = setInterval(refresh, 5000); 
-    return () => {
-      clearInterval(interval);
-    };
+    return () => clearInterval(interval);
   }, [resolvedParams.id, authUser]);
 
-  if (loading) return <div className="pt-32 text-center font-headline font-black text-on-surface">Loading...</div>;
+  if (loading) return <div className="pt-32 text-center font-headline font-black text-on-surface">Loading Dashboard...</div>;
   if (!order) return <div className="pt-32 text-center font-headline font-black text-on-surface">Order not found.</div>;
 
   const handleWhatsApp = () => {
@@ -71,24 +69,38 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
   };
 
   const handleCancelOrder = async () => {
-    if (order?.status === 'confirm' || order?.status === 'rider_assign_pickup') {
-      if (confirm('Are you sure you want to cancel this order? Your payment will be fully refunded to your wallet.')) {
-        try {
-          const data = await api.cancelOrder(order.id, 'User Cancelled from Tracker');
-          setOrder(data.order);
-          setNotification({ message: 'Order cancelled and fully refunded successfully.', type: 'success' });
-          refreshUser();
-          setTimeout(() => setNotification(null), 3000);
-          window.dispatchEvent(new Event('storage'));
-        } catch (error: any) {
-          console.error("Cancellation failed", error);
-          setNotification({ message: error.message || "Failed to cancel order. Please try again.", type: 'error' });
-          setTimeout(() => setNotification(null), 3000);
+    if (order?.status === 'confirm' || order?.status === 'rider_assign_pickup' || order?.status === 'rider_accepted') {
+      try {
+        const token = localStorage.getItem('qw_token');
+        const res = await fetch(`/api/orders/${order.id}/cancel`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ reason: 'User Cancelled via Dashboard' })
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.message || 'Failed to cancel order');
         }
+
+        const data = await res.json();
+        setOrder(data.order);
+        setNotification({ message: 'Order successfully cancelled and fully refunded to your wallet.', type: 'success' });
+        setShowCancelModal(false);
+        window.dispatchEvent(new Event('storage'));
+        setTimeout(() => setNotification(null), 4000);
+      } catch (error: any) {
+        console.error("Cancellation error:", error);
+        setNotification({ message: error.message || "Could not cancel order at this time.", type: 'error' });
+        setShowCancelModal(false);
+        setTimeout(() => setNotification(null), 4000);
       }
     } else {
-      setNotification({ message: 'Orders can only be cancelled before pickup.', type: 'error' });
-      setTimeout(() => setNotification(null), 3000);
+      setNotification({ message: 'Sorry, orders can only be cancelled before pickup.', type: 'error' });
+      setTimeout(() => setNotification(null), 4000);
     }
   };
 
@@ -218,7 +230,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
         </div>
       </header>
 
-      <main className="pt-28 px-6 max-w-2xl mx-auto space-y-8 pb-80">
+      <main className="pt-28 px-6 max-w-2xl mx-auto space-y-8 pb-40">
         <AnimatePresence>
           {notification && (
             <Toast 
@@ -374,7 +386,8 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
               <button 
                 onClick={() => {
                   navigator.clipboard.writeText(rider.phoneNumber);
-                  alert('Phone number copied!');
+                  setNotification({ message: 'Phone number copied to clipboard', type: 'info' });
+                  setTimeout(() => setNotification(null), 2000);
                 }}
                 className="w-12 h-12 rounded-xl bg-surface-container-highest text-on-surface-variant flex items-center justify-center active:scale-90 transition-transform"
               >
@@ -452,10 +465,10 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
         </section>
 
         {/* Cancel Button */}
-        {(order.status === 'confirm' || order.status === 'rider_assign_pickup') && (
+        {(order.status === 'confirm' || order.status === 'rider_assign_pickup' || order.status === 'rider_accepted') && (
           <div className="mt-8">
             <button 
-              onClick={handleCancelOrder}
+              onClick={() => setShowCancelModal(true)}
               className="w-full h-16 bg-error text-white rounded-2xl font-headline font-black text-sm active:scale-95 transition-transform shadow-xl shadow-error/20 flex items-center justify-center gap-3"
             >
               <AlertTriangle className="w-5 h-5" />
@@ -466,36 +479,76 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
             </p>
           </div>
         )}
-      </main>
-
-      {/* Sticky Footer */}
-      {order.status === 'ready' && (
-        <div className="fixed bottom-0 left-0 w-full p-4 sm:p-6 bg-gradient-to-t from-surface via-surface/90 to-transparent z-[100] border-t border-primary/5">
-          <div className="max-w-2xl mx-auto flex flex-col items-center gap-3">
-            <div className="bg-primary/10 px-4 py-1.5 rounded-full backdrop-blur-md border border-primary/20 shadow-sm">
-              <p className="text-[10px] font-black text-primary uppercase tracking-widest whitespace-nowrap">
-                Tap below when you are ready to receive
-              </p>
-            </div>
+        {/* Action Button Section */}
+        {order.status === 'ready' && (
+          <div className="mt-8 mb-4 flex flex-col items-center gap-4">
+            <p className="text-[10px] font-black text-primary bg-primary/10 px-4 py-2 rounded-full uppercase tracking-widest shadow-sm border border-primary/20">
+              Tap below when you are ready to receive
+            </p>
             <ReadyToReceiveButton 
               onClick={async () => {
                 if (!order) return;
                 try {
-                  const updatedOrder = await api.updateOrderStatus(order.id, 'rider_assign_delivery', 'bg-primary text-on-primary', { customerReadyForDelivery: true });
+                  const updatedOrder = await api.updateOrderStatus(order.id, 'rider_assign_delivery', 'bg-primary text-on-primary', {
+                    customerReadyForDelivery: true,
+                    customerConfirmedDeliveryAt: new Date().toISOString(),
+                    riderUid: null,
+                    riderName: null,
+                    riderPhone: null
+                  });
                   setOrder(updatedOrder);
                   setNotification({ message: 'Riders have been notified that you are ready to receive your laundry!', type: 'success' });
-                  setTimeout(() => setNotification(null), 3000);
-                  refreshUser();
+                  setTimeout(() => setNotification(null), 5000);
                   window.dispatchEvent(new Event('storage'));
-                } catch (error: any) {
-                  setNotification({ message: error.message || 'Failed to update status', type: 'error' });
+                } catch (e: any) {
+                  setNotification({ message: e.message || 'Failed to update status', type: 'error' });
                   setTimeout(() => setNotification(null), 3000);
                 }
               }}
             />
           </div>
+        )}
+      </main>
+      
+      {/* Cancel Confirmation Modal */}
+      {showCancelModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+          <motion.div 
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            className="absolute inset-0 bg-surface/80 backdrop-blur-xl"
+            onClick={() => setShowCancelModal(false)}
+          />
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="relative w-full max-w-sm bg-surface-container-low rounded-[3rem] p-10 border border-error/20 shadow-2xl text-center max-h-[90vh] overflow-y-auto custom-scrollbar"
+          >
+            <div className="w-20 h-20 bg-error/10 text-error rounded-full flex items-center justify-center mx-auto mb-6">
+              <AlertTriangle className="w-10 h-10" />
+            </div>
+            <h2 className="text-2xl font-headline font-black text-on-surface mb-2">Cancel Order?</h2>
+            <p className="text-on-surface-variant text-sm font-medium mb-8">
+              Are you sure? Your payment will be fully refunded to your wallet.
+            </p>
+            
+            <div className="flex flex-col gap-4">
+              <button 
+                onClick={handleCancelOrder}
+                className="w-full h-16 bg-error text-white rounded-2xl font-headline font-black text-sm shadow-lg active:scale-95 transition-transform"
+              >
+                YES, CANCEL & REFUND
+              </button>
+              <button 
+                onClick={() => setShowCancelModal(false)}
+                className="w-full h-16 bg-surface-container-highest text-on-surface rounded-2xl font-headline font-black text-sm active:scale-95 transition-transform"
+              >
+                GO BACK
+              </button>
+            </div>
+          </motion.div>
         </div>
       )}
+
       {/* Rating Modal */}
       {showRatingModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">

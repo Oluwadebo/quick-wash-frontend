@@ -3,10 +3,10 @@
 import React from 'react';
 import TopAppBar from '@/components/shared/TopAppBar';
 import LandmarkSelector from '@/components/shared/LandmarkSelector';
-import { Search, MapPin, ChevronRight, Plus, HelpCircle, Zap, ShoppingBag, Sun, Leaf, Handshake, Shield, Droplets, Check, Wallet, Shirt, History } from 'lucide-react';
+import { Search, MapPin, ChevronRight, Plus, HelpCircle, Zap, ShoppingBag, Sun, Leaf, Handshake, Shield, Droplets, Check, Wallet, Shirt, History, AlertTriangle, CheckCircle } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
@@ -23,6 +23,12 @@ export default function LandmarkSelectionPage() {
   const [unconfirmedOrders, setUnconfirmedOrders] = React.useState<Order[]>([]);
   const [readyToReceiveOrders, setReadyToReceiveOrders] = React.useState<Order[]>([]);
   const [activeBadgeId, setActiveBadgeId] = React.useState<string | null>(null);
+  const [notification, setNotification] = React.useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
+
+  const showNotification = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 4000);
+  };
 
   const fetchData = React.useCallback(async () => {
     if (!authUser?.uid) return;
@@ -256,7 +262,7 @@ export default function LandmarkSelectionPage() {
                     navigator.share({ title: 'Join Quick-Wash', text: inviteText, url: 'https://quick-wash.app' });
                   } else {
                     navigator.clipboard.writeText(inviteText);
-                    alert("Invite message copied to clipboard!");
+                    showNotification("Invite message copied to clipboard!", "success");
                   }
                 }}
                 className="px-6 py-4 bg-secondary text-white rounded-2xl font-headline font-black text-xs shadow-lg active:scale-95 transition-transform"
@@ -470,6 +476,26 @@ export default function LandmarkSelectionPage() {
           </button>
         </section>
       </main>
+
+      {/* Notification Toast */}
+      <AnimatePresence>
+        {notification && (
+          <motion.div 
+            initial={{ opacity: 0, y: 50, x: '-50%' }}
+            animate={{ opacity: 1, y: 0, x: '-50%' }}
+            exit={{ opacity: 0, y: 50, x: '-50%' }}
+            className={cn(
+              "fixed bottom-24 left-1/2 px-6 py-4 rounded-2xl shadow-2xl z-[200] flex items-center gap-3 font-headline font-black text-sm min-w-[300px] justify-center",
+              notification.type === 'success' ? "bg-success text-on-success" : 
+              notification.type === 'error' ? "bg-error text-on-error" : "bg-primary text-on-primary"
+            )}
+          >
+            {notification.type === 'success' && <CheckCircle className="w-5 h-5 text-white" />}
+            {notification.type === 'error' && <AlertTriangle className="w-5 h-5 text-white" />}
+            {notification.message}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

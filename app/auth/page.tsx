@@ -4,7 +4,7 @@ import React, { useState, Suspense } from 'react';
 import Image from 'next/image';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth, UserRole } from '@/hooks/use-auth';
-import { Droplets, ArrowLeft, Phone, Lock, User, MapPin, ChevronRight, Sparkles, Store, Bike, Eye, EyeOff, Mail, Github, Globe } from 'lucide-react';
+import { Droplets, ArrowLeft, Phone, Lock, User, MapPin, ChevronRight, Sparkles, Store, Bike, Eye, EyeOff, Mail, Github, Globe, CheckCircle, AlertTriangle, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { api, SiteSettings } from '@/lib/ApiService';
@@ -33,6 +33,12 @@ function AuthContent() {
   }, [searchParams]);
   const [resetData, setResetData] = useState({ identifier: '', code: '', newPassword: '' });
   const [resetMessage, setResetMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [notification, setNotification] = useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
+  
+  const showNotification = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 4000);
+  };
   
   const [showPassword, setShowPassword] = useState(false);
   
@@ -61,7 +67,7 @@ function AuthContent() {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 5 * 1024 * 1024) {
-        alert('File is too large! Maximum 5MB.');
+        showNotification('File is too large! Maximum 5MB.', 'error');
         return;
       }
       const reader = new FileReader();
@@ -123,14 +129,14 @@ function AuthContent() {
       // Strict validation for NIN and Phone
       const phoneRegex = /^[0-9]{11}$/;
       if (!phoneRegex.test(formData.phoneNumber)) {
-        alert('Phone number must be exactly 11 digits');
+        showNotification('Phone number must be exactly 11 digits', 'error');
         return;
       }
       
       if (role === 'rider') {
         const ninRegex = /^[0-9]{11}$/;
         if (!ninRegex.test(formData.nin)) {
-          alert('NIN must be exactly 11 digits');
+          showNotification('NIN must be exactly 11 digits', 'error');
           return;
         }
       }
@@ -718,6 +724,26 @@ function AuthContent() {
           )}
         </motion.div>
       </main>
+
+      {/* Notification Toast */}
+      <AnimatePresence>
+        {notification && (
+          <motion.div 
+            initial={{ opacity: 0, y: 50, x: '-50%' }}
+            animate={{ opacity: 1, y: 0, x: '-50%' }}
+            exit={{ opacity: 0, y: 50, x: '-50%' }}
+            className={cn(
+              "fixed bottom-10 left-1/2 px-6 py-4 rounded-2xl shadow-2xl z-[200] flex items-center gap-3 font-headline font-black text-sm min-w-[300px] justify-center",
+              notification.type === 'success' ? "bg-success text-on-success" : 
+              notification.type === 'error' ? "bg-error text-on-error" : "bg-primary text-on-primary"
+            )}
+          >
+            {notification.type === 'success' && <CheckCircle className="w-5 h-5" />}
+            {notification.type === 'error' && <AlertTriangle className="w-5 h-5" />}
+            {notification.message}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

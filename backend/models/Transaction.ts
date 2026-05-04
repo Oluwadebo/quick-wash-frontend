@@ -23,7 +23,7 @@ const TransactionSchema: Schema = new Schema({
   date: { type: Date, default: Date.now },
   status: { type: String, enum: ['completed', 'pending', 'failed', 'disputed'], default: 'completed' },
   issueDescription: { type: String },
-  reference: { type: String },
+  reference: { type: String, unique: true, sparse: true },
 }, { timestamps: true });
 
 export default mongoose.models.Transaction || mongoose.model<ITransaction>('Transaction', TransactionSchema);

@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
 import { api } from '@/lib/ApiService';
 import { API_URLS } from '@/lib/api-config';
+import Toast from '@/components/shared/Toast';
 
 export default function WalletPage() {
   const { user, refreshUser } = useAuth();
@@ -21,6 +22,14 @@ export default function WalletPage() {
   const [fundAmount, setFundAmount] = React.useState('');
   const [isProcessing, setIsProcessing] = React.useState(false);
   const [showSuccessView, setShowSuccessView] = React.useState(false);
+  const [notification, setNotification] = React.useState<{ message: string, type: 'success' | 'error' } | null>(null);
+  const [disputeMsg, setDisputeMsg] = React.useState('');
+  const [isDisputeModalOpen, setIsDisputeModalOpen] = React.useState(false);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 3000);
+  };
   const fetchWalletData = React.useCallback(async () => {
     if (!user?.uid) return;
     try {
@@ -54,7 +63,7 @@ export default function WalletPage() {
 
   const handleFundWallet = React.useCallback(async () => {
     if (!fundAmount || isNaN(Number(fundAmount)) || Number(fundAmount) <= 0) {
-      alert('Please enter a valid amount');
+      showToast('Please enter a valid amount', 'error');
       return;
     }
 
@@ -81,17 +90,12 @@ export default function WalletPage() {
       }
 
       if (response.ok) {
-        // 1. Success state first
-        console.log('[Wallet] Funding success, updating UI states...');
+        // ... (existing success logic)
         setBalance(result.balance);
         setLastFundedAmount(amount);
-        
-        // Sync global auth state
         if (refreshUser) await refreshUser();
         
-        // 2. Immediate History Update with optimistic transaction
         if (result.transaction) {
-          console.log('[Wallet] Adding new transaction to history:', result.transaction._id);
           setHistory(prev => {
             const tx = result.transaction;
             const exists = prev.some(t => 
@@ -102,35 +106,26 @@ export default function WalletPage() {
           });
         }
         
-        // 3. UI Flow: Close form and SHOW SUCCESS MODAL
         setIsFunding(false);
         setIsProcessing(false);
         
-        // Use a more robust trigger for the success modal
-        // We set it after a clean tick to avoid transition conflicts
         requestAnimationFrame(() => {
           setTimeout(() => {
             setShowSuccessView(true);
-            console.log('[Wallet] Success modal triggered successfully');
           }, 400); 
         });
         
-        // 4. Cleanup inputs
         setPaymentMethod(null);
         setFundAmount('');
 
-        // 5. Background verify fetch with longer delay to ensure DB consistency
         setTimeout(() => {
           fetchWalletData();
-          console.log('[Wallet] Background history refresh executed');
         }, 2500);
       } else {
-        console.error('[Wallet] Funding failed:', result);
-        alert(result.message || result.error || 'Funding failed');
+        showToast(result.message || result.error || 'Funding failed', 'error');
       }
     } catch (error: any) {
-      console.error('Funding error:', error);
-      alert(error.message || 'An error occurred. Please try again.');
+      showToast(error.message || 'An error occurred. Please try again.', 'error');
     } finally {
       setIsProcessing(false);
     }
@@ -173,6 +168,13 @@ export default function WalletPage() {
   return (
     <div className="pb-32">
       <TopAppBar title="My Wallet" />
+      <AnimatePresence>
+        {notification && (
+          <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[200] w-[90%] max-w-md">
+            <Toast message={notification.message} type={notification.type} onClose={() => setNotification(null)} />
+          </div>
+        )}
+      </AnimatePresence>
 
       <main className="pt-8 px-4 sm:px-6 max-w-2xl mx-auto space-y-6 sm:space-y-8">
         {/* Balance Card */}
@@ -434,31 +436,7 @@ export default function WalletPage() {
 
               <button 
                 onClick={async () => {
-                  const issue = prompt('Please describe the issue with this transaction:');
-                  if (issue && user?.uid) {
-                    try {
-                      const token = localStorage.getItem('qw_token');
-                      const resp = await fetch(`/api/transactions/${selectedTransaction.id}`, {
-                        method: 'PATCH',
-                        headers: {
-                          'Authorization': `Bearer ${token}`,
-                          'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({ 
-                          status: 'disputed', 
-                          issueDescription: issue 
-                        })
-                      });
-                      if (resp.ok) {
-                        const updated = await resp.json();
-                        setHistory(prev => prev.map(t => (t.id === selectedTransaction.id || t._id === selectedTransaction.id) ? updated : t));
-                        setSelectedTransaction(null);
-                        alert('Issue raised successfully. Our support team will review it.');
-                      }
-                    } catch (err) {
-                      alert('Failed to raise issue.');
-                    }
-                  }
+                  setIsDisputeModalOpen(true);
                 }}
                 className="w-full h-12 bg-error/10 text-error mt-4 rounded-xl font-headline font-black text-[10px] uppercase tracking-widest active:scale-95 transition-transform border border-error/10"
               >
@@ -599,7 +577,7 @@ export default function WalletPage() {
                         onClick={() => {
                           const ref = user?.transferReference || 'QW-REF-MISSING';
                           navigator.clipboard.writeText(`Acc: 2031194566, Ref: ${ref}`);
-                          alert('Account and Reference copied!');
+                          showToast('Account and Reference copied!');
                         }}
                         className="p-2 bg-white rounded-lg shadow-sm active:scale-90 transition-transform"
                       >
@@ -652,6 +630,81 @@ export default function WalletPage() {
                       ADD FUNDS
                     </>
                   )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Dispute Modal */}
+      <AnimatePresence>
+        {isDisputeModalOpen && (
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsDisputeModalOpen(false)}
+              className="absolute inset-0 bg-on-surface/40 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="relative w-full max-w-sm bg-surface rounded-[3rem] p-10 shadow-2xl"
+            >
+              <h3 className="text-2xl font-headline font-black text-on-surface mb-4">Report Issue</h3>
+              <p className="text-xs font-medium text-on-surface-variant mb-6">Describe the problem with this transaction for our support team.</p>
+              <textarea 
+                value={disputeMsg}
+                onChange={(e) => setDisputeMsg(e.target.value)}
+                placeholder="Describe your issue..."
+                className="w-full h-32 bg-surface-container-highest rounded-2xl p-6 text-sm font-medium outline-none focus:ring-4 ring-error/10 resize-none"
+              />
+              <div className="flex gap-4 mt-8">
+                <button 
+                  onClick={() => setIsDisputeModalOpen(false)}
+                  className="flex-1 h-16 bg-surface-container-highest rounded-2xl font-headline font-black text-xs uppercase"
+                >
+                  CANCEL
+                </button>
+                <button 
+                  onClick={async () => {
+                    if (!disputeMsg.trim()) return showToast('Please describe the issue', 'error');
+                    if (selectedTransaction && user?.uid) {
+                      try {
+                        setIsProcessing(true);
+                        const token = localStorage.getItem('qw_token');
+                        const resp = await fetch(`${API_URLS.transactions}/${selectedTransaction.id}`, {
+                          method: 'PATCH',
+                          headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                          },
+                          body: JSON.stringify({ 
+                            status: 'disputed', 
+                            issueDescription: disputeMsg 
+                          })
+                        });
+                        if (resp.ok) {
+                          const updated = await resp.json();
+                          setHistory(prev => prev.map(t => (t.id === selectedTransaction.id || t._id === selectedTransaction.id) ? updated : t));
+                          setSelectedTransaction(null);
+                          setIsDisputeModalOpen(false);
+                          setDisputeMsg('');
+                          showToast('Issue raised successfully.');
+                        }
+                      } catch (err) {
+                        showToast('Failed to raise issue.', 'error');
+                      } finally {
+                        setIsProcessing(false);
+                      }
+                    }
+                  }}
+                  className="flex-1 h-16 bg-error text-white rounded-2xl font-headline font-black text-xs uppercase shadow-xl shadow-error/20"
+                >
+                  SUBMIT
                 </button>
               </div>
             </motion.div>

@@ -22,6 +22,7 @@ export default function VendorDashboard() {
   const { user: currentUser } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const [isDeletingServiceId, setIsDeletingServiceId] = React.useState<number | null>(null);
   const [activeTab, setActiveTab] = React.useState<'orders' | 'history' | 'payout' | 'prices' | 'settings' | 'disputes'>('orders');
 
   React.useEffect(() => {
@@ -239,15 +240,16 @@ export default function VendorDashboard() {
     setTimeout(() => setNotification(null), 2000);
   };
 
-  const handleDeleteService = async (id: number) => {
-    if (confirm('Delete this entire service from your shop?')) {
-      const updated = services.filter((s: any) => s.id !== id);
+  const handleDeleteService = async () => {
+    if (isDeletingServiceId !== null) {
+      const updated = services.filter((s: any) => s.id !== isDeletingServiceId);
       if (currentUser?.uid) {
         await api.saveVendorPriceList(currentUser.uid, updated);
         setServices(updated);
         setNotification({ message: "Service removed from your list.", type: 'info' });
         setTimeout(() => setNotification(null), 2000);
       }
+      setIsDeletingServiceId(null);
     }
   };
 
@@ -307,15 +309,13 @@ export default function VendorDashboard() {
       <TopAppBar roleLabel="Vendor Station" />
       
       <main className="pt-8 px-6 max-w-7xl mx-auto">
-          <AnimatePresence>
-            {notification && (
-              <Toast 
-                message={notification.message} 
-                type={notification.type} 
-                onClose={() => setNotification(null)} 
-              />
-            )}
-          </AnimatePresence>
+                <AnimatePresence>
+                  {notification && (
+                    <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[200] w-[90%] max-w-md">
+                      <Toast message={notification.message} type={notification.type} onClose={() => setNotification(null)} />
+                    </div>
+                  )}
+                </AnimatePresence>
           <header className="mb-10">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
               <div>
@@ -497,7 +497,7 @@ export default function VendorDashboard() {
                             <Edit3 className="w-4 h-4" />
                           </button>
                           <button 
-                            onClick={() => handleDeleteService(service.id)}
+                            onClick={() => setIsDeletingServiceId(service.id)}
                             className="w-10 h-10 rounded-xl bg-surface-container-highest text-on-surface-variant flex items-center justify-center hover:text-error transition-colors"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -1415,7 +1415,46 @@ export default function VendorDashboard() {
           )}
         </AnimatePresence>
 
-        {/* Service Picker Modal */}
+        {/* Delete Confirmation Modal */}
+      {isDeletingServiceId !== null && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+          <motion.div 
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            className="absolute inset-0 bg-surface/80 backdrop-blur-xl"
+            onClick={() => setIsDeletingServiceId(null)}
+          />
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="relative w-full max-w-sm bg-surface-container-low rounded-[3rem] p-10 border border-error/20 shadow-2xl text-center"
+          >
+            <div className="w-20 h-20 bg-error/10 text-error rounded-full flex items-center justify-center mx-auto mb-6">
+              <Trash2 className="w-10 h-10" />
+            </div>
+            <h2 className="text-2xl font-headline font-black text-on-surface mb-2">Delete Service?</h2>
+            <p className="text-on-surface-variant text-sm font-medium mb-8">
+              Are you sure you want to remove this service from your shop?
+            </p>
+            
+            <div className="flex flex-col gap-4">
+              <button 
+                onClick={handleDeleteService}
+                className="w-full h-16 bg-error text-white rounded-2xl font-headline font-black text-sm shadow-lg active:scale-95 transition-transform"
+              >
+                YES, DELETE
+              </button>
+              <button 
+                onClick={() => setIsDeletingServiceId(null)}
+                className="w-full h-16 bg-surface-container-highest text-on-surface rounded-2xl font-headline font-black text-sm active:scale-95 transition-transform"
+              >
+                GO BACK
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Service Picker Modal */}
         <AnimatePresence>
           {isServicePickerOpen && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
@@ -1748,10 +1787,10 @@ export default function VendorDashboard() {
               />
               <motion.div 
                 initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                className="relative w-full max-w-md bg-white rounded-[3rem] p-10 shadow-2xl border border-primary/10 max-h-[90vh] overflow-y-auto custom-scrollbar"
+                className="relative w-full max-w-md bg-white rounded-[3rem] p-10 shadow-2xl border border-primary/10"
               >
                 <h3 className="text-3xl font-headline font-black text-on-surface mb-6">Edit Shop Info</h3>
-                <div className="space-y-4">
+                <div className="space-y-4 overflow-y-auto max-h-[70vh] pr-2">
                   <div className="space-y-1">
                     <label className="text-[10px] font-black uppercase tracking-widest text-primary ml-2">Shop Name</label>
                     <input 
@@ -1812,10 +1851,10 @@ export default function VendorDashboard() {
               />
               <motion.div 
                 initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                className="relative w-full max-w-md bg-white rounded-[3rem] p-10 shadow-2xl border border-primary/10 max-h-[90vh] overflow-y-auto custom-scrollbar"
+                className="relative w-full max-w-md bg-white rounded-[3rem] p-10 shadow-2xl border border-primary/10"
               >
                 <h3 className="text-3xl font-headline font-black text-on-surface mb-6">Bank Details</h3>
-                <div className="space-y-4">
+                <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
                   <div className="space-y-1">
                     <label className="text-[10px] font-black uppercase tracking-widest text-primary ml-2">Bank Name</label>
                     <input 
@@ -1848,7 +1887,11 @@ export default function VendorDashboard() {
                     <button onClick={() => setIsBankModalOpen(false)} className="flex-1 h-14 bg-surface-container-highest text-on-surface rounded-2xl font-headline font-black text-sm">CANCEL</button>
                     <button 
                       onClick={async () => {
-                        if (bankForm.bankAccountNumber.length !== 10) { alert("Account number must be 10 digits"); return; }
+                        if (bankForm.bankAccountNumber.length !== 10) { 
+                          setNotification({ message: 'Account number must be 10 digits.', type: 'error' });
+                          setTimeout(() => setNotification(null), 3000);
+                          return; 
+                        }
                         setIsProcessing(true);
                         if (currentUser?.uid) {
                           await api.updateUser(currentUser.uid, bankForm);
@@ -1879,10 +1922,10 @@ export default function VendorDashboard() {
               />
               <motion.div 
                 initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                className="relative w-full max-w-md bg-white rounded-[3rem] p-10 shadow-2xl border border-primary/10 max-h-[90vh] overflow-y-auto custom-scrollbar"
+                className="relative w-full max-w-md bg-white rounded-[3rem] p-10 shadow-2xl border border-primary/10"
               >
                 <h3 className="text-3xl font-headline font-black text-on-surface mb-6">Personal Profile</h3>
-                <div className="space-y-4">
+                <div className="space-y-4 overflow-y-auto max-h-[70vh] pr-2">
                   <div className="space-y-1">
                     <label className="text-[10px] font-black uppercase tracking-widest text-primary ml-2">Full Name</label>
                     <input 

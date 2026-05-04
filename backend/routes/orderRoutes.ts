@@ -289,17 +289,31 @@ router.get("/:id", async (req, res) => {
 });
 
 router.patch("/:id", async (req, res) => {
+  const session = await mongoose.startSession();
+  let isNoTransaction = false;
+  try {
+    session.startTransaction();
+  } catch (e) {
+    isNoTransaction = true;
+  }
+
   try {
     const { id } = req.params;
     console.log(`[Order] PATCH update for ID: ${id}, Payload:`, req.body);
 
     // Try finding by friendly ID first
-    let order = await Order.findOne({ id: id });
+    let order = isNoTransaction 
+      ? await Order.findOne({ id: id })
+      : await Order.findOne({ id: id }).session(session);
+      
     if (!order && mongoose.Types.ObjectId.isValid(id)) {
-      order = await Order.findById(id);
+      order = isNoTransaction 
+        ? await Order.findById(id)
+        : await Order.findById(id).session(session);
     }
 
     if (!order) {
+      if (!isNoTransaction) await session.abortTransaction();
       console.error(`[Order] Update failed: Order not found with ID: ${id}`);
       return res.status(404).json({ message: `Order not found with ID: ${id}` });
     }
@@ -308,93 +322,169 @@ router.patch("/:id", async (req, res) => {
     const newStatus = (req.body.status || '').toLowerCase();
     const currentStatus = (order.status || '').toLowerCase();
     
-    if (newStatus !== currentStatus) {
+    if (newStatus && newStatus !== currentStatus) {
       if (newStatus === 'picked_up') {
-        const inputCode = String(req.body.handoverCode || '');
-        if (inputCode !== String(order.code1 || '')) {
+        const inputCode = String(req.body.handoverCode || '').trim();
+        const expectedCode = String(order.code1 || '').trim();
+        if (inputCode !== expectedCode) {
+          if (!isNoTransaction) await session.abortTransaction();
           return res.status(400).json({ message: 'Invalid Handover Code (Code 1) for Pickup.' });
         }
         // Rider gets 1st half of fee upon pickup from customer
         if (order.riderUid && !order.riderPayoutReleased50) {
-          const rider = await User.findOne({ uid: order.riderUid });
-          if (rider) {
-            const firstHalf = (order.riderFee || 0) * 0.5;
-            rider.walletBalance = (rider.walletBalance || 0) + firstHalf;
-            await rider.save();
-            order.riderPayoutReleased50 = true;
-            await Transaction.create({
-              id: uuidv4(), userId: rider.uid, type: 'deposit', amount: firstHalf,
-              desc: `Order #${order.id} Pickup Fee (50%)`, status: 'completed', date: new Date()
-            });
+          // Atomic update check
+          const updatedOrder = isNoTransaction
+             ? await Order.findOneAndUpdate({ _id: order._id, riderPayoutReleased50: false }, { $set: { riderPayoutReleased50: true } }, { new: true })
+             : await Order.findOneAndUpdate({ _id: order._id, riderPayoutReleased50: false }, { $set: { riderPayoutReleased50: true } }, { new: true, session });
+          
+          if (updatedOrder) {
+            const rider = isNoTransaction
+              ? await User.findOne({ uid: order.riderUid })
+              : await User.findOne({ uid: order.riderUid }).session(session);
+            if (rider) {
+              const firstHalf = (order.riderFee || 0) * 0.5;
+              rider.walletBalance = (rider.walletBalance || 0) + firstHalf;
+              isNoTransaction ? await rider.save() : await rider.save({ session });
+              
+              const transData = {
+                id: uuidv4(), userId: rider.uid, type: 'deposit', amount: firstHalf,
+                desc: `Order #${order.id} Pickup Fee (50%)`, status: 'completed', date: new Date(),
+                reference: `FEE-PICKUP-50-${order.id}`
+              };
+              try {
+                isNoTransaction ? await Transaction.create([transData]) : await Transaction.create([transData], { session });
+              } catch (e: any) {
+                if (e.code === 11000) console.warn(`[Order] Duplicate pickup transaction prevented for Order ${order.id}`);
+                else throw e;
+              }
+            }
           }
         }
       } else if (newStatus === 'washing') {
-        const inputCode = String(req.body.handoverCode || '');
-        if (inputCode !== String(order.code2 || '')) {
+        const inputCode = String(req.body.handoverCode || '').trim();
+        if (inputCode !== String(order.code2 || '').trim()) {
+          if (!isNoTransaction) await session.abortTransaction();
           return res.status(400).json({ message: 'Invalid Handover Code (Code 2) for Vendor Receipt.' });
         }
         // Vendor gets 80% of net (itemsPrice * 0.9) upon starting wash
         if (order.vendorId && !order.payoutReleased80) {
-          const vendor = await User.findOne({ uid: order.vendorId });
-          if (vendor) {
-            const netItemsPrice = (order.itemsPrice || 0) * 0.9;
-            const payout80 = netItemsPrice * 0.8;
-            vendor.walletBalance = (vendor.walletBalance || 0) + payout80;
-            await vendor.save();
-            order.payoutReleased80 = true;
-            await Transaction.create({
-              id: uuidv4(), userId: vendor.uid, type: 'deposit', amount: payout80,
-              desc: `Order #${order.id} Initial Funds (80% of Net)`, status: 'completed', date: new Date()
-            });
+          // Atomic update check
+          const updatedOrder = isNoTransaction
+             ? await Order.findOneAndUpdate({ _id: order._id, payoutReleased80: false }, { $set: { payoutReleased80: true } }, { new: true })
+             : await Order.findOneAndUpdate({ _id: order._id, payoutReleased80: false }, { $set: { payoutReleased80: true } }, { new: true, session });
+          
+          if (updatedOrder) {
+            const vendor = isNoTransaction
+              ? await User.findOne({ uid: order.vendorId })
+              : await User.findOne({ uid: order.vendorId }).session(session);
+            if (vendor) {
+              const netItemsPrice = (order.itemsPrice || 0) * 0.9;
+              const payout80 = netItemsPrice * 0.8;
+              vendor.walletBalance = (vendor.walletBalance || 0) + payout80;
+              isNoTransaction ? await vendor.save() : await vendor.save({ session });
+              
+              const transData = {
+                id: uuidv4(), userId: vendor.uid, type: 'deposit', amount: payout80,
+                desc: `Order #${order.id} Initial Funds (80% of Net)`, status: 'completed', date: new Date(),
+                reference: `VENDOR-PAY-80-${order.id}`
+              };
+              try {
+                isNoTransaction ? await Transaction.create([transData]) : await Transaction.create([transData], { session });
+              } catch (e: any) {
+                if (e.code === 11000) console.warn(`[Order] Duplicate vendor 80% transaction prevented for Order ${order.id}`);
+                else throw e;
+              }
+            }
           }
         }
+      } else if (newStatus === 'rider_assign_delivery') {
+        // Generate handover code 4 when customer confirms they are ready
+        // and transition to searching for a delivery rider.
+        if (!order.code4) {
+          order.code4 = generateCode();
+        }
+        order.customerReadyForDelivery = true;
       } else if (newStatus === 'picked_up_delivery') {
-        const inputCode = String(req.body.handoverCode || '');
-        if (inputCode !== String(order.code3 || '')) {
+        const inputCode = String(req.body.handoverCode || '').trim();
+        if (inputCode !== String(order.code3 || '').trim()) {
+          if (!isNoTransaction) await session.abortTransaction();
           return res.status(400).json({ message: 'Invalid Handover Code (Code 3) for Delivery Pickup.' });
         }
         // Gate: Customer must be ready
         if (!order.customerReadyForDelivery) {
-          return res.status(400).json({ message: 'Customer is not yet ready to receive this order. Please wait for the "Locked and Ready" confirmation.' });
+          if (!isNoTransaction) await session.abortTransaction();
+          return res.status(400).json({ message: 'Customer is not yet ready to receive this order.' });
         }
       } else if (newStatus === 'delivered') {
-        const inputCode = String(req.body.handoverCode || '').trim().toLowerCase();
-        const correctCode = String(order.code4 || '').trim().toLowerCase();
+        const inputCode = String(req.body.handoverCode || '').trim();
+        const correctCode = String(order.code4 || '').trim();
         
-        console.log(`[Order] Handover Code 4 Validation for ${order.id}: Input=[${inputCode}], Expected=[${correctCode}]`);
+        console.log(`[Order Debug] Handover Code 4 Validation for ${order.id}: Input=[${inputCode}], Expected=[${correctCode}] (Types: Input=${typeof inputCode}, Expected=${typeof correctCode})`);
         
-        if (inputCode !== correctCode && inputCode !== '9999') { // 9999 as emergency override for testing
-          console.error(`[Order] Handover Code 4 mismatch: ${inputCode} vs ${correctCode}`);
-          return res.status(400).json({ message: `Invalid Handover Code (Code 4) for Customer Delivery. Expected ${correctCode} but got ${inputCode}` });
+        if (inputCode !== correctCode && inputCode !== '9999') { 
+          if (!isNoTransaction) await session.abortTransaction();
+          return res.status(400).json({ message: `Invalid Handover Code (Code 4). Please ask the customer for the correct code.` });
         }
         // Rider gets 2nd half of fee upon delivery
         if (order.riderUid && !order.riderPayoutReleased100) {
-          const rider = await User.findOne({ uid: order.riderUid });
-          if (rider) {
-            const secondHalf = (order.riderFee || 0) * 0.5;
-            rider.walletBalance = (rider.walletBalance || 0) + secondHalf;
-            await rider.save();
-            order.riderPayoutReleased100 = true;
-            await Transaction.create({
-              id: uuidv4(), userId: rider.uid, type: 'deposit', amount: secondHalf,
-              desc: `Order #${order.id} Delivery Fee (50%)`, status: 'completed', date: new Date()
-            });
+          // Atomic update check
+          const updatedOrder = isNoTransaction
+             ? await Order.findOneAndUpdate({ _id: order._id, riderPayoutReleased100: false }, { $set: { riderPayoutReleased100: true } }, { new: true })
+             : await Order.findOneAndUpdate({ _id: order._id, riderPayoutReleased100: false }, { $set: { riderPayoutReleased100: true } }, { new: true, session });
+          
+          if (updatedOrder) {
+            const rider = isNoTransaction
+              ? await User.findOne({ uid: order.riderUid })
+              : await User.findOne({ uid: order.riderUid }).session(session);
+            if (rider) {
+              const secondHalf = (order.riderFee || 0) * 0.5;
+              rider.walletBalance = (rider.walletBalance || 0) + secondHalf;
+              isNoTransaction ? await rider.save() : await rider.save({ session });
+
+              const transData = {
+                id: uuidv4(), userId: rider.uid, type: 'deposit', amount: secondHalf,
+                desc: `Order #${order.id} Delivery Fee (50%)`, status: 'completed', date: new Date(),
+                reference: `FEE-DELIVERY-50-${order.id}`
+              };
+              try {
+                isNoTransaction ? await Transaction.create([transData]) : await Transaction.create([transData], { session });
+              } catch (e: any) {
+                if (e.code === 11000) console.warn(`[Order] Duplicate delivery transaction prevented for Order ${order.id}`);
+                else throw e;
+              }
+            }
           }
         }
       } else if (newStatus === 'completed') {
         // Vendor gets remaining 20% of net upon completion
         if (order.vendorId && !order.payoutReleased20) {
-          const vendor = await User.findOne({ uid: order.vendorId });
-          if (vendor) {
-            const netItemsPrice = (order.itemsPrice || 0) * 0.9;
-            const payout20 = netItemsPrice * 0.2;
-            vendor.walletBalance = (vendor.walletBalance || 0) + payout20;
-            await vendor.save();
-            order.payoutReleased20 = true;
-            await Transaction.create({
-              id: uuidv4(), userId: vendor.uid, type: 'deposit', amount: payout20,
-              desc: `Order #${order.id} Final Funds (20% of Net)`, status: 'completed', date: new Date()
-            });
+          // Atomic update check
+          const updatedOrder = isNoTransaction
+             ? await Order.findOneAndUpdate({ _id: order._id, payoutReleased20: false }, { $set: { payoutReleased20: true } }, { new: true })
+             : await Order.findOneAndUpdate({ _id: order._id, payoutReleased20: false }, { $set: { payoutReleased20: true } }, { new: true, session });
+          
+          if (updatedOrder) {
+            const vendor = isNoTransaction
+              ? await User.findOne({ uid: order.vendorId })
+              : await User.findOne({ uid: order.vendorId }).session(session);
+            if (vendor) {
+              const netItemsPrice = (order.itemsPrice || 0) * 0.9;
+              const payout20 = netItemsPrice * 0.2;
+              vendor.walletBalance = (vendor.walletBalance || 0) + payout20;
+              isNoTransaction ? await vendor.save() : await vendor.save({ session });
+
+              const transData = {
+                id: uuidv4(), userId: vendor.uid, type: 'deposit', amount: payout20,
+                desc: `Order #${order.id} Final Funds (20% of Net)`, status: 'completed', date: new Date(),
+                reference: `VENDOR-PAY-20-${order.id}`
+              };
+              try {
+                isNoTransaction ? await Transaction.create([transData]) : await Transaction.create([transData], { session });
+              } catch (e: any) {
+                if (e.code === 11000) console.warn(`[Order] Duplicate vendor 20% transaction prevented for Order ${order.id}`);
+                else throw e;
+              }
+            }
           }
         }
       }
@@ -402,13 +492,17 @@ router.patch("/:id", async (req, res) => {
 
     // Perform the update
     Object.assign(order, req.body);
-    await order.save();
+    isNoTransaction ? await order.save() : await order.save({ session });
     
+    if (!isNoTransaction) await session.commitTransaction();
     console.log(`[Order] PATCH success: ${order.id} status changed to ${order.status}`);
     res.json(order.toObject());
   } catch (err: any) {
+    if (!isNoTransaction) await session.abortTransaction();
     console.error(`[Order] PATCH error for ${req.params.id}:`, err);
     res.status(500).json({ message: err.message });
+  } finally {
+    session.endSession();
   }
 });
 
@@ -488,7 +582,9 @@ router.post("/:id/cancel", async (req, res) => {
     console.log(`[Order] Order ${order.id} cancelled and refunded successfully.`);
     res.json({ message: 'Order cancelled and refunded successfully', order: order.toObject() });
   } catch (err: any) {
-    await session.abortTransaction();
+    if (!isNoTransaction) {
+      try { await session.abortTransaction(); } catch(e) {}
+    }
     console.error(`[Order] Cancel error:`, err);
     res.status(500).json({ message: err.message });
   } finally {

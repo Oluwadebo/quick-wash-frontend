@@ -12,7 +12,7 @@ import { api, Order, UserData } from '@/lib/ApiService';
 import { 
   X, History, Wallet, ShoppingBag, MapPin, Navigation, Package, CheckCircle, 
   Clock, Phone, ArrowRight, Bike, Zap, AlertTriangle, MessageCircle, ShieldAlert,
-  BarChart3, TrendingUp, Trophy, ArrowUpRight, ArrowDownLeft 
+  BarChart3, TrendingUp, Trophy, ArrowUpRight, ArrowDownLeft, ShieldCheck 
 } from 'lucide-react';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -212,10 +212,20 @@ export default function RiderDashboard() {
     setIsProcessing(false);
   };
 
-  const handleStatusUpdate = async (orderId: string, newStatus: string, color: string) => {
-    await api.updateOrderStatus(orderId, newStatus, color);
-    const allOrders = await api.getOrders();
-    setTasks(allOrders.filter((o: Order) => o.riderUid === currentUser?.uid && !['delivered', 'cancelled', 'completed'].includes((o.status || '').toLowerCase())));
+  const handleStatusUpdate = async (orderId: string, newStatus: string, color: string, extraData: any = {}) => {
+    setIsProcessing(true);
+    try {
+      await api.updateOrderStatus(orderId, newStatus, color, extraData);
+      const allOrders = await api.getOrders();
+      setTasks(allOrders.filter((o: Order) => o.riderUid === currentUser?.uid && !['delivered', 'cancelled', 'completed'].includes((o.status || '').toLowerCase())));
+      window.dispatchEvent(new Event('storage'));
+    } catch (e: any) {
+      console.error('[Rider] Update failed:', e);
+      const msg = e.message && e.message.startsWith('{') ? JSON.parse(e.message).error : e.message;
+      setNotification({ message: msg || 'Failed to update status', type: 'error' });
+      setTimeout(() => setNotification(null), 3000);
+    }
+    setIsProcessing(false);
   };
 
   const handleVerifyPickup = React.useCallback(async (order: Order, overrideCode?: string) => {
@@ -602,10 +612,30 @@ export default function RiderDashboard() {
                               )}
 
                               {order.status === 'picked_up_delivery' && (
-                                <div className="flex-[2] p-4 bg-tertiary/10 rounded-2xl border border-tertiary/20 flex flex-col items-center justify-center h-16">
-                                  <p className="text-[10px] font-black text-tertiary uppercase tracking-[0.2em] flex items-center gap-2">
-                                    GIVE THIS TO CUSTOMER: <span className="text-2xl font-black text-tertiary bg-white px-3 py-1 rounded-lg border border-tertiary/20 shadow-sm">{order.code4}</span>
-                                  </p>
+                                <div className="flex-[2] flex flex-col gap-3">
+                                  <div className="flex gap-3">
+                                    <input 
+                                      type="text" 
+                                      placeholder="Code 4 from Customer"
+                                      value={handoverInput[order.id] || ''}
+                                      onChange={(e) => {
+                                        const val = e.target.value.replace(/\D/g, '');
+                                        setHandoverInput(prev => ({ ...prev, [order.id]: val }));
+                                        if (val.length === 4) {
+                                          handleStatusUpdate(order.id, 'delivered', 'bg-success text-on-success', { handoverCode: val });
+                                          setHandoverInput(prev => ({ ...prev, [order.id]: '' }));
+                                          setNotification({ message: 'Laundry delivered successfully!', type: 'success' });
+                                          setTimeout(() => setNotification(null), 3000);
+                                        }
+                                      }}
+                                      className="flex-1 h-16 bg-surface-container-highest rounded-2xl px-6 font-headline font-black tracking-[0.2em] outline-none focus:ring-4 ring-tertiary/20 text-center"
+                                      maxLength={4}
+                                    />
+                                    <div className="w-16 h-16 bg-tertiary/10 text-tertiary rounded-2xl flex items-center justify-center">
+                                      <ShieldCheck className="w-8 h-8" />
+                                    </div>
+                                  </div>
+                                  <p className="text-[10px] font-black text-tertiary uppercase tracking-widest text-center">Verify handover from Customer</p>
                                 </div>
                               )}
                             </div>
@@ -1122,7 +1152,8 @@ export default function RiderDashboard() {
                   <button 
                     onClick={async () => {
                       if (profileForm.bankAccountNumber && profileForm.bankAccountNumber.length !== 10) {
-                        alert("Account number must be 10 digits");
+                        setNotification({ message: 'Account number must be exactly 10 digits.', type: 'error' });
+                        setTimeout(() => setNotification(null), 3000);
                         return;
                       }
                       setIsProcessing(true);
