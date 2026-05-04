@@ -362,6 +362,28 @@ class ApiService {
     return false;
   }
 
+  async cancelOrder(orderId: string, reason: string): Promise<any> {
+    await this.delay();
+    if (typeof window !== 'undefined') {
+      try {
+        const token = localStorage.getItem('qw_token');
+        const resp = await fetch(`${API_URLS.orders}/${orderId}/cancel`, {
+          method: 'POST',
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ reason })
+        });
+        if (resp.ok) return await this.safeJson(resp);
+        throw new Error(await resp.text());
+      } catch (e: any) {
+        throw new Error(e.message);
+      }
+    }
+    throw new Error('Action failed');
+  }
+
   async updateOrderStatus(orderId: string, status: string, color: string, extraData: any = {}): Promise<Order> {
     await this.delay();
     if (typeof window !== 'undefined') {
@@ -370,7 +392,7 @@ class ApiService {
         const body = { 
           status, 
           color, 
-          ...extraData 
+          ...(typeof extraData === 'object' ? extraData : { handoverCode: extraData }) 
         };
         const resp = await fetch(`${API_URLS.orders}/${orderId}`, {
           method: 'PATCH',

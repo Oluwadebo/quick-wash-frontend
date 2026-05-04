@@ -74,22 +74,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
     if (order?.status === 'confirm' || order?.status === 'rider_assign_pickup') {
       if (confirm('Are you sure you want to cancel this order? Your payment will be fully refunded to your wallet.')) {
         try {
-          const token = localStorage.getItem('qw_token');
-          const res = await fetch(`/api/orders/${order.id}/cancel`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({ reason: 'User Cancelled from Tracker' })
-          });
-
-          if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.message || 'Failed to cancel order');
-          }
-
-          const data = await res.json();
+          const data = await api.cancelOrder(order.id, 'User Cancelled from Tracker');
           setOrder(data.order);
           setNotification({ message: 'Order cancelled and fully refunded successfully.', type: 'success' });
           refreshUser();
@@ -485,30 +470,27 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
 
       {/* Sticky Footer */}
       {order.status === 'ready' && (
-        <div className="fixed bottom-0 left-0 w-full p-6 sm:p-10 bg-gradient-to-t from-surface via-surface to-transparent z-[70]">
-          <div className="max-w-2xl mx-auto flex flex-col items-center gap-4">
-            <p className="text-[10px] font-black text-primary bg-primary/10 px-4 py-2 rounded-full uppercase tracking-widest shadow-sm">
-              Tap below when you are ready to receive
-            </p>
+        <div className="fixed bottom-0 left-0 w-full p-4 sm:p-6 bg-gradient-to-t from-surface via-surface/90 to-transparent z-[100] border-t border-primary/5">
+          <div className="max-w-2xl mx-auto flex flex-col items-center gap-3">
+            <div className="bg-primary/10 px-4 py-1.5 rounded-full backdrop-blur-md border border-primary/20 shadow-sm">
+              <p className="text-[10px] font-black text-primary uppercase tracking-widest whitespace-nowrap">
+                Tap below when you are ready to receive
+              </p>
+            </div>
             <ReadyToReceiveButton 
               onClick={async () => {
                 if (!order) return;
-                const updatedOrder = { 
-                  ...order, 
-                  status: 'rider_assign_delivery', 
-                  customerReadyForDelivery: true,
-                  color: 'bg-primary text-on-primary',
-                  customerConfirmedDeliveryAt: new Date().toISOString(),
-                  riderUid: null,
-                  riderName: null,
-                  riderPhone: null
-                } as Order;
-                await api.saveOrder(updatedOrder);
-                setOrder(updatedOrder);
-                setNotification({ message: 'Riders have been notified that you are ready to receive your laundry!', type: 'success' });
-                setTimeout(() => setNotification(null), 3000);
-                refreshUser();
-                window.dispatchEvent(new Event('storage'));
+                try {
+                  const updatedOrder = await api.updateOrderStatus(order.id, 'rider_assign_delivery', 'bg-primary text-on-primary', { customerReadyForDelivery: true });
+                  setOrder(updatedOrder);
+                  setNotification({ message: 'Riders have been notified that you are ready to receive your laundry!', type: 'success' });
+                  setTimeout(() => setNotification(null), 3000);
+                  refreshUser();
+                  window.dispatchEvent(new Event('storage'));
+                } catch (error: any) {
+                  setNotification({ message: error.message || 'Failed to update status', type: 'error' });
+                  setTimeout(() => setNotification(null), 3000);
+                }
               }}
             />
           </div>

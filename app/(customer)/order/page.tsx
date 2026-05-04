@@ -178,10 +178,9 @@ function OrderPageContent() {
             subItems: (vs.subItems && vs.subItems.length > 0) ? vs.subItems.map((si: any) => ({ ...si, count: 0 })) : undefined
           };
         });
-      } else {
-        // Fallback to default items if vendor hasn't set up their price list
-        // This prevents the cart from being wiped to empty
-        initialCart = [...defaultItems];
+      } else if (vendorId) {
+        // Clear initial cart if no specific vendor items found - user wants no general items shown
+        initialCart = [];
       }
 
       // 4. Restore Saved Count Data (Skip if isNew)
@@ -1070,15 +1069,15 @@ function OrderPageContent() {
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
-              className="relative w-full max-w-lg bg-white rounded-t-[3rem] sm:rounded-[3rem] p-8 shadow-2xl max-h-[90vh] overflow-y-auto custom-scrollbar flex flex-col"
+              className="relative w-full max-w-lg bg-white rounded-t-[3rem] sm:rounded-[3rem] p-8 shadow-2xl max-h-[85vh] overflow-y-auto custom-scrollbar"
             >
               <div className="w-12 h-1.5 bg-outline/20 rounded-full mx-auto mb-8 sm:hidden" />
               <h3 className="text-3xl font-headline font-black text-on-surface mb-2">Pickup Location</h3>
               <p className="text-on-surface-variant font-medium mb-8">Where should the rider meet you?</p>
 
-              <div className="space-y-8 flex-1 overflow-y-auto pr-2 custom-scrollbar">
+              <div className="space-y-6">
                 <div>
-                  <label className="block font-label text-[10px] font-black uppercase tracking-widest text-primary mb-4">Select Landmark</label>
+                  <label className="block font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-3">Select Landmark</label>
                   <div className="grid grid-cols-2 gap-3">
                     {(siteSettings?.landmarks || ['Under-G', 'Adenike', 'Isale-General', 'Stadium', 'Bovina', 'LAUTECH Gate']).filter((l: any) => typeof l === 'string' || l.active).map((l: any) => {
                       const name = typeof l === 'string' ? l : l.name;
@@ -1087,8 +1086,8 @@ function OrderPageContent() {
                           key={name}
                           onClick={() => setPickupLandmark(name)}
                           className={cn(
-                            "px-4 py-4 rounded-2xl font-headline font-black text-xs transition-all border-2",
-                            pickupLandmark === name ? "bg-primary text-white border-primary shadow-lg scale-105" : "bg-surface-container border-primary/5 text-on-surface-variant hover:border-primary/20"
+                            "px-4 py-3 rounded-xl font-headline font-black text-xs transition-all border",
+                            pickupLandmark === name ? "bg-primary text-white border-primary shadow-lg" : "bg-surface-container border-primary/5 text-on-surface-variant"
                           )}
                         >
                           {name}
@@ -1099,17 +1098,16 @@ function OrderPageContent() {
                 </div>
 
                 <div>
-                  <label className="block font-label text-[10px] font-black uppercase tracking-widest text-primary mb-4">Detailed Address (Manual)</label>
-                  <textarea 
-                    placeholder="e.g. Block 4, Room 12, Green Hostel. Be specific for the rider!"
+                  <label className="block font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-3">Detailed Address (Optional)</label>
+                  <input 
+                    type="text"
+                    placeholder="e.g. Block 4, Room 12, Green Hostel"
                     value={pickupAddress}
                     onChange={(e) => setPickupAddress(e.target.value)}
-                    className="w-full min-h-[120px] bg-surface-container rounded-3xl p-6 font-bold text-sm outline-none focus:ring-4 ring-primary/10 border-2 border-primary/5 transition-all resize-none"
+                    className="w-full h-14 bg-surface-container rounded-2xl px-6 font-headline font-black text-sm outline-none focus:ring-2 ring-primary transition-all"
                   />
                 </div>
-              </div>
 
-              <div className="mt-8 pt-6 border-t border-dashed border-outline/10">
                 <button 
                   onClick={() => {
                     if (pickupLandmark) setShowLocationModal(false);

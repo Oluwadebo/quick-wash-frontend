@@ -199,11 +199,11 @@ export default function LandmarkSelectionPage() {
                   <Check className="w-8 h-8" />
                 </div>
                 <div>
-                  <h4 className="font-headline font-black text-2xl leading-tight text-white">
-                    {order.status === 'ready' ? 'Order Ready' : 'Rider is Coming'}
+                  <h4 className="font-headline font-black text-2xl leading-tight text-white mb-2 underline decoration-white/30 underline-offset-8">
+                    {order.status === 'ready' ? 'Action Needed: Ready to Receive?' : 'Rider is Coming!'}
                   </h4>
-                  <p className="text-xs font-bold text-white/90">
-                    {order.status === 'ready' ? 'Wash complete! Tap TRACK to notify a rider.' : 'Our rider is currently on the way to you!'}
+                  <p className="text-sm font-bold text-white/90">
+                    {order.status === 'ready' ? 'Your clothes are clean! Please confirm you are ready so we can send a rider to deliver them.' : 'Our rider is currently on the way to your location with your clothes!'}
                   </p>
                 </div>
               </div>

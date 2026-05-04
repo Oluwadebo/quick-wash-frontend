@@ -603,7 +603,9 @@ export default function RiderDashboard() {
 
                               {order.status === 'picked_up_delivery' && (
                                 <div className="flex-[2] p-4 bg-tertiary/10 rounded-2xl border border-tertiary/20 flex flex-col items-center justify-center h-16">
-                                  <p className="text-[10px] font-black text-tertiary uppercase tracking-[0.2em]">CUSTOMER CODE: <span className="text-xl ml-2 font-black">{order.code4}</span></p>
+                                  <p className="text-[10px] font-black text-tertiary uppercase tracking-[0.2em] flex items-center gap-2">
+                                    GIVE THIS TO CUSTOMER: <span className="text-2xl font-black text-tertiary bg-white px-3 py-1 rounded-lg border border-tertiary/20 shadow-sm">{order.code4}</span>
+                                  </p>
                                 </div>
                               )}
                             </div>
@@ -1014,7 +1016,7 @@ export default function RiderDashboard() {
             />
             <motion.div 
               initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-              className="relative w-full max-w-lg bg-white rounded-t-[3rem] sm:rounded-[3rem] p-8 shadow-2xl"
+              className="relative w-full max-w-lg bg-white rounded-t-[3rem] sm:rounded-[3rem] p-8 shadow-2xl max-h-[90vh] overflow-y-auto custom-scrollbar"
             >
               <div className="w-12 h-1.5 bg-outline/20 rounded-full mx-auto mb-8 sm:hidden" />
               <h3 className="text-3xl font-headline font-black text-on-surface mb-2">Return Order</h3>
@@ -1065,7 +1067,7 @@ export default function RiderDashboard() {
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="relative w-full max-w-md bg-white rounded-[3rem] p-10 shadow-2xl border border-primary/10"
+              className="relative w-full max-w-md bg-white rounded-[3rem] p-10 shadow-2xl border border-primary/10 max-h-[90vh] overflow-y-auto custom-scrollbar"
             >
               <h3 className="text-3xl font-headline font-black text-on-surface mb-6">Edit Profile</h3>
               

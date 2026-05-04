@@ -1748,10 +1748,10 @@ export default function VendorDashboard() {
               />
               <motion.div 
                 initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                className="relative w-full max-w-md bg-white rounded-[3rem] p-10 shadow-2xl border border-primary/10"
+                className="relative w-full max-w-md bg-white rounded-[3rem] p-10 shadow-2xl border border-primary/10 max-h-[90vh] overflow-y-auto custom-scrollbar"
               >
                 <h3 className="text-3xl font-headline font-black text-on-surface mb-6">Edit Shop Info</h3>
-                <div className="space-y-4 overflow-y-auto max-h-[70vh] pr-2">
+                <div className="space-y-4">
                   <div className="space-y-1">
                     <label className="text-[10px] font-black uppercase tracking-widest text-primary ml-2">Shop Name</label>
                     <input 
@@ -1812,10 +1812,10 @@ export default function VendorDashboard() {
               />
               <motion.div 
                 initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                className="relative w-full max-w-md bg-white rounded-[3rem] p-10 shadow-2xl border border-primary/10"
+                className="relative w-full max-w-md bg-white rounded-[3rem] p-10 shadow-2xl border border-primary/10 max-h-[90vh] overflow-y-auto custom-scrollbar"
               >
                 <h3 className="text-3xl font-headline font-black text-on-surface mb-6">Bank Details</h3>
-                <div className="space-y-4 overflow-y-auto max-h-[70vh] pr-2">
+                <div className="space-y-4">
                   <div className="space-y-1">
                     <label className="text-[10px] font-black uppercase tracking-widest text-primary ml-2">Bank Name</label>
                     <input 
@@ -1879,10 +1879,10 @@ export default function VendorDashboard() {
               />
               <motion.div 
                 initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                className="relative w-full max-w-md bg-white rounded-[3rem] p-10 shadow-2xl border border-primary/10"
+                className="relative w-full max-w-md bg-white rounded-[3rem] p-10 shadow-2xl border border-primary/10 max-h-[90vh] overflow-y-auto custom-scrollbar"
               >
                 <h3 className="text-3xl font-headline font-black text-on-surface mb-6">Personal Profile</h3>
-                <div className="space-y-4 overflow-y-auto max-h-[70vh] pr-2">
+                <div className="space-y-4">
                   <div className="space-y-1">
                     <label className="text-[10px] font-black uppercase tracking-widest text-primary ml-2">Full Name</label>
                     <input 
