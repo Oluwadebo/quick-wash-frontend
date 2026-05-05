@@ -13,14 +13,19 @@ import { API_URLS } from '@/lib/api-config';
 function AuthContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { signup, login, isProcessing, error } = useAuth();
   
+  const { signup, login, isProcessing, error, verifyEmail, resendVerification } = useAuth();
+
   const role = (searchParams.get('role') as UserRole) || 'customer';
   const initialIsLogin = searchParams.get('login') === 'true';
   const message = searchParams.get('message');
   const [isLogin, setIsLogin] = useState(initialIsLogin);
-  const [authMode, setAuthMode] = useState<'auth' | 'forgot' | 'reset'>('auth');
+  const [authMode, setAuthMode] = useState<'auth' | 'verify' | 'forgot' | 'reset'>(
+    searchParams.get('verify') === 'true' ? 'verify' : 'auth'
+  );
   const [settings, setSettings] = useState<SiteSettings | null>(null);
+  
+  const [verificationData, setVerificationData] = useState({ email: searchParams.get('email') || '', code: '' });
 
   // Load site settings
   React.useEffect(() => {
@@ -231,11 +236,13 @@ function AuthContent() {
                 <h2 className="text-2xl font-headline font-black mb-2 text-on-surface">
                   {authMode === 'forgot' ? 'Recover Access' : 
                    authMode === 'reset' ? 'Finalize Reset' :
+                   authMode === 'verify' ? 'Inbox Mission' :
                    isLogin ? 'Hello Again!' : `Start as ${role.toUpperCase()}`}
                 </h2>
                 <p className="text-on-surface-variant text-sm font-medium">
                   {authMode === 'forgot' ? 'We\'ll send a secure code to your account' :
                    authMode === 'reset' ? 'One last step to secure your workspace' :
+                   authMode === 'verify' ? 'Check your email for the secret code' :
                    isLogin ? 'Sign in to access your dashboard' : `Fill in your ${role} credentials`}
                 </p>
               </motion.div>
@@ -630,6 +637,54 @@ function AuthContent() {
             )}
           </form>
           </>
+          ) : authMode === 'verify' ? (
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                verifyEmail(verificationData.email, verificationData.code);
+              }} 
+              className="space-y-4"
+            >
+              <div className="relative">
+                <Mail className="absolute left-5 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5" />
+                <input 
+                  type="email" 
+                  placeholder="Your Email"
+                  required
+                  value={verificationData.email}
+                  onChange={(e) => setVerificationData({...verificationData, email: e.target.value})}
+                  className="w-full h-16 bg-surface-container-low rounded-2xl pl-14 pr-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"
+                />
+              </div>
+              <div className="relative">
+                <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5" />
+                <input 
+                  type="text" 
+                  placeholder="Verification Code (6-Digits)"
+                  required
+                  maxLength={6}
+                  value={verificationData.code}
+                  onChange={(e) => setVerificationData({...verificationData, code: e.target.value})}
+                  className="w-full h-16 bg-surface-container-low rounded-2xl pl-14 pr-6 font-headline font-bold outline-none focus:ring-4 focus:ring-primary-container transition-all"
+                />
+              </div>
+              <button 
+                type="submit"
+                disabled={isProcessing}
+                className="w-full h-16 signature-gradient text-white rounded-2xl font-headline font-black text-lg shadow-xl shadow-primary/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2 mt-4"
+              >
+                {isProcessing ? 'Verifying...' : 'Unlock Account'}
+                <CheckCircle className="w-5 h-5" />
+              </button>
+              <button 
+                type="button"
+                onClick={() => resendVerification(verificationData.email)}
+                disabled={isProcessing}
+                className="w-full text-center py-2 text-on-surface-variant font-bold text-sm"
+              >
+                Didn&apos;t get a code? Resend
+              </button>
+            </form>
           ) : authMode === 'forgot' ? (
             <form onSubmit={handleForgotPassword} className="space-y-4">
               <div className="relative">

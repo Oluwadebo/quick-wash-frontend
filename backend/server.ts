@@ -154,20 +154,20 @@ const io = new Server(server, {
   }
 });
 
-io.on("connection", (socket) => {
+io.on("connection", (socket: any) => {
   console.log("New client connected", socket.id);
 
-  socket.on("join_order", (orderId) => {
+  socket.on("join_order", (orderId: string) => {
     socket.join(`order_${orderId}`);
     console.log(`Socket ${socket.id} joined order_${orderId}`);
   });
 
-  socket.on("join_conversation", (conversationId) => {
+  socket.on("join_conversation", (conversationId: string) => {
     socket.join(`conv_${conversationId}`);
     console.log(`Socket ${socket.id} joined conv_${conversationId}`);
   });
 
-  socket.on("send_message", (data) => {
+  socket.on("send_message", (data: any) => {
     // Broadcast to room
     if (data.orderId) {
       io.to(`order_${data.orderId}`).emit("new_message", data);

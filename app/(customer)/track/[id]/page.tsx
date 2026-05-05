@@ -64,12 +64,6 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
   if (loading) return <div className="pt-32 text-center font-headline font-black text-on-surface">Loading Dashboard...</div>;
   if (!order) return <div className="pt-32 text-center font-headline font-black text-on-surface">Order not found.</div>;
 
-  const handleWhatsApp = () => {
-    const phone = rider?.phoneNumber || rider?.whatsappNumber || '08012345678';
-    const msg = encodeURIComponent(`Hello, I am checking on my Quick-Wash order #${order.id}.`);
-    window.open(`https://wa.me/${phone}?text=${msg}`, '_blank');
-  };
-
   const handleCancelOrder = async () => {
     if (order?.status === 'confirm' || order?.status === 'rider_assign_pickup' || order?.status === 'rider_accepted') {
       try {

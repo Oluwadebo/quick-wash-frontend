@@ -5,8 +5,11 @@ import Order from "../models/Order";
 import User from "../models/User";
 import Transaction from "../models/Transaction";
 import Draft from "../models/Draft";
+import { sendOrderStatusEmail } from "../lib/mailer";
 
 const router = express.Router();
+
+const generateCode = () => Math.floor(1000 + Math.random() * 9000).toString();
 
 router.get("/", async (req, res) => {
   try {
@@ -106,7 +109,6 @@ router.post("/", async (req, res) => {
     }
 
     // Generate handover codes
-    const generateCode = () => Math.floor(1000 + Math.random() * 9000).toString();
     const orderData = {
       ...data,
       id: finalId,
@@ -533,8 +535,22 @@ router.patch("/:id", async (req, res) => {
     }
 
     // Perform the update
+    const oldStatus = order.status;
     Object.assign(order, req.body);
+    const postUpdateStatus = order.status;
     isNoTransaction ? await order.save() : await order.save({ session });
+
+    // Notify customer of status change
+    if (oldStatus !== postUpdateStatus) {
+      try {
+        const customer = await User.findOne({ uid: order.customerUid });
+        if (customer && customer.email) {
+          await sendOrderStatusEmail(customer.email, order.id, postUpdateStatus);
+        }
+      } catch (mailErr) {
+        console.error('[Order] Status mail notification failed:', mailErr);
+      }
+    }
     
     if (!isNoTransaction) await session.commitTransaction();
     console.log(`[Order] PATCH success: ${order.id} status changed to ${order.status}`);

@@ -19,7 +19,7 @@ interface UserData {
   isApproved?: boolean;
   nin?: string;
   address?: string;
-  whatsappNumber?: string;
+  isEmailVerified?: boolean;
   bankAccountName?: string;
   bankAccountNumber?: string;
   bankName?: string;
@@ -151,11 +151,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { user: newUser, token } = result;
       if (token) localStorage.setItem('qw_token', token);
 
-      if (!newUser.isApproved) {
+      if (!newUser.isEmailVerified) {
+        setUser(newUser);
+        router.push(`/auth?verify=true&email=${encodeURIComponent(newUser.email)}`);
+      } else if (!newUser.isApproved) {
         router.push(`/auth?login=true&message=pending&role=${data.role}`);
       } else {
         setUser(newUser);
-        router.push('/customer');
+        const redirectPath = newUser.role === 'customer' ? '/customer' : 
+                          newUser.role === 'vendor' ? '/vendor' : 
+                          newUser.role === 'rider' ? '/rider' : '/admin';
+        router.push(redirectPath);
       }
     } catch (err: any) {
       setError(err.message);

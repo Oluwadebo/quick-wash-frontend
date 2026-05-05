@@ -19,7 +19,6 @@ interface VendorCardProps {
   landmark?: string;
   address?: string;
   isStudentFriendly?: boolean;
-  whatsappNumber?: string;
   isRaining?: boolean;
   isShopClosed?: boolean;
   returnTime?: string;
@@ -38,7 +37,7 @@ export default function VendorCard({
   landmark,
   address,
   isStudentFriendly = true,
-  whatsappNumber = '2348000000000',
+  // whatsappNumber = '2348000000000',
   isRaining = false,
   isShopClosed = false,
   returnTime,

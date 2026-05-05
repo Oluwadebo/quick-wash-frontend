@@ -20,7 +20,6 @@ export interface IUser extends Document {
   shopName?: string;
   vehicleType?: string;
   nin?: string;
-  whatsappNumber?: string;
   bankAccountName?: string;
   bankAccountNumber?: string;
   bankName?: string;
@@ -29,7 +28,9 @@ export interface IUser extends Document {
   address?: string;
   shopAddress?: string;
   landmark?: string;
-  shopImage?: string; // New field for vendors
+  shopImage?: string; 
+  isEmailVerified: boolean;
+  verificationCode?: string;
   isShopClosed?: boolean;
   returnTime?: string;
   ninImage?: string;  // New field for riders
@@ -64,7 +65,6 @@ const UserSchema: Schema = new Schema({
   shopName: { type: String },
   vehicleType: { type: String },
   nin: { type: String },
-  whatsappNumber: { type: String },
   bankAccountName: { type: String },
   bankAccountNumber: { type: String },
   bankName: { type: String },
@@ -74,6 +74,8 @@ const UserSchema: Schema = new Schema({
   shopAddress: { type: String },
   landmark: { type: String },
   shopImage: { type: String },
+  isEmailVerified: { type: Boolean, default: false },
+  verificationCode: { type: String },
   isShopClosed: { type: Boolean, default: false },
   returnTime: { type: String },
   ninImage: { type: String },

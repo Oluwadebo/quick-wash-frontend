@@ -32,6 +32,7 @@ export interface UserData {
   trustPoints: number;
   trustScore: number;
   status: 'active' | 'restricted' | 'suspended';
+  isEmailVerified: boolean;
   restrictionExpires?: string;
   lastPenaltyAt?: string;
   lastRecoveryAt?: string;
@@ -39,7 +40,6 @@ export interface UserData {
   shopName?: string;
   vehicleType?: string;
   nin?: string;
-  whatsappNumber?: string;
   bankAccountName?: string;
   bankAccountNumber?: string;
   bankName?: string;

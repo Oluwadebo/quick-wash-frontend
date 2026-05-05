@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 import { uploadToCloudinary } from '../lib/cloudinary';
 import { seedAdmin } from "../lib/seed";
+import { sendVerificationEmail } from "../lib/mailer";
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
@@ -39,12 +40,15 @@ router.post(["/register", "/signup"], async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
     // Generate a unique transfer reference
     const transferReference = `QW-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
 
     const user = await User.create({
       ...req.body,
       uid: uuidv4(),
       password: hashedPassword,
       transferReference,
+      verificationCode,
+      isEmailVerified: false,
       landmark: landmark || req.body.landmark || 'Under-G',
       role: role || 'customer',
       isApproved: (role === 'vendor' || role === 'rider') ? false : true,
@@ -55,11 +59,18 @@ router.post(["/register", "/signup"], async (req, res) => {
       shopImage: shopUrl
     });
 
-    const token = jwt.sign({ uid: user.uid, role: user.role, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
-    
     const userData = user.toObject();
     delete userData.password;
 
+    // Send verification email
+    try {
+      await sendVerificationEmail(user.email, verificationCode);
+    } catch (mailErr) {
+      console.error('[Auth] Failed to send verification email:', mailErr);
+    }
+
+    const token = jwt.sign({ uid: user.uid, role: user.role, email: user.email, isVerified: user.isEmailVerified }, JWT_SECRET, { expiresIn: '7d' });
+    
     res.status(201).json({ user: userData, token });
   } catch (err: any) {
     res.status(500).json({ message: err.message });
@@ -108,6 +119,45 @@ router.post("/forgot-password", async (req, res) => {
     
     // In real app, send email
     res.json({ message: "Reset token generated", token: resetToken });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Verify Email
+router.post("/verify", async (req, res) => {
+  try {
+    const { email, code } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: "User not found" });
+    
+    if (user.verificationCode !== code) {
+      return res.status(400).json({ message: "Invalid verification code" });
+    }
+
+    user.isEmailVerified = true;
+    user.verificationCode = undefined;
+    await user.save();
+
+    res.json({ message: "Email verified successfully" });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Resend Verification
+router.post("/resend-verification", async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+    user.verificationCode = verificationCode;
+    await user.save();
+
+    await sendVerificationEmail(user.email, verificationCode);
+    res.json({ message: "Verification code resent" });
   } catch (err: any) {
     res.status(500).json({ message: err.message });
   }

@@ -1112,7 +1112,7 @@ export default function VendorDashboard() {
                           onClick={() => {
                             setShopForm({
                               shopName: currentUser?.shopName || '',
-                              whatsappNumber: currentUser?.whatsappNumber || '',
+                              // whatsappNumber: currentUser?.whatsappNumber || '',
                               landmark: currentUser?.landmark || ''
                             });
                             setIsShopModalOpen(true);
