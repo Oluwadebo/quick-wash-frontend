@@ -14,9 +14,9 @@ import { formatRelativeTime } from '@/lib/time';
 
 import { Toast } from '@/components/shared/Toast';
 import { api, Order, UserData } from '@/lib/ApiService';
+import ChatWindow from '@/components/shared/ChatWindow';
 
 import { useAuth } from '@/hooks/use-auth';
-import ChatWindow from '@/components/shared/ChatWindow';
 
 export default function OrderTrackingPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = React.use(params);
@@ -24,6 +24,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
   const [order, setOrder] = React.useState<Order | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [rider, setRider] = React.useState<UserData | null>(null);
+  const [showChat, setShowChat] = React.useState(false);
 
   const [notification, setNotification] = React.useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
   const [handoverInput, setHandoverInput] = React.useState('');
@@ -32,7 +33,6 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
   const [showCancelModal, setShowCancelModal] = React.useState(false);
   const [rating, setRating] = React.useState(5);
   const [issueDescription, setIssueDescription] = React.useState('');
-  const [activeChatOrder, setActiveChatOrder] = React.useState<Order | null>(null);
 
   React.useEffect(() => {
     const refresh = async () => {
@@ -63,6 +63,12 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
 
   if (loading) return <div className="pt-32 text-center font-headline font-black text-on-surface">Loading Dashboard...</div>;
   if (!order) return <div className="pt-32 text-center font-headline font-black text-on-surface">Order not found.</div>;
+
+  const handleWhatsApp = () => {
+    const phone = rider?.phoneNumber || rider?.whatsappNumber || '08012345678';
+    const msg = encodeURIComponent(`Hello, I am checking on my Quick-Wash order #${order.id}.`);
+    window.open(`https://wa.me/${phone}?text=${msg}`, '_blank');
+  };
 
   const handleCancelOrder = async () => {
     if (order?.status === 'confirm' || order?.status === 'rider_assign_pickup' || order?.status === 'rider_accepted') {
@@ -380,42 +386,49 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
                 <Phone className="w-5 h-5" />
               </button>
               <button 
-                onClick={() => setActiveChatOrder(order)}
-                className="w-12 h-12 rounded-xl bg-primary shadow-lg text-on-primary flex items-center justify-center active:scale-90 transition-transform"
-                title="Open Platform Chat"
+                onClick={() => {
+                  navigator.clipboard.writeText(rider.phoneNumber);
+                  setNotification({ message: 'Phone number copied to clipboard', type: 'info' });
+                  setTimeout(() => setNotification(null), 2000);
+                }}
+                className="w-12 h-12 rounded-xl bg-surface-container-highest text-on-surface-variant flex items-center justify-center active:scale-90 transition-transform"
               >
-                <MessageCircle className="w-6 h-6" />
+                <Copy className="w-5 h-5" />
+              </button>
+              <button 
+                onClick={() => setShowChat(true)}
+                className="w-12 h-12 rounded-xl bg-primary text-white flex items-center justify-center shadow-lg active:scale-90 transition-transform"
+              >
+                <MessageCircle className="w-6 h-6 fill-current" />
               </button>
             </div>
           )}
         </section>
 
+        {/* Chat UI Modal */}
         <AnimatePresence>
-          {activeChatOrder && (
-            <div className="fixed inset-0 z-[250] flex items-center justify-center p-6">
+          {showChat && rider && authUser && (
+            <div className="fixed inset-0 z-[110] flex flex-col justify-end sm:p-6 sm:justify-center items-center">
               <motion.div 
                 initial={{ opacity: 0 }} 
                 animate={{ opacity: 1 }} 
                 exit={{ opacity: 0 }}
-                onClick={() => setActiveChatOrder(null)}
-                className="absolute inset-0 bg-surface/80 backdrop-blur-xl"
+                className="absolute inset-0 bg-surface/40 backdrop-blur-md"
+                onClick={() => setShowChat(false)}
               />
               <motion.div 
-                initial={{ opacity: 0, scale: 0.9, y: 20 }} 
-                animate={{ opacity: 1, scale: 1, y: 0 }} 
-                exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                className="relative w-full max-w-lg bg-white rounded-[3rem] shadow-2xl border border-primary/10 overflow-hidden"
+                initial={{ y: '100%' }}
+                animate={{ y: 0 }}
+                exit={{ y: '100%' }}
+                className="relative w-full max-w-xl h-[80vh] sm:h-[600px] bg-white rounded-t-[3rem] sm:rounded-[3rem] shadow-2xl overflow-hidden flex flex-col"
               >
-                <div className="h-[600px]">
-                  {authUser && (
-                    <ChatWindow 
-                      orderId={activeChatOrder.id} 
-                      currentUser={authUser} 
-                      recipientName="Rider & Vendor (Support)"
-                      onClose={() => setActiveChatOrder(null)}
-                    />
-                  )}
-                </div>
+                <ChatWindow 
+                  orderId={order.id}
+                  recipientId={rider.uid}
+                  currentUser={authUser as any}
+                  recipientName={rider.fullName}
+                  onClose={() => setShowChat(false)}
+                />
               </motion.div>
             </div>
           )}

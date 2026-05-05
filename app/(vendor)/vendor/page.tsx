@@ -679,7 +679,7 @@ export default function VendorDashboard() {
                       )}
                     </div>
                     <div className="flex gap-4">
-                      {['picked_up', 'washing', 'ready', 'picked_up_delivery'].includes(order.status.toLowerCase()) && (
+                      {order.status === 'picked_up' && (
                         <button 
                           onClick={() => setComplaintOrder(order)}
                           className="h-14 px-6 bg-error/10 text-error rounded-xl font-headline font-black text-[10px] uppercase tracking-widest active:scale-95 transition-transform border border-error/5 hover:bg-error/20"
@@ -1112,6 +1112,7 @@ export default function VendorDashboard() {
                           onClick={() => {
                             setShopForm({
                               shopName: currentUser?.shopName || '',
+                              whatsappNumber: currentUser?.whatsappNumber || '',
                               landmark: currentUser?.landmark || ''
                             });
                             setIsShopModalOpen(true);

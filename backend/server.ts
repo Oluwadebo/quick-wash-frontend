@@ -9,6 +9,8 @@ import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import mongoose from "mongoose";
 import morgan from "morgan";
+import http from "http";
+import { Server } from "socket.io";
 import User from "./models/User";
 import Transaction from "./models/Transaction";
 import { v4 as uuidv4 } from "uuid";
@@ -142,6 +144,44 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({ message: `Route ${req.originalUrl} not found` });
+});
+
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
+
+io.on("connection", (socket) => {
+  console.log("New client connected", socket.id);
+
+  socket.on("join_order", (orderId) => {
+    socket.join(`order_${orderId}`);
+    console.log(`Socket ${socket.id} joined order_${orderId}`);
+  });
+
+  socket.on("join_conversation", (conversationId) => {
+    socket.join(`conv_${conversationId}`);
+    console.log(`Socket ${socket.id} joined conv_${conversationId}`);
+  });
+
+  socket.on("send_message", (data) => {
+    // Broadcast to room
+    if (data.orderId) {
+      io.to(`order_${data.orderId}`).emit("new_message", data);
+    }
+    if (data.senderId && data.receiverId) {
+      // Create a unique conversation room name by sorting IDs
+      const conversationId = [data.senderId, data.receiverId].sort().join("_");
+      io.to(`conv_${conversationId}`).emit("new_message", data);
+    }
+  });
+
+  socket.on("disconnect", () => {
+    console.log("Client disconnected");
+  });
 });
 
 const startServer = async () => {
@@ -305,7 +345,7 @@ const startServer = async () => {
     // ---------------------------------------------------
 
     console.log(`Starting backend server on port ${PORT}...`);
-    app.listen(Number(PORT), "0.0.0.0", () => {
+    server.listen(Number(PORT), "0.0.0.0", () => {
       console.log(
         `✅ Backend server successfully running on http://0.0.0.0:${PORT}`,
       );
@@ -319,7 +359,7 @@ const startServer = async () => {
     // process.exit(1);
     
     console.log(`Starting backend server on port ${PORT} (DB OFFLINE)...`);
-    app.listen(Number(PORT), "0.0.0.0", () => {
+    server.listen(Number(PORT), "0.0.0.0", () => {
       console.log(
         `✅ Backend server successfully running on http://0.0.0.0:${PORT} (Degraded Mode)`,
       );

@@ -405,22 +405,24 @@ export default function RiderDashboard() {
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       {availableOrders.filter(o => o.status === 'rider_assign_pickup').map((order) => (
-                        <div key={order.id} className="bg-surface-container-low p-8 rounded-[2.5rem] border-2 border-primary/20 shadow-xl relative overflow-hidden group hover:border-primary/40 transition-all">
-                          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                            <ShoppingBag className="w-24 h-24 text-primary" />
+                        <div key={order.id} className="bg-surface-container-low p-8 rounded-[2.5rem] border-2 border-primary/20 shadow-xl relative overflow-hidden">
+                          <div className="absolute top-0 right-0 p-4 opacity-10">
+                            <ShoppingBag className="w-20 h-20 text-primary" />
                           </div>
                           <div className="flex justify-between items-start mb-6 relative z-10">
                             <div>
-                              <p className="font-label text-[10px] font-black uppercase tracking-widest text-primary mb-1 leading-none">Pickup Request #{order.id}</p>
+                              <p className="font-label text-[10px] font-black uppercase tracking-widest text-primary mb-1 leading-none">Order #{order.id}</p>
                               <h4 className="font-headline font-black text-xl text-on-surface mb-2 truncate max-w-[200px]">{order.customerName}</h4>
                               <div className="space-y-2">
                                 <div className="flex items-center gap-2 text-primary font-bold">
                                   <MapPin className="w-4 h-4" />
-                                  <p className="text-[10px] font-black uppercase tracking-widest leading-tight">FROM: {order.customerLandmark || 'Location N/A'}</p>
+                                    <div className="flex flex-col">
+                                      <p className="text-[10px] font-black uppercase tracking-widest leading-tight">PICKUP: {order.customerLandmark || 'Location N/A'}</p>
+                                    </div>
                                 </div>
                                 <div className="flex items-center gap-2 text-on-surface-variant">
-                                  <ArrowRight className="w-3 h-3" />
-                                  <p className="text-[10px] font-black uppercase tracking-widest leading-tight">TO: {order.vendorLandmark}</p>
+                                  <Package className="w-3 h-3" />
+                                  <p className="text-[10px] font-black uppercase tracking-widest leading-tight">FINAL VENDOR: {order.vendorLandmark}</p>
                                 </div>
                               </div>
                             </div>
@@ -431,7 +433,7 @@ export default function RiderDashboard() {
                             disabled={currentUser?.status === 'restricted'}
                             className="w-full h-14 signature-gradient text-white rounded-xl font-headline font-black text-sm shadow-xl active:scale-95 transition-all disabled:opacity-50 relative z-10"
                           >
-                            {currentUser?.status === 'restricted' ? 'ACCOUNT RESTRICTED' : 'ACCEPT PICKUP'}
+                            {currentUser?.status === 'restricted' ? 'ACCOUNT RESTRICTED' : 'CLAIM PICKUP'}
                           </button>
                         </div>
                       ))}
@@ -448,16 +450,16 @@ export default function RiderDashboard() {
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       {availableOrders.filter(o => o.status === 'rider_assign_delivery').map((order) => (
-                        <div key={order.id} className="bg-surface-container-low p-8 rounded-[2.5rem] border-2 border-secondary/20 shadow-xl relative overflow-hidden">
+                        <div key={order.id} className="bg-surface-container-low p-8 rounded-[2.5rem] border-2 border-tertiary/20 shadow-xl relative overflow-hidden">
                           <div className="absolute top-0 right-0 p-4 opacity-10">
-                            <Navigation className="w-20 h-20 text-secondary" />
+                            <Navigation className="w-20 h-20 text-tertiary" />
                           </div>
                           <div className="flex justify-between items-start mb-6 relative z-10">
                             <div>
-                              <p className="font-label text-[10px] font-black uppercase tracking-widest text-secondary mb-1 leading-none">Order #{order.id}</p>
+                              <p className="font-label text-[10px] font-black uppercase tracking-widest text-tertiary mb-1 leading-none">Order #{order.id}</p>
                               <h4 className="font-headline font-black text-xl text-on-surface mb-2 truncate max-w-[200px]">{order.customerName}</h4>
                               <div className="space-y-2">
-                                <div className="flex items-center gap-2 text-secondary font-bold">
+                                <div className="flex items-center gap-2 text-tertiary font-bold">
                                   <ShoppingBag className="w-4 h-4" />
                                   <div className="flex flex-col">
                                     <p className="text-[10px] font-black uppercase tracking-widest leading-tight">FROM VENDOR: {order.vendorLandmark}</p>
@@ -469,12 +471,12 @@ export default function RiderDashboard() {
                                 </div>
                               </div>
                             </div>
-                            <span className="bg-secondary text-white px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">₦1,000 FEE</span>
+                            <span className="bg-tertiary text-white px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">₦1,000 FEE</span>
                           </div>
                           <button 
                             onClick={() => handleAcceptOrder(order.id)}
                             disabled={currentUser?.status === 'restricted'}
-                            className="w-full h-14 bg-secondary text-white rounded-xl font-headline font-black text-sm shadow-xl active:scale-95 transition-all disabled:opacity-50 relative z-10"
+                            className="w-full h-14 bg-tertiary text-white rounded-xl font-headline font-black text-sm shadow-xl active:scale-95 transition-all disabled:opacity-50 relative z-10"
                           >
                             {currentUser?.status === 'restricted' ? 'ACCOUNT RESTRICTED' : 'CLAIM DELIVERY'}
                           </button>

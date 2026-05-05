@@ -85,19 +85,13 @@ const calculateRiderFee = (customerLandmark?: string, vendorLandmark?: string) =
     'Isale-General': 5,
     'Stadium': 4,
     'Bovina': 6,
-    'LAUTECH Gate': 1.5,
-    'Odo-Okun': 4.5,
-    'Fapote': 3.5,
-    'Yoaco': 2.5,
-    'General': 5.5
+    'LAUTECH Gate': 1
   };
-  const cDist = (customerLandmark && distances[customerLandmark]) || 3.2;
-  const vDist = (vendorLandmark && distances[vendorLandmark]) || 2.4;
+  const cDist = (customerLandmark && distances[customerLandmark]) || 3;
+  const vDist = (vendorLandmark && distances[vendorLandmark]) || 2;
   
-  // Base ₦300 + distance factors
-  const fee = 300 + (cDist * 85) + (vDist * 65);
-  // Round to nearest 50
-  return Math.max(500, Math.round(fee / 50) * 50);
+  // Dynamic fee calculation: Base + Customer Distance factor + Vendor Distance factor
+  return 400 + (cDist * 70) + (vDist * 50);
 };
 
 export default function OrderPage() {

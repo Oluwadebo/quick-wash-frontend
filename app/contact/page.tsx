@@ -3,17 +3,13 @@
 import React from 'react';
 import TopAppBar from '@/components/shared/TopAppBar';
 import { Mail, Phone, MapPin, MessageCircle, Clock, Globe, ArrowRight, Send, CheckCircle2 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
 import { API_URLS } from '@/lib/api-config';
 import Footer from '@/components/shared/Footer';
-import { useAuth } from '@/hooks/use-auth';
-import ChatWindow from '@/components/shared/ChatWindow';
 
 export default function ContactPage() {
-  const { user } = useAuth();
-  const [showChat, setShowChat] = React.useState(false);
   const [formState, setFormState] = React.useState({ name: '', email: '', message: '' });
   const [isSending, setIsSending] = React.useState(false);
   const [isSent, setIsSent] = React.useState(false);
@@ -235,56 +231,18 @@ export default function ContactPage() {
               referrerPolicy="no-referrer"
             />
             <div className="relative z-10">
-              <h2 className="text-5xl font-headline font-black text-white mb-4 tracking-tighter">Instant Platform Support</h2>
-              <p className="text-white/70 text-xl font-medium">Bypass the form and chat with a logistics specialist now via our help center.</p>
+              <h2 className="text-5xl font-headline font-black text-white mb-4 tracking-tighter">Instant Support Hub</h2>
+              <p className="text-white/70 text-xl font-medium">Bypass the form and reach out to our logistics specialists for urgent matters.</p>
             </div>
-            <button 
-              onClick={() => {
-                if (!user) {
-                  window.location.href = '/auth?login=true';
-                  return;
-                }
-                setShowChat(true);
-              }}
-              className="relative z-10 px-12 py-6 bg-primary text-on-primary rounded-2xl font-headline font-black text-xl shadow-2xl shadow-primary/20 flex items-center gap-4 hover:scale-105 transition-transform active:scale-95"
-            >
-              <MessageCircle className="w-8 h-8" />
-              Open Help Chat
-              <ArrowRight className="w-6 h-6" />
-            </button>
+            <div className="relative z-10 flex flex-col items-end gap-3 text-right">
+              <div className="flex items-center gap-3 px-6 py-4 bg-emerald-500/20 border border-emerald-500/30 rounded-2xl">
+                <div className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-white font-headline font-black text-lg">Support Agents Active</span>
+              </div>
+              <p className="text-white/40 text-xs font-bold uppercase tracking-widest italic">Average Response: 4 Minutes</p>
+            </div>
           </div>
         </section>
-
-        <AnimatePresence>
-          {showChat && (
-            <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
-              <motion.div 
-                initial={{ opacity: 0 }} 
-                animate={{ opacity: 1 }} 
-                exit={{ opacity: 0 }}
-                onClick={() => setShowChat(false)}
-                className="absolute inset-0 bg-surface/80 backdrop-blur-xl"
-              />
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.9, y: 20 }} 
-                animate={{ opacity: 1, scale: 1, y: 0 }} 
-                exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                className="relative w-full max-w-lg bg-white rounded-[3rem] shadow-2xl border border-primary/10 overflow-hidden"
-              >
-                <div className="h-[600px]">
-                  {user && (
-                    <ChatWindow 
-                      orderId="support_general" 
-                      currentUser={user} 
-                      recipientName="Platform Support Team"
-                      onClose={() => setShowChat(false)}
-                    />
-                  )}
-                </div>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
       </main>
     </div>
   );

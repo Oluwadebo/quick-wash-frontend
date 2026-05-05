@@ -712,7 +712,7 @@ class ApiService {
     if (typeof window !== 'undefined') {
       try {
         const token = localStorage.getItem('qw_token');
-        const resp = await fetch(`${API_URLS.base}/chat/${orderId}`, {
+        const resp = await fetch(`${API_URLS.base}/chat/order/${orderId}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (resp.ok) return await this.safeJson(resp) || [];
@@ -721,7 +721,27 @@ class ApiService {
     return [];
   }
 
-  async sendMessage(data: { orderId: string, senderId: string, senderRole: string, text: string, image?: string }): Promise<any> {
+  async getConversationMessages(userA: string, userB: string): Promise<any[]> {
+    if (typeof window !== 'undefined') {
+      try {
+        const token = localStorage.getItem('qw_token');
+        const resp = await fetch(`${API_URLS.base}/chat/conversation/${userA}/${userB}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (resp.ok) return await this.safeJson(resp) || [];
+      } catch (e) {}
+    }
+    return [];
+  }
+
+  async sendMessage(data: { 
+    orderId?: string, 
+    senderId: string, 
+    receiverId: string,
+    senderRole: string, 
+    text: string, 
+    image?: string 
+  }): Promise<any> {
     if (typeof window !== 'undefined') {
       try {
         const token = localStorage.getItem('qw_token');

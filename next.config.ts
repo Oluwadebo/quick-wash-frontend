@@ -11,12 +11,21 @@ const nextConfig: NextConfig = {
   // Allow access to remote image placeholder.
   images: {
     remotePatterns: [
-      { protocol: 'https', hostname: 'picsum.photos', port: '', pathname: '/**' },
-      { protocol: 'https', hostname: 'res.cloudinary.com', port: '', pathname: '/**' },
-      { protocol: 'https', hostname: 'images.unsplash.com', port: '', pathname: '/**' },
-      { protocol: 'https', hostname: 'lh3.googleusercontent.com', port: '', pathname: '/**' },
+      {
+        protocol: 'https',
+        hostname: 'picsum.photos',
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'res.cloudinary.com',
+        port: '',
+        pathname: '/**',
+      },
     ],
   },
+  output: 'standalone',
   transpilePackages: ['motion'],
   async rewrites() {
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://127.0.0.1:5000';

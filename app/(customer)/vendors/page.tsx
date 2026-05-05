@@ -4,10 +4,12 @@ import React, { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import TopAppBar from '@/components/shared/TopAppBar';
 import VendorCard from '@/components/shared/VendorCard';
+import ChatWindow from '@/components/shared/ChatWindow';
 import { Volume2, MapPin, Search, SlidersHorizontal, DollarSign, Zap, Star, Navigation } from 'lucide-react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { API_URLS } from '@/lib/api-config';
+import { useAuth } from '@/hooks/use-auth';
 
 const sortOptions = [
   { id: 'cheapest', label: 'Cheapest', icon: DollarSign },
@@ -18,12 +20,14 @@ const sortOptions = [
 
 function VendorSelectionContent() {
   const searchParams = useSearchParams();
+  const { user: authUser } = useAuth();
   const initialLandmark = searchParams.get('landmark') || '';
   const [selectedSort, setSelectedSort] = React.useState('highest-rated');
   const [searchQuery, setSearchQuery] = React.useState('');
   const [selectedLandmark, setSelectedLandmark] = React.useState(initialLandmark);
   const [vendors, setVendors] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [activeChat, setActiveChat] = React.useState<any>(null);
 
   React.useEffect(() => {
     const fetchVendors = async () => {
@@ -178,6 +182,7 @@ function VendorSelectionContent() {
               <VendorCard 
                 key={vendor.id || `vendor-${idx}`}
                 {...vendor}
+                onChat={() => setActiveChat(vendor)}
               />
             ))
           ) : (
@@ -187,6 +192,34 @@ function VendorSelectionContent() {
           )}
         </section>
       </main>
+
+      {/* Chat UI Modal */}
+      <AnimatePresence>
+        {activeChat && authUser && (
+          <div className="fixed inset-0 z-[110] flex flex-col justify-end sm:p-6 sm:justify-center items-center">
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-surface/40 backdrop-blur-md"
+              onClick={() => setActiveChat(null)}
+            />
+            <motion.div 
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              className="relative w-full max-w-xl h-[80vh] sm:h-[600px] bg-white rounded-t-[3rem] sm:rounded-[3rem] shadow-2xl overflow-hidden flex flex-col"
+            >
+              <ChatWindow 
+                recipientId={activeChat.id}
+                currentUser={authUser as any}
+                recipientName={activeChat.name}
+                onClose={() => setActiveChat(null)}
+              />
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

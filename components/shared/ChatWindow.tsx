@@ -4,11 +4,13 @@ import { motion, AnimatePresence } from 'motion/react';
 import Image from 'next/image';
 import { api, UserData } from '@/lib/ApiService';
 import { cn } from '@/lib/utils';
+import { io, Socket } from 'socket.io-client';
 
 interface Message {
   _id: string;
-  orderId: string;
+  orderId?: string;
   senderId: string;
+  receiverId: string;
   senderRole: string;
   text: string;
   image?: string;
@@ -16,31 +18,63 @@ interface Message {
 }
 
 interface ChatWindowProps {
-  orderId: string;
+  orderId?: string;
+  recipientId?: string;
   currentUser: UserData;
   recipientName: string;
   onClose?: () => void;
 }
 
-export default function ChatWindow({ orderId, currentUser, recipientName, onClose }: ChatWindowProps) {
+export default function ChatWindow({ orderId, recipientId, currentUser, recipientName, onClose }: ChatWindowProps) {
   const [messages, setMessages] = React.useState<Message[]>([]);
   const [inputText, setInputText] = React.useState('');
   const [isSending, setIsSending] = React.useState(false);
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const [imagePreview, setImagePreview] = React.useState<string | null>(null);
+  const socketRef = React.useRef<Socket | null>(null);
 
   const fetchMessages = React.useCallback(async () => {
     try {
-      const msgs = await api.getMessages(orderId);
+      let msgs;
+      if (orderId) {
+        msgs = await api.getMessages(orderId);
+      } else if (recipientId) {
+        msgs = await api.getConversationMessages(currentUser.uid, recipientId);
+      } else {
+        msgs = [];
+      }
       setMessages(msgs);
     } catch (err) {}
-  }, [orderId]);
+  }, [orderId, recipientId, currentUser.uid]);
 
   React.useEffect(() => {
+    // Initial fetch
     fetchMessages();
-    const interval = setInterval(fetchMessages, 3000);
-    return () => clearInterval(interval);
-  }, [fetchMessages]);
+
+    // Socket.io Setup
+    const socketUrl = window.location.origin.includes('localhost') ? 'http://localhost:5000' : window.location.origin;
+    const socket = io(socketUrl);
+    socketRef.current = socket;
+
+    if (orderId) {
+      socket.emit("join_order", orderId);
+    } else if (recipientId) {
+      const conversationId = [currentUser.uid, recipientId].sort().join("_");
+      socket.emit("join_conversation", conversationId);
+    }
+
+    socket.on("new_message", (msg: Message) => {
+      setMessages(prev => {
+        // Prevent duplicate messages if already in list
+        if (prev.find(m => m._id === msg._id)) return prev;
+        return [...prev, msg];
+      });
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [orderId, recipientId, currentUser.uid, fetchMessages]);
 
   React.useEffect(() => {
     if (scrollRef.current) {
@@ -54,16 +88,25 @@ export default function ChatWindow({ orderId, currentUser, recipientName, onClos
 
     setIsSending(true);
     try {
-      await api.sendMessage({
+      const msgData = {
         orderId,
         senderId: currentUser.uid,
+        receiverId: recipientId,
         senderRole: currentUser.role,
         text: inputText || (imagePreview ? 'Sent an image' : ''),
         image: imagePreview || undefined
-      });
+      };
+
+      const newMessage = await api.sendMessage(msgData);
+      
+      if (newMessage && socketRef.current) {
+        socketRef.current.emit("send_message", newMessage);
+      }
+
       setInputText('');
       setImagePreview(null);
-      fetchMessages();
+      // Wait a bit then fetch just in case socket missed it (fallback)
+      setTimeout(fetchMessages, 500);
     } catch (err) {} finally {
       setIsSending(false);
     }
