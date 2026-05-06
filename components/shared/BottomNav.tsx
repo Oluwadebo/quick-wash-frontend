@@ -10,7 +10,8 @@ import {
   Wallet, 
   Home,
   LayoutDashboard,
-  Tag
+  Tag,
+  MessageSquare
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -26,20 +27,22 @@ interface NavItem {
 const customerItems: NavItem[] = [
   { label: 'Home', icon: Home, href: '/customer' },
   { label: 'Wash', icon: WashingMachine, href: '/vendors' },
-  { label: 'Wallet', icon: Wallet, href: '/wallet' },
+  { label: 'Chat', icon: MessageSquare, href: '/chat' },
   { label: 'Track', icon: Map, href: '/track' },
+  { label: 'Wallet', icon: Wallet, href: '/wallet' },
   { label: 'Profile', icon: User, href: '/profile' },
 ];
 
 const vendorItems: NavItem[] = [
   { label: 'Home', icon: LayoutDashboard, href: '/vendor' },
+  { label: 'Chat', icon: MessageSquare, href: '/chat' },
   { label: 'Prices', icon: Tag, href: '/vendor?tab=prices' },
   { label: 'Profile', icon: User, href: '/vendor?tab=settings' },
 ];
 
 const riderItems: NavItem[] = [
   { label: 'Home', icon: Home, href: '/rider' },
-  { label: 'History', icon: History, href: '/rider?tab=history' },
+  { label: 'Chat', icon: MessageSquare, href: '/chat' },
   { label: 'Wallet', icon: Wallet, href: '/rider?tab=wallet' },
   { label: 'Profile', icon: User, href: '/rider?tab=settings' },
 ];

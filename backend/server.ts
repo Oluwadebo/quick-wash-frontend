@@ -184,6 +184,24 @@ io.on("connection", (socket: any) => {
   });
 });
 
+const withRetry = async <T>(fn: () => Promise<T>, retries = 3): Promise<T> => {
+  try {
+    return await fn();
+  } catch (err: any) {
+    const isConflict = 
+      err.message?.includes('Write conflict') || 
+      err.code === 112 || 
+      (err.name === 'MongoServerError' && err.codeName === 'WriteConflict');
+      
+    if (retries > 0 && isConflict) {
+      console.log(`[Auto-Timeout] Write conflict detected, retrying... (${retries} left)`);
+      await new Promise(res => setTimeout(res, 50));
+      return withRetry(fn, retries - 1);
+    }
+    throw err;
+  }
+};
+
 const startServer = async () => {
   if (!process.env.MONGODB_URI) {
     console.warn(
@@ -255,10 +273,9 @@ const startServer = async () => {
       try {
         const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
         const Order = mongoose.model('Order');
-        const Transaction = mongoose.model('Transaction');
         
         // Find orders in 'confirm' or 'rider_assign_pickup' that are older than 30 mins
-        const pendingOrders = await mongoose.model('Order').find({
+        const pendingOrders = await Order.find({
           status: { $in: ["confirm", "rider_assign_pickup"] },
           $or: [
             { paidAt: { $lt: thirtyMinutesAgo } },
@@ -270,71 +287,73 @@ const startServer = async () => {
           console.log(`[Auto-Timeout] Found ${pendingOrders.length} stale orders for refund.`);
           
           for (const order of pendingOrders) {
-            const session = await mongoose.startSession();
-            let isNoTransaction = false;
-            try {
-              session.startTransaction();
-            } catch (e) {
-              isNoTransaction = true;
-            }
-            
-            try {
-              const OrderModel = mongoose.model('Order');
-              const UserModel = mongoose.model('User');
-              const TransactionModel = mongoose.model('Transaction');
+            await withRetry(async () => {
+              const session = await mongoose.startSession();
+              let isNoTransaction = false;
+              try {
+                session.startTransaction();
+              } catch (e) {
+                isNoTransaction = true;
+              }
               
-              const freshOrder = isNoTransaction 
-                ? await OrderModel.findById(order._id)
-                : await OrderModel.findById(order._id).session(session);
+              try {
+                const OrderModel = mongoose.model('Order');
+                const UserModel = mongoose.model('User');
+                const TransactionModel = mongoose.model('Transaction');
                 
-              if (!freshOrder || !["confirm", "rider_assign_pickup"].includes(freshOrder.status)) {
-                if (!isNoTransaction) await session.abortTransaction();
-                session.endSession();
-                continue;
-              }
-
-              if (freshOrder.paymentMethod === 'wallet') {
-                const user = isNoTransaction
-                  ? await UserModel.findOne({ uid: freshOrder.customerUid })
-                  : await UserModel.findOne({ uid: freshOrder.customerUid }).session(session);
+                const freshOrder = isNoTransaction 
+                  ? await OrderModel.findById(order._id)
+                  : await OrderModel.findById(order._id).session(session);
                   
-                if (user) {
-                  user.walletBalance = (user.walletBalance || 0) + freshOrder.totalPrice;
-                  isNoTransaction ? await user.save() : await user.save({ session });
-
-                  const transData = {
-                    id: uuidv4(),
-                    userId: user.uid as string,
-                    type: 'deposit',
-                    amount: freshOrder.totalPrice,
-                    desc: `Auto-Refund (Timeout) - Order #${freshOrder.id}`,
-                    status: 'completed',
-                    method: 'wallet',
-                    reference: `AUTO-REF-${freshOrder.id}`,
-                    date: new Date()
-                  };
-                  
-                  isNoTransaction 
-                    ? await TransactionModel.create([transData])
-                    : await TransactionModel.create([transData], { session });
+                if (!freshOrder || !["confirm", "rider_assign_pickup"].includes(freshOrder.status)) {
+                  if (!isNoTransaction) await session.abortTransaction();
+                  return;
                 }
-              }
 
-              freshOrder.status = 'Refunded (Auto)';
-              freshOrder.color = 'bg-error/20 text-error';
-              freshOrder.refundAmount = freshOrder.totalPrice;
-              isNoTransaction ? await freshOrder.save() : await freshOrder.save({ session });
+                if (freshOrder.paymentMethod === 'wallet') {
+                  const user = isNoTransaction
+                    ? await UserModel.findOne({ uid: freshOrder.customerUid })
+                    : await UserModel.findOne({ uid: freshOrder.customerUid }).session(session);
+                    
+                  if (user) {
+                    user.walletBalance = (user.walletBalance || 0) + freshOrder.totalPrice;
+                    isNoTransaction ? await user.save() : await user.save({ session });
 
-              if (!isNoTransaction) await session.commitTransaction();
-              console.log(`[Auto-Timeout] Order ${freshOrder.id} auto-refunded.`);
-            } catch (err) {
-              if (!isNoTransaction) {
-                try { await session.abortTransaction(); } catch (e) {}
+                    const transData = {
+                      id: uuidv4(),
+                      userId: user.uid as string,
+                      type: 'deposit',
+                      amount: freshOrder.totalPrice,
+                      desc: `Auto-Refund (Timeout) - Order #${freshOrder.id}`,
+                      status: 'completed',
+                      method: 'wallet',
+                      reference: `AUTO-REF-${freshOrder.id}`,
+                      date: new Date()
+                    };
+                    
+                    isNoTransaction 
+                      ? await TransactionModel.create([transData])
+                      : await TransactionModel.create([transData], { session });
+                  }
+                }
+
+                freshOrder.status = 'completed (Refunded/Auto-Timeout)';
+                freshOrder.color = 'bg-error/20 text-error';
+                freshOrder.refundAmount = freshOrder.totalPrice;
+                freshOrder.completedAt = new Date();
+                isNoTransaction ? await freshOrder.save() : await freshOrder.save({ session });
+
+                if (!isNoTransaction) await session.commitTransaction();
+                console.log(`[Auto-Timeout] Order ${freshOrder.id} auto-refunded.`);
+              } catch (err) {
+                if (!isNoTransaction) {
+                  try { await session.abortTransaction(); } catch (e) {}
+                }
+                throw err;
+              } finally {
+                session.endSession();
               }
-              console.error(`[Auto-Timeout] Error processing ${order.id}:`, err);
-            } finally {
-              session.endSession();
-            }
+            });
           }
         }
       } catch (err) {

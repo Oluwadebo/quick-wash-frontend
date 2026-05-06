@@ -377,7 +377,7 @@ router.post("/trust/adjust/:uid", async (req, res) => {
         break;
     }
 
-    user.trustPoints = (user.trustPoints || 0) + change;
+    user.trustPoints = Math.min(100, Math.max(0, (user.trustPoints || 0) + change));
     if (isPenalty) user.lastPenaltyAt = new Date();
     
     await user.save();

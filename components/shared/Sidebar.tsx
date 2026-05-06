@@ -19,7 +19,8 @@ import {
   Wallet,
   BarChart3,
   Megaphone,
-  History
+  History,
+  MessageSquare
 } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -36,6 +37,7 @@ interface NavItem {
 const customerItems: NavItem[] = [
   { label: 'Home', icon: Home, href: '/customer' },
   { label: 'Wash', icon: WashingMachine, href: '/vendors' },
+  { label: 'Chat', icon: MessageSquare, href: '/chat' },
   { label: 'Track', icon: Map, href: '/track' },
   { label: 'Wallet', icon: Wallet, href: '/wallet' },
   { label: 'Profile', icon: User, href: '/profile' },
@@ -43,6 +45,7 @@ const customerItems: NavItem[] = [
 
 const vendorItems: NavItem[] = [
   { label: 'Dashboard', icon: LayoutDashboard, href: '/vendor' },
+  { label: 'Chat', icon: MessageSquare, href: '/chat' },
   { label: 'Price List', icon: Tag, href: '/vendor?tab=prices' },
   { label: 'Wallet', icon: Wallet, href: '/vendor?tab=payout' },
   { label: 'Settings', icon: User, href: '/vendor?tab=settings' },
@@ -50,6 +53,7 @@ const vendorItems: NavItem[] = [
 
 const riderItems: NavItem[] = [
   { label: 'Dashboard', icon: Home, href: '/rider' },
+  { label: 'Chat', icon: MessageSquare, href: '/chat' },
   { label: 'History', icon: History, href: '/rider?tab=history' },
   { label: 'Wallet', icon: Wallet, href: '/rider?tab=wallet' },
   { label: 'Settings', icon: User, href: '/rider?tab=settings' },
@@ -59,6 +63,7 @@ const adminItems: NavItem[] = [
   { label: 'Overview', icon: Activity, href: '/admin' },
   { label: 'Orders', icon: ShoppingBag, href: '/admin?tab=orders' },
   { label: 'Disputes', icon: AlertTriangle, href: '/admin?tab=disputes' },
+  { label: 'Chat', icon: MessageSquare, href: '/chat' },
   { label: 'Users', icon: Users, href: '/admin?tab=users' },
   { label: 'Wallets', icon: Wallet, href: '/admin?tab=wallets' },
   { label: 'Analytics', icon: BarChart3, href: '/admin?tab=analytics' },

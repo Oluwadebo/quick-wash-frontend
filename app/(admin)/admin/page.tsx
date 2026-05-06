@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
 import Image from 'next/image';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { api, SiteSettings } from '@/lib/ApiService';
 import { API_URLS } from '@/lib/api-config';
@@ -25,7 +26,7 @@ import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell
 } from 'recharts';
 
-type AdminTab = 'overview' | 'orders' | 'disputes' | 'users' | 'wallets' | 'analytics' | 'marketing' | 'audit' | 'settings';
+type AdminTab = 'overview' | 'orders' | 'disputes' | 'messages' | 'users' | 'wallets' | 'analytics' | 'marketing' | 'audit' | 'settings';
 type UserSection = 'all' | 'admin' | 'vendor' | 'rider' | 'customer' | 'marketing';
 
 export default function AdminDashboard() {
@@ -444,6 +445,7 @@ export default function AdminDashboard() {
     { id: 'overview', label: 'Overview', icon: Activity },
     { id: 'orders', label: 'Orders', icon: ShoppingBag },
     { id: 'disputes', label: 'Disputes', icon: AlertTriangle },
+    { id: 'messages', label: 'Messages', icon: MessageSquare },
     { id: 'users', label: 'Users', icon: Users },
     { id: 'wallets', label: 'Wallets', icon: Wallet },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
@@ -1208,6 +1210,30 @@ export default function AdminDashboard() {
                     </div>
                   </div>
                 </motion.div>
+              )}
+
+              {activeTab === 'messages' && (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between mb-8">
+                    <div>
+                      <h2 className="text-4xl font-headline font-black text-on-surface tracking-tighter">Support Messages</h2>
+                      <p className="text-on-surface-variant font-medium">Global chat with all platform users.</p>
+                    </div>
+                    <Link href="/chat" className="px-6 py-3 bg-primary text-white rounded-xl font-headline font-black text-xs shadow-lg hover:scale-105 transition-transform">
+                      OPEN FULL CHAT
+                    </Link>
+                  </div>
+                  <div className="bg-surface-container-low rounded-[2.5rem] p-8 border border-primary/5 min-h-[400px] flex flex-col items-center justify-center text-center">
+                    <History className="w-16 h-16 text-primary/20 mb-4" />
+                    <h3 className="text-xl font-headline font-black text-on-surface mb-2">Integrated Chat Portal</h3>
+                    <p className="text-sm text-on-surface-variant max-w-md mx-auto mb-8">
+                      For the best experience managing all user conversations, please use our dedicated chat portal.
+                    </p>
+                    <Link href="/chat" className="px-8 py-4 bg-primary text-white rounded-2xl font-headline font-black text-sm shadow-xl hover:scale-105 transition-transform">
+                      GO TO MESSAGES
+                    </Link>
+                  </div>
+                </div>
               )}
 
               {activeTab === 'disputes' && (

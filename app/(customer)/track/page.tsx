@@ -16,41 +16,75 @@ export default function TrackListPage() {
   const [user, setUser] = React.useState<UserData | null>(null);
   const [timeRange, setTimeRange] = React.useState<'today' | '7d' | '14d' | '30d' | '2m' | 'all' | 'custom'>('all');
   const [customRange, setCustomRange] = React.useState({ start: '', end: '' });
+  const [page, setPage] = React.useState(1);
+  const [hasMore, setHasMore] = React.useState(true);
+  const [isLoading, setIsLoading] = React.useState(false);
+
+  const fetchOrders = React.useCallback(async (pageNum: number, isNewFilter: boolean = false) => {
+    if (!authUser?.uid || isLoading) return;
+    
+    setIsLoading(true);
+    try {
+      const limit = 20;
+      const fetchedOrders = await api.getOrders(authUser.uid, 'customer', limit, pageNum);
+      
+      if (isNewFilter) {
+        setOrders(fetchedOrders);
+      } else {
+        setOrders(prev => [...prev, ...fetchedOrders]);
+      }
+      
+      setHasMore(fetchedOrders.length === limit);
+    } catch (err) {
+      console.error('[Track] Error fetching orders:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [authUser?.uid, isLoading]);
 
   React.useEffect(() => {
-    const init = async () => {
-      if (!authUser?.uid) return;
-      
-      const me = await api.getUser(authUser.uid);
-      setUser(me);
+    if (authUser?.uid) {
+      api.getUser(authUser.uid).then(setUser);
+      fetchOrders(1, true);
+    }
+  }, [authUser?.uid, fetchOrders]);
 
-      if (me?.uid) {
-        try {
-          // Fetch orders for current customer
-          const customerOrders = await api.getOrders();
-          setOrders(Array.isArray(customerOrders) ? customerOrders.sort((a: any, b: any) => {
-            const dateB = new Date(b.createdAt || b.time || 0).getTime();
-            const dateA = new Date(a.createdAt || a.time || 0).getTime();
-            return dateB - dateA;
-          }) : []);
-        } catch (err: any) {
-          console.error('[Track] Failed to load orders:', err.message || err);
-          setOrders([]);
-        }
-      }
-    };
-    init();
-  }, [authUser]);
+  const handlePageChange = () => {
+    const nextPage = page + 1;
+    setPage(nextPage);
+    fetchOrders(nextPage);
+  };
 
   const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Delivered': return 'bg-success/10 text-success';
-      case 'Cancelled (Auto)': return 'bg-error/10 text-error';
-      case 'Awaiting Pickup Confirmation':
-      case 'Awaiting Delivery Confirmation': return 'bg-warning/10 text-warning';
-      default: return 'bg-primary/10 text-primary';
-    }
+    const s = status.toLowerCase();
+    if (s.includes('delivered') || s.includes('completed') || s.includes('refunded')) return 'bg-success/10 text-success';
+    if (s.includes('cancelled')) return 'bg-error/10 text-error';
+    if (s.includes('awaiting') || s.includes('pending')) return 'bg-warning/10 text-warning';
+    return 'bg-primary/10 text-primary';
   };
+
+  const now = new Date();
+  const filteredOrders = orders.filter((o: any) => {
+    const itemDate = new Date(o.createdAt || o.time);
+    if (isNaN(itemDate.getTime())) return true;
+    
+    if (timeRange === 'all') return true;
+    if (timeRange === 'today') return itemDate.toDateString() === now.toDateString();
+    if (timeRange === 'custom') {
+      if (!customRange.start || !customRange.end) return true;
+      const start = new Date(customRange.start);
+      const end = new Date(customRange.end);
+      end.setHours(23, 59, 59, 999);
+      return itemDate >= start && itemDate <= end;
+    }
+
+    const diffInDays = (now.getTime() - itemDate.getTime()) / (1000 * 60 * 60 * 24);
+    if (timeRange === '7d') return diffInDays <= 7;
+    if (timeRange === '14d') return diffInDays <= 14;
+    if (timeRange === '30d') return diffInDays <= 30;
+    if (timeRange === '2m') return diffInDays <= 60;
+    return true;
+  });
 
   return (
     <ProtectedRoute allowedRoles={['customer']}>
@@ -76,7 +110,10 @@ export default function TrackListPage() {
               ].map(opt => (
                 <button
                   key={opt.id}
-                  onClick={() => setTimeRange(opt.id as any)}
+                  onClick={() => {
+                    setTimeRange(opt.id as any);
+                    // Reset if needed or just filter current list
+                  }}
                   className={cn(
                     "whitespace-nowrap px-4 py-2 rounded-xl font-headline font-black text-[10px] uppercase tracking-widest transition-all",
                     timeRange === opt.id 
@@ -121,37 +158,14 @@ export default function TrackListPage() {
           </div>
 
           <div className="space-y-6">
-            {(() => {
-              const now = new Date();
-              const filteredOrders = orders.filter((o: any) => {
-                const itemDate = new Date(o.createdAt || o.time);
-                if (isNaN(itemDate.getTime())) return true; // Show invalid dates for now
-                
-                if (timeRange === 'all') return true;
-                if (timeRange === 'today') return itemDate.toDateString() === now.toDateString();
-                if (timeRange === 'custom') {
-                  if (!customRange.start || !customRange.end) return true;
-                  const start = new Date(customRange.start);
-                  const end = new Date(customRange.end);
-                  end.setHours(23, 59, 59, 999);
-                  return itemDate >= start && itemDate <= end;
-                }
-
-                const diffInDays = (now.getTime() - itemDate.getTime()) / (1000 * 60 * 60 * 24);
-                if (timeRange === '7d') return diffInDays <= 7;
-                if (timeRange === '14d') return diffInDays <= 14;
-                if (timeRange === '30d') return diffInDays <= 30;
-                if (timeRange === '2m') return diffInDays <= 60;
-                return true;
-              });
-
-              if (filteredOrders.length > 0) {
-                return filteredOrders.map((order, idx) => (
+            {filteredOrders.length > 0 ? (
+              <>
+                {filteredOrders.map((order, idx) => (
                   <motion.div
                     key={order.id}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.1 }}
+                    transition={{ delay: idx % 10 * 0.05 }}
                   >
                     <Link 
                       href={`/track/${order.id}`}
@@ -191,29 +205,41 @@ export default function TrackListPage() {
                       </div>
                     </Link>
                   </motion.div>
-                ));
-              }
-
-              return (
-                <div className="py-20 text-center bg-surface-container-low rounded-[3rem] border border-dashed border-primary/20">
-                  <div className="w-20 h-20 bg-primary/5 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <History className="w-10 h-10 text-primary/20" />
-                  </div>
-                  <h4 className="font-headline font-black text-on-surface">{orders.length > 0 ? 'No results found' : 'No orders found'}</h4>
-                  <p className="text-xs font-medium text-on-surface-variant mt-1">
-                    {orders.length > 0 ? 'Try adjusting your filters to see more results.' : 'You haven\'t placed any orders yet.'}
-                  </p>
-                  {orders.length === 0 && (
-                    <Link 
-                      href="/vendors"
-                      className="mt-8 inline-flex items-center gap-2 bg-primary text-on-primary px-8 py-4 rounded-2xl font-headline font-black shadow-xl active:scale-95 transition-all"
+                ))}
+                
+                {hasMore && (
+                  <div className="pt-4 flex justify-center">
+                    <button 
+                      onClick={handlePageChange}
+                      disabled={isLoading}
+                      className="bg-primary/10 text-primary px-8 py-3 rounded-2xl font-headline font-black text-xs hover:bg-primary/20 transition-colors disabled:opacity-50"
                     >
-                      START WASHING
-                    </Link>
-                  )}
+                      {isLoading ? 'LOADING...' : 'LOAD MORE ORDERS'}
+                    </button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="py-20 text-center bg-surface-container-low rounded-[3rem] border border-dashed border-primary/20">
+                <div className="w-20 h-20 bg-primary/5 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <History className="w-10 h-10 text-primary/20" />
                 </div>
-              );
-            })()}
+                <h4 className="font-headline font-black text-on-surface">
+                  {isLoading ? 'Finding your orders...' : orders.length > 0 ? 'No results found' : 'No orders found'}
+                </h4>
+                <p className="text-xs font-medium text-on-surface-variant mt-1">
+                  {isLoading ? 'Please wait a moment.' : orders.length > 0 ? 'Try adjusting your filters to see more results.' : 'You haven\'t placed any orders yet.'}
+                </p>
+                {!isLoading && orders.length === 0 && (
+                  <Link 
+                    href="/vendors"
+                    className="mt-8 inline-flex items-center gap-2 bg-primary text-on-primary px-8 py-4 rounded-2xl font-headline font-black shadow-xl active:scale-95 transition-all"
+                  >
+                    START WASHING
+                  </Link>
+                )}
+              </div>
+            )}
           </div>
         </main>
       </div>

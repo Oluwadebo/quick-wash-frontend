@@ -254,16 +254,19 @@ class ApiService {
     }
   }
 
-  async getOrders(userId?: string, role?: string): Promise<Order[]> {
+  async getOrders(userId?: string, role?: string, limit: number = 0, page: number = 1, options: { timeRange?: string, start?: string, end?: string } = {}): Promise<Order[]> {
     await this.delay();
     const token = localStorage.getItem('qw_token');
     
     if (typeof window !== 'undefined' && token) {
       try {
-        let url = `${API_URLS.orders}`; 
+        let url = `${API_URLS.orders}?page=${page}&limit=${limit}`; 
         if (userId && role) {
-          url += `?userId=${userId}&role=${role}`;
+          url += `&userId=${userId}&role=${role}`;
         }
+        if (options.timeRange) url += `&timeRange=${options.timeRange}`;
+        if (options.start) url += `&start=${options.start}`;
+        if (options.end) url += `&end=${options.end}`;
         
         const resp = await fetch(url, {
           headers: { 
@@ -726,6 +729,19 @@ class ApiService {
       try {
         const token = localStorage.getItem('qw_token');
         const resp = await fetch(`${API_URLS.base}/chat/conversation/${userA}/${userB}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (resp.ok) return await this.safeJson(resp) || [];
+      } catch (e) {}
+    }
+    return [];
+  }
+
+  async getConversations(userId: string): Promise<any[]> {
+    if (typeof window !== 'undefined') {
+      try {
+        const token = localStorage.getItem('qw_token');
+        const resp = await fetch(`${API_URLS.base}/chat/conversations/${userId}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (resp.ok) return await this.safeJson(resp) || [];

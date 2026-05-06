@@ -32,6 +32,37 @@ router.get("/conversation/:userA/:userB", async (req, res) => {
   }
 });
 
+// Get all unique conversations for a user
+router.get("/conversations/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    // Find all messages involving this user without an orderId
+    const messages = await Message.find({
+      $or: [{ senderId: userId }, { receiverId: userId }],
+      orderId: { $exists: false }
+    }).sort({ createdAt: -1 });
+
+    const chats: any[] = [];
+    const seenUsers = new Set();
+
+    for (const msg of messages) {
+      const otherUser = msg.senderId === userId ? msg.receiverId : msg.senderId;
+      if (otherUser && !seenUsers.has(otherUser)) {
+        seenUsers.add(otherUser);
+        chats.push({
+          lastMessage: msg,
+          otherUserId: otherUser
+        });
+      }
+    }
+
+    res.json(chats);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // Send a message
 router.post("/", async (req, res) => {
   try {

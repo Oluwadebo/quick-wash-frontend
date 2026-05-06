@@ -52,20 +52,43 @@ export default function ChatWindow({ orderId, recipientId, currentUser, recipien
     fetchMessages();
 
     // Socket.io Setup
-    const socketUrl = window.location.origin.includes('localhost') ? 'http://localhost:5000' : window.location.origin;
-    const socket = io(socketUrl);
+    const getSocketUrl = () => {
+      // In development/local
+      if (typeof window !== 'undefined') {
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+          return 'http://localhost:5000';
+        }
+        // If we have an explicit API URL set in env
+        if (process.env.NEXT_PUBLIC_API_URL) {
+          return process.env.NEXT_PUBLIC_API_URL;
+        }
+        // Fallback to same origin
+        return window.location.origin;
+      }
+      return '';
+    };
+
+    const socketUrl = getSocketUrl();
+    const socket = io(socketUrl, {
+      transports: ['websocket', 'polling'],
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1000,
+    });
     socketRef.current = socket;
 
-    if (orderId) {
-      socket.emit("join_order", orderId);
-    } else if (recipientId) {
-      const conversationId = [currentUser.uid, recipientId].sort().join("_");
-      socket.emit("join_conversation", conversationId);
-    }
+    socket.on("connect", () => {
+      console.log(`[Chat] Connected to socket at ${socketUrl}`);
+      if (orderId) {
+        socket.emit("join_order", orderId);
+      } else if (recipientId) {
+        const conversationId = [currentUser.uid, recipientId].sort().join("_");
+        socket.emit("join_conversation", conversationId);
+      }
+    });
 
     socket.on("new_message", (msg: Message) => {
+      console.log("[Chat] Received new message:", msg);
       setMessages(prev => {
-        // Prevent duplicate messages if already in list
         if (prev.find(m => m._id === msg._id)) return prev;
         return [...prev, msg];
       });
@@ -87,27 +110,48 @@ export default function ChatWindow({ orderId, recipientId, currentUser, recipien
     if ((!inputText.trim() && !imagePreview) || isSending) return;
 
     setIsSending(true);
+    
+    // Create optimistic message
+    const optimisticMessage: Message = {
+      _id: `temp-${Date.now()}`,
+      orderId,
+      senderId: currentUser.uid,
+      receiverId: recipientId || '',
+      senderRole: currentUser.role,
+      text: inputText || (imagePreview ? 'Sent an image' : ''),
+      image: imagePreview || undefined,
+      createdAt: new Date().toISOString()
+    };
+
+    // Add optimistically
+    setMessages(prev => [...prev, optimisticMessage]);
+    const textToSend = inputText;
+    setInputText('');
+    setImagePreview(null);
+
     try {
       const msgData = {
         orderId,
         senderId: currentUser.uid,
         receiverId: recipientId,
         senderRole: currentUser.role,
-        text: inputText || (imagePreview ? 'Sent an image' : ''),
-        image: imagePreview || undefined
+        text: textToSend || (optimisticMessage.image ? 'Sent an image' : ''),
+        image: optimisticMessage.image
       };
 
       const newMessage = await api.sendMessage(msgData);
       
       if (newMessage && socketRef.current) {
         socketRef.current.emit("send_message", newMessage);
+        // Replace temp message with real one to avoid duplicates later
+        setMessages(prev => prev.map(m => m._id === optimisticMessage._id ? newMessage : m));
       }
-
-      setInputText('');
-      setImagePreview(null);
-      // Wait a bit then fetch just in case socket missed it (fallback)
-      setTimeout(fetchMessages, 500);
-    } catch (err) {} finally {
+    } catch (err) {
+      console.error("[Chat] Send error:", err);
+      // Remove optimistic message on error or show fail state
+      setMessages(prev => prev.filter(m => m._id !== optimisticMessage._id));
+      alert("Failed to send message.");
+    } finally {
       setIsSending(false);
     }
   };
