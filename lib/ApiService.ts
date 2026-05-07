@@ -800,6 +800,38 @@ class ApiService {
     }
     return null;
   }
+
+  async markMessagesAsRead(userId: string, otherUserId?: string, orderId?: string): Promise<void> {
+    if (typeof window !== 'undefined') {
+      try {
+        const token = localStorage.getItem('qw_token');
+        await fetch(`${API_URLS.base}/chat/mark-read`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ userId, otherUserId, orderId })
+        });
+      } catch (e) {}
+    }
+  }
+
+  async getUnreadCount(userId: string): Promise<number> {
+    if (typeof window !== 'undefined') {
+      try {
+        const token = localStorage.getItem('qw_token');
+        const resp = await fetch(`${API_URLS.base}/chat/unread-count/${userId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (resp.ok) {
+          const data = await this.safeJson(resp);
+          return data?.count || 0;
+        }
+      } catch (e) {}
+    }
+    return 0;
+  }
 }
 
 export const api = new ApiService();

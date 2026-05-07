@@ -16,6 +16,8 @@ import {
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
+import { api } from '@/lib/ApiService';
+import { io } from 'socket.io-client';
 
 interface NavItem {
   label: string;
@@ -50,6 +52,43 @@ const riderItems: NavItem[] = [
 export default function BottomNav() {
   const pathname = usePathname();
   const { user } = useAuth();
+  const [unreadCount, setUnreadCount] = React.useState(0);
+
+  const fetchUnreadCount = React.useCallback(async () => {
+    if (user?.uid) {
+      try {
+        const count = await api.getUnreadCount(user.uid);
+        setUnreadCount(count);
+      } catch (err) {}
+    }
+  }, [user]);
+
+  React.useEffect(() => {
+    fetchUnreadCount();
+
+    const socketUrl = typeof window !== 'undefined' ? window.location.origin : '';
+    const socket = io(socketUrl, { transports: ['websocket', 'polling'] });
+
+    socket.on("connect", () => {
+      if (user?.uid) socket.emit("join_user", user.uid);
+    });
+
+    socket.on("new_message", (msg) => {
+      if (msg.receiverId === user?.uid) {
+        fetchUnreadCount();
+      }
+    });
+
+    const interval = setInterval(fetchUnreadCount, 30000);
+    window.addEventListener('chat_unread_update', fetchUnreadCount);
+    window.addEventListener('storage', fetchUnreadCount);
+    return () => {
+      socket.disconnect();
+      clearInterval(interval);
+      window.removeEventListener('chat_unread_update', fetchUnreadCount);
+      window.removeEventListener('storage', fetchUnreadCount);
+    };
+  }, [fetchUnreadCount, user?.uid]);
   
   if (pathname === '/' || pathname.startsWith('/auth') || pathname.startsWith('/admin') || !user) return null;
 
@@ -74,7 +113,14 @@ export default function BottomNav() {
                 : "text-white/40"
             )}
           >
-            <item.icon className={cn("w-6 h-6", isActive && "fill-current")} />
+            <div className="relative">
+              <item.icon className={cn("w-6 h-6", isActive && "fill-current")} />
+              {item.label === 'Chat' && unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-primary text-on-primary text-[8px] font-black rounded-full flex items-center justify-center border-2 border-zinc-900">
+                  {unreadCount}
+                </span>
+              )}
+            </div>
             <span className="font-label text-[10px] font-black uppercase tracking-widest mt-1">
               {item.label}
             </span>

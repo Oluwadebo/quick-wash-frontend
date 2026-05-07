@@ -61,8 +61,14 @@ export default function GlobalChatPage() {
         fetchConversations();
       });
 
+      const handleUnreadUpdate = () => {
+        fetchConversations();
+      };
+      window.addEventListener('chat_unread_update', handleUnreadUpdate);
+
       return () => {
         socket.disconnect();
+        window.removeEventListener('chat_unread_update', handleUnreadUpdate);
       };
     }
   }, [authUser?.uid, fetchConversations]);
@@ -139,7 +145,14 @@ export default function GlobalChatPage() {
                       </span>
                     </div>
                   </div>
-                  <ChevronRight className="w-5 h-5 text-on-surface-variant group-hover:translate-x-1 transition-transform" />
+                  <div className="flex flex-col items-end gap-2 shrink-0">
+                    {conv.unreadCount > 0 && (
+                      <span className="bg-primary text-on-primary text-[10px] font-black px-2 py-0.5 rounded-full">
+                        {conv.unreadCount} NEW
+                      </span>
+                    )}
+                    <ChevronRight className="w-5 h-5 text-on-surface-variant group-hover:translate-x-1 transition-transform" />
+                  </div>
                 </motion.button>
               ))
             ) : (

@@ -98,16 +98,59 @@ router.get("/conversations/:userId", async (req, res) => {
           }
         }
 
+        const unreadCount = await Message.countDocuments({
+          senderId: otherUserId,
+          receiverId: userId,
+          orderId: { $exists: false },
+          isRead: false
+        });
+
         chats.push({
           lastMessage: msg,
           otherUserId: otherUserId,
           otherUserName: detectedName || `User ${otherUserId.slice(0, 8)}`,
-          otherUserRole: otherUser ? otherUser.role : (isSender ? (msg as any).receiverRole : msg.senderRole) || 'unknown'
+          otherUserRole: otherUser ? otherUser.role : (isSender ? (msg as any).receiverRole : msg.senderRole) || 'unknown',
+          unreadCount
         });
       }
     }
 
     res.json(chats);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Mark messages as read for a specific user and conversation
+router.put("/mark-read", async (req, res) => {
+  try {
+    const { userId, otherUserId, orderId } = req.body;
+    
+    const query: any = {
+      receiverId: userId,
+      isRead: false
+    };
+
+    if (orderId) {
+      query.orderId = orderId;
+    } else if (otherUserId) {
+      query.senderId = otherUserId;
+      query.orderId = { $exists: false };
+    }
+
+    await Message.updateMany(query, { $set: { isRead: true } });
+    res.json({ message: "Messages marked as read" });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Get total unread count for a user
+router.get("/unread-count/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const count = await Message.countDocuments({ receiverId: userId, isRead: false });
+    res.json({ count });
   } catch (err: any) {
     res.status(500).json({ message: err.message });
   }

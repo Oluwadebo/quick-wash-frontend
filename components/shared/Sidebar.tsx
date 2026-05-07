@@ -27,6 +27,7 @@ import Image from 'next/image';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { api, SiteSettings } from '@/lib/ApiService';
+import { io } from 'socket.io-client';
 
 interface NavItem {
   label: string;
@@ -78,10 +79,45 @@ export default function Sidebar() {
   const router = useRouter();
   const { user, logout } = useAuth();
   const [settings, setSettings] = React.useState<SiteSettings | null>(null);
+  const [unreadCount, setUnreadCount] = React.useState(0);
+
+  const fetchUnreadCount = React.useCallback(async () => {
+    if (user?.uid) {
+      try {
+        const count = await api.getUnreadCount(user.uid);
+        setUnreadCount(count);
+      } catch (err) {}
+    }
+  }, [user]);
 
   React.useEffect(() => {
     api.getSiteSettings().then(setSettings);
-  }, []);
+    fetchUnreadCount();
+
+    const socketUrl = typeof window !== 'undefined' ? window.location.origin : '';
+    const socket = io(socketUrl, { transports: ['websocket', 'polling'] });
+
+    socket.on("connect", () => {
+      if (user?.uid) socket.emit("join_user", user.uid);
+    });
+
+    socket.on("new_message", (msg) => {
+      if (msg.receiverId === user?.uid) {
+        fetchUnreadCount();
+      }
+    });
+
+    const interval = setInterval(fetchUnreadCount, 30000); // Check every 30s
+    window.addEventListener('chat_unread_update', fetchUnreadCount);
+    window.addEventListener('storage', fetchUnreadCount);
+
+    return () => {
+      socket.disconnect();
+      clearInterval(interval);
+      window.removeEventListener('chat_unread_update', fetchUnreadCount);
+      window.removeEventListener('storage', fetchUnreadCount);
+    };
+  }, [fetchUnreadCount, user?.uid]);
 
   const handleInvite = async () => {
     const link = `https://quick-wash.campus/invite?ref=${user?.phoneNumber}`;
@@ -159,14 +195,24 @@ export default function Sidebar() {
               key={item.label}
               href={item.href}
               className={cn(
-                "flex items-center gap-4 px-6 py-4 rounded-2xl font-headline font-bold text-sm transition-all active:scale-95",
+                "flex items-center justify-between px-6 py-4 rounded-2xl font-headline font-bold text-sm transition-all active:scale-95 group",
                 isActive 
                   ? "signature-gradient text-white shadow-lg" 
                   : "text-on-surface-variant hover:bg-surface-container-highest"
               )}
             >
-              <item.icon className={cn("w-5 h-5", isActive && "fill-current")} />
-              {item.label}
+              <div className="flex items-center gap-4">
+                <item.icon className={cn("w-5 h-5", isActive && "fill-current")} />
+                {item.label}
+              </div>
+              {item.label === 'Chat' && unreadCount > 0 && (
+                <span className={cn(
+                  "px-2 py-0.5 rounded-full text-[10px] font-black",
+                  isActive ? "bg-white text-primary" : "bg-primary text-on-primary"
+                )}>
+                  {unreadCount}
+                </span>
+              )}
             </Link>
           );
         })}

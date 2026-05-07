@@ -45,6 +45,10 @@ export default function ChatWindow({ orderId, recipientId, currentUser, recipien
         msgs = [];
       }
       setMessages(msgs);
+      
+      // Mark as read
+      await api.markMessagesAsRead(currentUser.uid, recipientId, orderId);
+      window.dispatchEvent(new Event('chat_unread_update'));
     } catch (err) {}
   }, [orderId, recipientId, currentUser.uid]);
 
@@ -77,6 +81,12 @@ export default function ChatWindow({ orderId, recipientId, currentUser, recipien
         if (prev.find(m => m._id === msg._id)) return prev;
         return [...prev, msg];
       });
+      // Mark as read if we are currently looking at this conversation
+      if (msg.senderId !== currentUser.uid) {
+        api.markMessagesAsRead(currentUser.uid, recipientId, orderId).then(() => {
+          window.dispatchEvent(new Event('chat_unread_update'));
+        });
+      }
     });
 
     return () => {

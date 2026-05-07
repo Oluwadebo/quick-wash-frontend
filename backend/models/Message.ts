@@ -8,6 +8,7 @@ export interface IMessage extends Document {
   senderRole: 'customer' | 'vendor' | 'rider' | 'admin' | 'super-admin' | 'super-sub-admin';
   text: string;
   image?: string;
+  isRead: boolean;
   createdAt: Date;
 }
 
@@ -21,7 +22,8 @@ const MessageSchema: Schema = new Schema({
   senderRole: { type: String, enum: ['customer', 'vendor', 'rider', 'admin', 'super-admin', 'super-sub-admin'], required: true },
   text: { type: String, required: true },
   image: { type: String },
-}, { timestamps: { createdAt: true, updatedAt: false } });
+  isRead: { type: Boolean, default: false },
+}, { timestamps: { createdAt: true, updatedAt: true } });
 
 // Compound index for finding conversation between two users
 MessageSchema.index({ senderId: 1, receiverId: 1 });
