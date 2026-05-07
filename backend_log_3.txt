@@ -1,0 +1,19 @@
+◇ injected env (0) from .env // tip: ⌁ auth for agents [www.vestauth.com]
+◇ injected env (0) from .env // tip: ⌁ auth for agents [www.vestauth.com]
+[Config] NODE_ENV: development, RAW_PORT: 8080, Using PORT: 5000
+Connecting to MongoDB...
+Environment: development
+✅ Connected to MongoDB
+✅ Admin already exists. Updating credentials to ensure sync...
+Starting backend server on port 5000...
+[Backend] Uncaught Exception: Error: listen EADDRINUSE: address already in use 0.0.0.0:5000
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at node:net:2206:7
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 5000
+}

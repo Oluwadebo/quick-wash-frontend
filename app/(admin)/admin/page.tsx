@@ -159,7 +159,7 @@ export default function AdminDashboard() {
   const [landmarks, setLandmarks] = React.useState<any[]>([]);
   const [riders, setRiders] = React.useState<any[]>([]);
   const [isLandmarkModalOpen, setIsLandmarkModalOpen] = React.useState(false);
-  const [newLandmarkName, setNewLandmarkName] = React.useState('');
+  const [newLandmark, setNewLandmark] = React.useState({ name: '', x: 0, y: 0 });
   const [notification, setNotification] = React.useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
 
   React.useEffect(() => {
@@ -733,7 +733,9 @@ export default function AdminDashboard() {
                           </div>
                           <div>
                             <p className="font-headline font-black text-on-surface">{lm.name}</p>
-                            <p className="text-[8px] font-black uppercase tracking-widest text-on-surface-variant">{lm.active ? 'Operational' : 'Disabled'}</p>
+                            <p className="text-[8px] font-black uppercase tracking-widest text-on-surface-variant">
+                              {lm.active ? 'Operational' : 'Disabled'} • X: {lm.x || 0}, Y: {lm.y || 0}
+                            </p>
                           </div>
                         </div>
                           <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -818,6 +820,27 @@ export default function AdminDashboard() {
                                 type="text" 
                                 value={siteSettings.contactEmail}
                                 onChange={(e) => setSiteSettings({ ...siteSettings, contactEmail: e.target.value })}
+                                className="w-full h-16 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-4 ring-primary/10 border border-primary/5"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Base Rider Fee (₦)</label>
+                              <input 
+                                type="number" 
+                                value={siteSettings.baseRiderFee}
+                                onChange={(e) => setSiteSettings({ ...siteSettings, baseRiderFee: Number(e.target.value) })}
+                                className="w-full h-16 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-4 ring-primary/10 border border-primary/5"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Price Per KM (₦)</label>
+                              <input 
+                                type="number" 
+                                value={siteSettings.pricePerKm}
+                                onChange={(e) => setSiteSettings({ ...siteSettings, pricePerKm: Number(e.target.value) })}
                                 className="w-full h-16 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none focus:ring-4 ring-primary/10 border border-primary/5"
                               />
                             </div>
@@ -1614,10 +1637,32 @@ export default function AdminDashboard() {
                         <input 
                           type="text" 
                           placeholder="e.g. Under G Hub"
-                          value={newLandmarkName}
-                          onChange={(e) => setNewLandmarkName(e.target.value)}
+                          value={newLandmark.name}
+                          onChange={(e) => setNewLandmark({ ...newLandmark, name: e.target.value })}
                           className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none border border-primary/5 focus:border-primary"
                         />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Coordinate X</label>
+                          <input 
+                            type="number" 
+                            placeholder="0"
+                            value={newLandmark.x}
+                            onChange={(e) => setNewLandmark({ ...newLandmark, x: Number(e.target.value) })}
+                            className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none border border-primary/5 focus:border-primary"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-4">Coordinate Y</label>
+                          <input 
+                            type="number" 
+                            placeholder="0"
+                            value={newLandmark.y}
+                            onChange={(e) => setNewLandmark({ ...newLandmark, y: Number(e.target.value) })}
+                            className="w-full h-14 bg-surface-container-lowest rounded-2xl px-6 font-headline font-bold outline-none border border-primary/5 focus:border-primary"
+                          />
+                        </div>
                       </div>
                       <div className="flex gap-3">
                         <button 
@@ -1628,14 +1673,20 @@ export default function AdminDashboard() {
                         </button>
                         <button 
                           onClick={() => {
-                            if (!newLandmarkName || !siteSettings) return;
-                            const newLandmark = { id: Date.now().toString(), name: newLandmarkName, active: true };
-                            const updatedLandmarks = [...(siteSettings.landmarks || []), newLandmark];
+                            if (!newLandmark.name || !siteSettings) return;
+                            const landmarkToAdd = { 
+                              id: Date.now().toString(), 
+                              name: newLandmark.name, 
+                              active: true,
+                              x: newLandmark.x,
+                              y: newLandmark.y
+                            };
+                            const updatedLandmarks = [...(siteSettings.landmarks || []), landmarkToAdd];
                             
                             api.updateSiteSettings({ landmarks: updatedLandmarks }).then(updated => {
                               setSiteSettings(updated);
                               setIsLandmarkModalOpen(false);
-                              setNewLandmarkName('');
+                              setNewLandmark({ name: '', x: 0, y: 0 });
                               alert('Hotspot added!');
                             });
                           }}

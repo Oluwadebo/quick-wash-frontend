@@ -78,20 +78,44 @@ const defaultItems = [
 
 const generateId = () => Math.floor(1000 + Math.random() * 9000).toString();
 
-const calculateRiderFee = (customerLandmark?: string, vendorLandmark?: string) => {
-  const distances: { [key: string]: number } = {
-    'Under-G': 2,
-    'Adenike': 3,
-    'Isale-General': 5,
-    'Stadium': 4,
-    'Bovina': 6,
-    'LAUTECH Gate': 1
+const LANDMARK_COORDINATES: { [key: string]: { x: number, y: number } } = {
+  'Under-G': { x: 1.2, y: 0.8 },
+  'Adenike': { x: 0.5, y: 2.5 },
+  'Isale-General': { x: -1.5, y: 3.5 },
+  'Stadium': { x: 2.5, y: 1.5 },
+  'Bovina': { x: 3.5, y: 4.0 },
+  'LAUTECH Gate': { x: 0, y: 0 },
+  'Arowomole': { x: -2.0, y: 1.0 },
+  'General': { x: -1.0, y: 3.0 },
+  'Sabo': { x: 4.0, y: -2.0 }
+};
+
+const calculateRiderFee = (customerLandmark?: string, vendorLandmark?: string, settings?: any) => {
+  const getCoord = (name?: string) => {
+    const fromSettings = settings?.landmarks?.find((l: any) => l.name === name);
+    if (fromSettings && fromSettings.x !== undefined && fromSettings.y !== undefined) {
+      return { x: fromSettings.x, y: fromSettings.y };
+    }
+    return name ? LANDMARK_COORDINATES[name] : LANDMARK_COORDINATES['LAUTECH Gate'];
   };
-  const cDist = (customerLandmark && distances[customerLandmark]) || 3;
-  const vDist = (vendorLandmark && distances[vendorLandmark]) || 2;
+
+  const cCoord = getCoord(customerLandmark);
+  const vCoord = getCoord(vendorLandmark);
   
-  // Dynamic fee calculation: Base + Customer Distance factor + Vendor Distance factor
-  return 400 + (cDist * 70) + (vDist * 50);
+  const pricePerKm = settings?.pricePerKm || 150;
+  const baseFee = settings?.baseRiderFee || 400;
+
+  if (!cCoord || !vCoord) return baseFee;
+  
+  // Straight line distance
+  const distance = Math.sqrt(Math.pow(vCoord.x - cCoord.x, 2) + Math.pow(vCoord.y - cCoord.y, 2));
+  
+  // Formula: baseFee + (distance * pricePerKm * 2)
+  // Times 2 because one for pickup and one for delivery
+  const totalFee = baseFee + (distance * pricePerKm * 2);
+  
+  // Return rounded to nearest 50
+  return Math.round(totalFee / 50) * 50;
 };
 
 export default function OrderPage() {
@@ -305,9 +329,9 @@ function OrderPageContent() {
   // Update rider fee when landmark or vendor changes
   React.useEffect(() => {
     if (pickupLandmark || vendor?.landmark) {
-      setRiderFee(calculateRiderFee(pickupLandmark, vendor?.landmark));
+      setRiderFee(calculateRiderFee(pickupLandmark, vendor?.landmark, siteSettings));
     }
-  }, [pickupLandmark, vendor]);
+  }, [pickupLandmark, vendor, siteSettings]);
 
   // Load existing order details if any
   const [existingOrder, setExistingOrder] = React.useState<Order | null>(null);

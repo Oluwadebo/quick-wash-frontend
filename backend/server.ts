@@ -33,8 +33,8 @@ const app = express();
 // Robust trust proxy setting for AI Studio/Cloud Run environment
 app.set("trust proxy", 1); 
 const rawPort = process.env.PORT;
-const PORT = (rawPort && rawPort !== '3000') ? rawPort : (process.env.BACKEND_PORT || 5000);
-console.log(`[Config] NODE_ENV: ${process.env.NODE_ENV}, RAW_PORT: ${rawPort}, Using PORT: ${PORT}`);
+const PORT = 5005;
+console.log(`[Config] Using PORT: ${PORT}`);
 const MONGODB_URI =
   process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/quick-wash";
 

@@ -53,6 +53,14 @@ export default function VendorDashboard() {
   const [activeChatOrder, setActiveChatOrder] = React.useState<Order | null>(null);
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = React.useState(false);
 
+  const playYoruba = (text: string) => {
+    if (typeof window === 'undefined') return;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'yo-NG'; 
+    utterance.rate = 0.9;
+    window.speechSynthesis.speak(utterance);
+  };
+
   const [stats, setStats] = React.useState({
     totalEarnings: 0,
     pendingBalance: 0,
@@ -367,6 +375,8 @@ export default function VendorDashboard() {
                       const newRainState = !currentUser.isRaining;
                       await api.updateUser(currentUser.uid, { isRaining: newRainState });
                       
+                      playYoruba(newRainState ? 'Ebi n jo o, o n ro' : 'Ojo ti da');
+
                       setNotification({ 
                         message: newRainState ? "Rain Reported! Shop hidden from customers." : "Rain Cleared! Shop is visible again.", 
                         type: newRainState ? 'info' : 'success' 
@@ -401,6 +411,7 @@ export default function VendorDashboard() {
 
                 <button
                   onClick={() => {
+                    playYoruba('O ti gbogbo nkan gba fún gbigbe'); // "Everything is ready for pickup"
                     setNotification({ message: "Pickup Broadcast Sent to Nearby Riders!", type: 'success' });
                     setTimeout(() => setNotification(null), 3000);
                     console.log('[Pickup] broadcast');

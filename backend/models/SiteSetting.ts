@@ -11,7 +11,9 @@ export interface ISiteSetting extends Document {
   maintenanceMode: boolean;
   announcement: string;
   globalServices: string[];
-  landmarks: { id: string; name: string; active: boolean }[];
+  landmarks: { id: string; name: string; active: boolean; x?: number; y?: number }[];
+  pricePerKm: number;
+  baseRiderFee: number;
 }
 
 const SiteSettingSchema: Schema = new Schema({
@@ -28,8 +30,12 @@ const SiteSettingSchema: Schema = new Schema({
   landmarks: [{
     id: String,
     name: String,
-    active: { type: Boolean, default: true }
-  }]
+    active: { type: Boolean, default: true },
+    x: { type: Number, default: 0 },
+    y: { type: Number, default: 0 }
+  }],
+  pricePerKm: { type: Number, default: 100 },
+  baseRiderFee: { type: Number, default: 300 }
 }, { timestamps: true });
 
 export default mongoose.models.SiteSetting || mongoose.model<ISiteSetting>('SiteSetting', SiteSettingSchema);

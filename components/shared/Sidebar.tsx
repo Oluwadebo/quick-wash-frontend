@@ -104,6 +104,13 @@ export default function Sidebar() {
     socket.on("new_message", (msg) => {
       if (msg.receiverId === user?.uid) {
         fetchUnreadCount();
+        // Global notification if not on chat page
+        if (!pathname.startsWith('/chat')) {
+          const event = new CustomEvent('toast_notification', {
+            detail: { message: `New message from ${msg.senderName || 'User'}`, type: 'info' }
+          });
+          window.dispatchEvent(event);
+        }
       }
     });
 
@@ -117,7 +124,7 @@ export default function Sidebar() {
       window.removeEventListener('chat_unread_update', fetchUnreadCount);
       window.removeEventListener('storage', fetchUnreadCount);
     };
-  }, [fetchUnreadCount, user?.uid]);
+  }, [fetchUnreadCount, user?.uid, pathname]);
 
   const handleInvite = async () => {
     const link = `https://quick-wash.campus/invite?ref=${user?.phoneNumber}`;
