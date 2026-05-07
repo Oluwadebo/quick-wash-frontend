@@ -10,6 +10,9 @@ import { useAuth } from '@/hooks/use-auth';
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
 import ChatWindow from '@/components/shared/ChatWindow';
 import { cn } from '@/lib/utils';
+import { io, Socket } from 'socket.io-client';
+
+import Sidebar from '@/components/shared/Sidebar';
 
 export default function GlobalChatPage() {
   const { user: authUser } = useAuth();
@@ -18,6 +21,7 @@ export default function GlobalChatPage() {
   const [selectedRecipient, setSelectedRecipient] = React.useState<{ id: string, name: string } | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
   const [searchQuery, setSearchQuery] = React.useState('');
+  const socketRef = React.useRef<Socket | null>(null);
 
   const fetchConversations = React.useCallback(async () => {
     if (!authUser?.uid) return;
@@ -35,20 +39,58 @@ export default function GlobalChatPage() {
     if (authUser?.uid) {
       api.getUser(authUser.uid).then(setUser);
       fetchConversations();
+
+      // Socket setup for real-time list updates
+      const socketUrl = typeof window !== 'undefined' ? window.location.origin : '';
+
+      const socket = io(socketUrl, {
+        transports: ['websocket', 'polling'],
+      });
+      socketRef.current = socket;
+
+      socket.on("connect", () => {
+        console.log("[ChatList] Connected to socket");
+        if (authUser?.uid) {
+          socket.emit("join_user", authUser.uid);
+        }
+      });
+
+      socket.on("new_message", (msg) => {
+        console.log("[ChatList] Received new message event:", msg);
+        // Refresh the list when any new message arrives involved in the user
+        fetchConversations();
+      });
+
+      return () => {
+        socket.disconnect();
+      };
     }
   }, [authUser?.uid, fetchConversations]);
 
+  // Join rooms for all conversations to get real-time updates
+  React.useEffect(() => {
+    if (socketRef.current && conversations.length > 0 && authUser?.uid) {
+      conversations.forEach(conv => {
+        const conversationId = [authUser.uid, conv.otherUserId].sort().join("_");
+        socketRef.current?.emit("join_conversation", conversationId);
+      });
+    }
+  }, [conversations, authUser?.uid]);
+
   const filteredConversations = conversations.filter(c => 
+    c.otherUserName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     c.otherUserId.toLowerCase().includes(searchQuery.toLowerCase()) ||
     c.lastMessage.text.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-surface pb-32">
-        <TopAppBar />
-        
-        <main className="pt-8 px-6 max-w-2xl mx-auto">
+      <div className="flex min-h-screen bg-surface">
+        <Sidebar />
+        <div className="flex-1 flex flex-col min-w-0 pb-32">
+          <TopAppBar />
+          
+          <main className="pt-8 px-6 max-w-2xl mx-auto w-full">
           <header className="mb-10">
             <h1 className="text-4xl font-headline font-black text-on-surface tracking-tighter mb-2">Messages</h1>
             <p className="text-on-surface-variant font-medium">Chat with vendors, riders, and support.</p>
@@ -78,7 +120,7 @@ export default function GlobalChatPage() {
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: idx * 0.05 }}
-                  onClick={() => setSelectedRecipient({ id: conv.otherUserId, name: `User ${conv.otherUserId.slice(0, 8)}` })}
+                  onClick={() => setSelectedRecipient({ id: conv.otherUserId, name: conv.otherUserName })}
                   className="w-full text-left bg-surface-container-low p-6 rounded-3xl border border-primary/5 hover:border-primary/20 transition-all group flex items-center justify-between"
                 >
                   <div className="flex items-center gap-4 flex-1 min-w-0">
@@ -87,13 +129,13 @@ export default function GlobalChatPage() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <h4 className="font-headline font-black text-on-surface mb-1">
-                        User {conv.otherUserId.slice(0, 8)}...
+                        {conv.otherUserName}
                       </h4>
                       <p className="text-xs font-medium text-on-surface-variant line-clamp-1 truncate">
                         {conv.lastMessage.text}
                       </p>
                       <span className="text-[8px] font-black uppercase tracking-widest text-outline mt-1 block">
-                        {new Date(conv.lastMessage.createdAt).toLocaleString()}
+                        {conv.lastMessage?.createdAt ? new Date(conv.lastMessage.createdAt).toLocaleString() : ''}
                       </span>
                     </div>
                   </div>
@@ -101,6 +143,7 @@ export default function GlobalChatPage() {
                 </motion.button>
               ))
             ) : (
+
               <div className="py-20 text-center bg-surface-container-low rounded-[3rem] border border-dashed border-primary/20">
                 <div className="w-20 h-20 bg-primary/5 rounded-full flex items-center justify-center mx-auto mb-4">
                   <MessageSquare className="w-10 h-10 text-primary/20" />
@@ -144,6 +187,7 @@ export default function GlobalChatPage() {
         </AnimatePresence>
 
         <BottomNav />
+        </div>
       </div>
     </ProtectedRoute>
   );

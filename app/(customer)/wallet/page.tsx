@@ -189,7 +189,7 @@ export default function WalletPage() {
               <span className="font-label text-xs font-black uppercase tracking-[0.3em]">Available Balance</span>
             </div>
             <h2 className="text-4xl sm:text-6xl font-headline font-black tracking-tighter mb-10 overflow-hidden text-ellipsis">
-              ₦{balance.toLocaleString()}
+              ₦{(balance || 0).toLocaleString()}
             </h2>
             <div className="flex gap-4">
               <button 
@@ -344,7 +344,7 @@ export default function WalletPage() {
                     "font-headline font-black text-lg",
                     item.type === 'deposit' || item.type === 'refund' ? "text-success" : "text-error"
                   )}>
-                    {item.type === 'deposit' || item.type === 'refund' ? '+' : '-'}₦{item.amount.toLocaleString()}
+                    {item.type === 'deposit' || item.type === 'refund' ? '+' : '-'}₦{(item.amount || 0).toLocaleString()}
                   </p>
                   <ChevronRight className="w-4 h-4 text-on-surface-variant opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
@@ -396,7 +396,7 @@ export default function WalletPage() {
               </div>
 
               <h3 className="text-center font-headline font-black text-2xl text-on-surface mb-1">
-                {selectedTransaction.type === 'deposit' || selectedTransaction.type === 'refund' ? '+' : '-'}₦{selectedTransaction.amount.toLocaleString()}
+                {selectedTransaction.type === 'deposit' || selectedTransaction.type === 'refund' ? '+' : '-'}₦{(selectedTransaction.amount || 0).toLocaleString()}
               </h3>
               <p className="text-center font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-8">
                 Transaction {selectedTransaction.type}
@@ -483,7 +483,7 @@ export default function WalletPage() {
 
               <div className="w-full bg-surface-container-highest/20 rounded-3xl p-6 mb-8 border border-primary/5">
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-on-surface-variant mb-1">Amount Funded</p>
-                <p className="text-3xl font-headline font-black text-primary">₦{lastFundedAmount.toLocaleString()}</p>
+                <p className="text-3xl font-headline font-black text-primary">₦{(lastFundedAmount || 0).toLocaleString()}</p>
               </div>
 
               <div className="flex flex-col gap-3 w-full">
@@ -609,7 +609,7 @@ export default function WalletPage() {
                       onClick={() => setFundAmount(amt.toString())}
                       className="h-12 rounded-xl bg-primary/5 text-primary font-headline font-black text-xs hover:bg-primary/10 transition-colors"
                     >
-                      +₦{amt.toLocaleString()}
+                      +₦{(amt || 0).toLocaleString()}
                     </button>
                   ))}
                 </div>

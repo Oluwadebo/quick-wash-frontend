@@ -338,7 +338,7 @@ function OrderPageContent() {
     if (paymentMethod === 'wallet' && (Number(freshUser.walletBalance) || 0) < totalPrice) {
       setIsPaying(true);
       setNotification({ 
-        message: `Insufficient balance! Balance: ₦${(Number(freshUser.walletBalance) || 0).toLocaleString()}. Total: ₦${totalPrice.toLocaleString()}. Redirecting to wallet...`, 
+        message: `Insufficient balance! Balance: ₦${(Number(freshUser.walletBalance) || 0).toLocaleString()}. Total: ₦${(totalPrice || 0).toLocaleString()}. Redirecting to wallet...`, 
         type: 'error' 
       });
       
@@ -361,10 +361,10 @@ function OrderPageContent() {
       
       if (i.subItems) {
         const activeSubs = i.subItems.filter((si: any) => si.count > 0);
-        const subDesc = activeSubs.map((si: any) => `${si.count}x ${si.name} (₦${(si.price * si.count).toLocaleString()})`).join(', ');
+        const subDesc = activeSubs.map((si: any) => `${si.count}x ${si.name} (₦${((Number(si.price) || 0) * (Number(si.count) || 0)).toLocaleString()})`).join(', ');
         return `${subDesc} [${i.name} - ${i.selectedService}]`;
       }
-      return `${i.count}x ${i.name} [${i.selectedService}] - ₦${itemTotalPrice.toLocaleString()}`;
+      return `${i.count}x ${i.name} [${i.selectedService}] - ₦${(itemTotalPrice || 0).toLocaleString()}`;
     }).join(', ');
 
     const newOrderId = generateId();
@@ -919,12 +919,12 @@ function OrderPageContent() {
                         {item.selectedService} {item.hasStainRemover && '+ Stain Remover'}
                       </span>
                     </div>
-                    <span className="font-headline font-black text-on-surface">₦{getItemPrice(item).toLocaleString()}</span>
+                    <span className="font-headline font-black text-on-surface">₦{(getItemPrice(item) || 0).toLocaleString()}</span>
                   </div>
                 ))}
                 <div className="pt-3 border-t border-primary/10 flex justify-between text-sm">
                   <span className="font-headline font-black text-on-surface-variant">Rider Fee (Express)</span>
-                  <span className="font-headline font-black text-on-surface">₦{riderFee.toLocaleString()}</span>
+                  <span className="font-headline font-black text-on-surface">₦{(riderFee || 0).toLocaleString()}</span>
                 </div>
               </div>
             )}
@@ -1049,7 +1049,7 @@ function OrderPageContent() {
                   className="w-full h-16 bg-primary text-white rounded-2xl font-headline font-black text-lg shadow-xl active:scale-[0.98] transition-all disabled:opacity-50"
                 >
                   {isPaying ? 'PROCESSING...' : 
-                   (paymentMethod === 'wallet' && (currentUser?.walletBalance || 0) < totalPrice) ? 'INSUFFICIENT BALANCE' : `PAY ₦${totalPrice.toLocaleString()}`}
+                   (paymentMethod === 'wallet' && (currentUser?.walletBalance || 0) < totalPrice) ? 'INSUFFICIENT BALANCE' : `PAY ₦${(totalPrice || 0).toLocaleString()}`}
                 </button>
               </div>
             </motion.div>

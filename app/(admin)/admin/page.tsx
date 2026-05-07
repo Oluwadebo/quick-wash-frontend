@@ -1144,9 +1144,9 @@ export default function AdminDashboard() {
                           <button onClick={() => setHistoryModal({ open: true, type: 'commission' as any })} className="text-[10px] font-black text-on-primary hover:underline">HISTORY</button>
                         </div>
                         <h3 className="text-4xl font-headline font-black">
-                          ₦{allTransactions
+                          ₦{(allTransactions
                             .filter(t => t.type === 'commission' && t.status === 'completed')
-                            .reduce((acc, t) => acc + t.amount, 0)
+                            .reduce((acc, t) => acc + (Number(t.amount) || 0), 0) || 0)
                             .toLocaleString()}
                         </h3>
                       </div>
@@ -1157,9 +1157,9 @@ export default function AdminDashboard() {
                         <button onClick={() => setHistoryModal({ open: true, type: 'payout' })} className="text-[10px] font-black text-primary hover:underline">HISTORY</button>
                       </div>
                       <h3 className="text-4xl font-headline font-black text-on-surface">
-                        ₦{allTransactions
+                        ₦{(allTransactions
                           .filter(t => t.type === 'payout' && t.status === 'completed')
-                          .reduce((acc, t) => acc + t.amount, 0)
+                          .reduce((acc, t) => acc + (Number(t.amount) || 0), 0) || 0)
                           .toLocaleString()}
                       </h3>
                     </div>
@@ -1169,9 +1169,9 @@ export default function AdminDashboard() {
                         <button onClick={() => setHistoryModal({ open: true, type: 'withdrawal' })} className="text-[10px] font-black text-primary hover:underline">HISTORY</button>
                       </div>
                       <h3 className="text-4xl font-headline font-black text-warning">
-                        ₦{allTransactions
+                        ₦{(allTransactions
                           .filter(t => t.type === 'withdrawal' && t.status === 'pending')
-                          .reduce((acc, t) => acc + t.amount, 0)
+                          .reduce((acc, t) => acc + (Number(t.amount) || 0), 0) || 0)
                           .toLocaleString()}
                       </h3>
                     </div>
@@ -2238,7 +2238,7 @@ export default function AdminDashboard() {
                     className="relative w-full max-w-md bg-surface-container-low rounded-[3rem] p-10 border border-primary/10 shadow-2xl"
                   >
                     <h2 className="text-2xl font-headline font-black text-on-surface mb-2">Resolve Dispute</h2>
-                    <p className="text-on-surface-variant text-sm font-medium mb-8">Order #{resolvingOrder.id} • Total: ₦{resolvingOrder.totalPrice.toLocaleString()}</p>
+                    <p className="text-on-surface-variant text-sm font-medium mb-8">Order #{resolvingOrder.id} • Total: ₦{(resolvingOrder.totalPrice || 0).toLocaleString()}</p>
                     
                     <div className="space-y-6">
                       <div className="grid grid-cols-1 gap-3">
@@ -2247,7 +2247,7 @@ export default function AdminDashboard() {
                           className="w-full h-16 bg-primary text-on-primary rounded-2xl font-headline font-black text-xs shadow-lg active:scale-95 transition-transform flex items-center justify-between px-6"
                         >
                           FULL REFUND
-                          <span>₦{resolvingOrder.totalPrice.toLocaleString()}</span>
+                          <span>₦{(resolvingOrder.totalPrice || 0).toLocaleString()}</span>
                         </button>
                         
                         <div className="space-y-3 p-6 bg-surface-container-lowest rounded-2xl border border-primary/10">
@@ -2341,7 +2341,7 @@ export default function AdminDashboard() {
                             </div>
                           </div>
                           <div className="text-right">
-                            <p className="text-xl font-headline font-black text-primary">₦{t.amount.toLocaleString()}</p>
+                            <p className="text-xl font-headline font-black text-primary">₦{(t.amount || 0).toLocaleString()}</p>
                             <span className={cn(
                               "text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-md",
                               t.status === 'completed' ? "text-success bg-success/10" : 

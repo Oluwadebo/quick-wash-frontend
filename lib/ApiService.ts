@@ -536,6 +536,32 @@ class ApiService {
     return null;
   }
 
+  async withdraw(data: {
+    userId: string;
+    amount: number;
+    bankName: string;
+    accountNumber: string;
+    accountName: string;
+  }): Promise<boolean> {
+    if (typeof window !== 'undefined') {
+      try {
+        const token = localStorage.getItem('qw_token');
+        const resp = await fetch(`${API_URLS.base}/wallet/withdraw`, {
+          method: 'POST',
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(data)
+        });
+        return resp.ok;
+      } catch (e) {
+        return false;
+      }
+    }
+    return false;
+  }
+
   async approveUser(uid: string): Promise<UserData> {
     if (typeof window !== 'undefined') {
       const token = localStorage.getItem('qw_token');

@@ -22,6 +22,7 @@ export default function Footer() {
                      pathname.startsWith('/customer') || 
                      pathname.startsWith('/vendor') || 
                      pathname.startsWith('/rider') ||
+                     pathname.startsWith('/chat') ||
                      pathname.startsWith('/track') ||
                      pathname.startsWith('/vendors') ||
                      pathname.startsWith('/wallet') ||

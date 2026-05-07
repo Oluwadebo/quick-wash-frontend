@@ -10,6 +10,7 @@ interface Message {
   _id: string;
   orderId?: string;
   senderId: string;
+  senderName?: string;
   receiverId: string;
   senderRole: string;
   text: string;
@@ -52,23 +53,7 @@ export default function ChatWindow({ orderId, recipientId, currentUser, recipien
     fetchMessages();
 
     // Socket.io Setup
-    const getSocketUrl = () => {
-      // In development/local
-      if (typeof window !== 'undefined') {
-        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-          return 'http://localhost:5000';
-        }
-        // If we have an explicit API URL set in env
-        if (process.env.NEXT_PUBLIC_API_URL) {
-          return process.env.NEXT_PUBLIC_API_URL;
-        }
-        // Fallback to same origin
-        return window.location.origin;
-      }
-      return '';
-    };
-
-    const socketUrl = getSocketUrl();
+    const socketUrl = typeof window !== 'undefined' ? window.location.origin : '';
     const socket = io(socketUrl, {
       transports: ['websocket', 'polling'],
       reconnectionAttempts: 10,
@@ -116,6 +101,7 @@ export default function ChatWindow({ orderId, recipientId, currentUser, recipien
       _id: `temp-${Date.now()}`,
       orderId,
       senderId: currentUser.uid,
+      senderName: currentUser.fullName,
       receiverId: recipientId || '',
       senderRole: currentUser.role,
       text: inputText || (imagePreview ? 'Sent an image' : ''),
@@ -133,7 +119,9 @@ export default function ChatWindow({ orderId, recipientId, currentUser, recipien
       const msgData = {
         orderId,
         senderId: currentUser.uid,
+        senderName: currentUser.fullName,
         receiverId: recipientId,
+        receiverName: recipientName,
         senderRole: currentUser.role,
         text: textToSend || (optimisticMessage.image ? 'Sent an image' : ''),
         image: optimisticMessage.image
@@ -218,7 +206,7 @@ export default function ChatWindow({ orderId, recipientId, currentUser, recipien
                 <p className="whitespace-pre-wrap break-words">{msg.text}</p>
               </div>
               <span className="text-[8px] font-black uppercase tracking-widest text-on-surface-variant mt-1 px-1">
-                {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {msg.senderRole}
+                {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {msg.senderName || msg.senderRole}
               </span>
             </div>
           );

@@ -13,6 +13,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { api, Order, UserData } from '@/lib/ApiService';
 import { Toast } from '@/components/shared/Toast';
 import ChatWindow from '@/components/shared/ChatWindow';
+import WithdrawalModal from '@/components/shared/WithdrawalModal';
 
 const generateCode = () => Math.floor(1000 + Math.random() * 9000).toString();
 
@@ -50,6 +51,7 @@ export default function VendorDashboard() {
   const [complaintMsg, setComplaintMsg] = React.useState('');
   const [walletHistory, setWalletHistory] = React.useState<any[]>([]);
   const [activeChatOrder, setActiveChatOrder] = React.useState<Order | null>(null);
+  const [isWithdrawModalOpen, setIsWithdrawModalOpen] = React.useState(false);
 
   const [stats, setStats] = React.useState({
     totalEarnings: 0,
@@ -296,14 +298,8 @@ export default function VendorDashboard() {
     }
   };
 
-  const handleWithdrawal = async () => {
-    if (stats.totalEarnings < 8000) return;
-    
-    if (currentUser?.uid) {
-      await api.updateUser(currentUser.uid, { withdrawalRequested: true });
-      setNotification({ message: "Withdrawal request submitted!", type: 'success' });
-      setTimeout(() => setNotification(null), 2000);
-    }
+  const handleWithdrawal = () => {
+    setIsWithdrawModalOpen(true);
   };
 
   return (
@@ -737,7 +733,7 @@ export default function VendorDashboard() {
                             <p className="text-xs font-bold text-on-surface-variant">Customer: {order.customerName}</p>
                           </div>
                           <div className="text-right">
-                            <p className="text-lg font-headline font-black text-error">₦{order.totalPrice.toLocaleString()}</p>
+                            <p className="text-lg font-headline font-black text-error">₦{(order.totalPrice || 0).toLocaleString()}</p>
                             <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Held Amount</p>
                           </div>
                         </div>
@@ -1021,7 +1017,7 @@ export default function VendorDashboard() {
                             "text-lg font-headline font-black",
                             tx.type === 'deposit' ? "text-success" : "text-error"
                           )}>
-                            {tx.type === 'deposit' ? '+' : '-'}₦{tx.amount.toLocaleString()}
+                            {tx.type === 'deposit' ? '+' : '-'}₦{(tx.amount || 0).toLocaleString()}
                           </span>
                         </div>
                       ))
@@ -1520,7 +1516,15 @@ export default function VendorDashboard() {
           )}
         </AnimatePresence>
 
-        {/* Price Modal */}
+        <WithdrawalModal 
+        isOpen={isWithdrawModalOpen}
+        onClose={() => setIsWithdrawModalOpen(false)}
+        balance={currentUser?.walletBalance || 0}
+        userId={currentUser?.uid || ''}
+        onSuccess={fetchData}
+      />
+
+      {/* Price Modal */}
         <AnimatePresence>
           {isPriceModalOpen && editingService && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">

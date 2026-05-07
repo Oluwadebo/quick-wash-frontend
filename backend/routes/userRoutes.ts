@@ -52,8 +52,8 @@ router.post(["/register", "/signup"], async (req, res) => {
       landmark: landmark || req.body.landmark || 'Under-G',
       role: role || 'customer',
       isApproved: (role === 'vendor' || role === 'rider') ? false : true,
-      trustPoints: 100,
-      trustScore: 100,
+      trustPoints: 50,
+      trustScore: 50,
       status: 'active',
       ninImage: ninUrl,
       shopImage: shopUrl
@@ -95,8 +95,8 @@ router.post("/create", async (req, res) => {
       password: hashedPassword,
       role: role || 'customer',
       isApproved: isApproved !== undefined ? isApproved : true,
-      trustPoints: 100,
-      trustScore: 100,
+      trustPoints: 50,
+      trustScore: 50,
       status: 'active'
     });
     res.status(201).json(user);

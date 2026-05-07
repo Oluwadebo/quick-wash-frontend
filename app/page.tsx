@@ -243,7 +243,7 @@ export default function LandingPage() {
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8 max-w-6xl mx-auto mb-32">
             <div className="bg-surface-container-low p-8 rounded-[3rem] border border-primary/5 shadow-sm group hover:border-primary/20 transition-all">
-              <h4 className="text-4xl font-headline font-black text-primary mb-1">{stats.completedOrders.toLocaleString()}+</h4>
+              <h4 className="text-4xl font-headline font-black text-primary mb-1">{(stats.completedOrders || 0).toLocaleString()}+</h4>
               <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Completed Washes</p>
             </div>
             <div className="bg-surface-container-low p-8 rounded-[3rem] border border-primary/5 shadow-sm group hover:border-primary/20 transition-all">

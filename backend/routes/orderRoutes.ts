@@ -808,7 +808,7 @@ router.post("/dispute", async (req, res) => {
         if (resolution === 'refund' || resolution === 'partial') {
           const amountToRefund = resolution === 'refund' ? order.totalPrice : (customAmount || 0);
           
-          order.status = resolution === 'refund' ? 'completed (Refunded)' : `completed (Partial Refund: ₦${amountToRefund})`;
+          order.status = 'completed'; // Changed from 'completed (Refunded)'
           order.disputed = false;
           order.refundAmount = amountToRefund;
           order.disputedAt = new Date();

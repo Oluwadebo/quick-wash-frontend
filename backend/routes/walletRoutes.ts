@@ -113,4 +113,50 @@ router.post("/deposit", async (req, res) => {
   }
 });
 
+router.post("/withdraw", async (req, res) => {
+  try {
+    const { userId, amount, bankName, accountNumber, accountName } = req.body;
+    
+    if (!userId || !amount || !bankName || !accountNumber || !accountName) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
+
+    const user = await User.findOne({ uid: userId });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const numAmount = Number(amount);
+    if (isNaN(numAmount) || numAmount < 2000) {
+      return res.status(400).json({ message: "Minimum withdrawal is ₦2,000" });
+    }
+
+    if ((user.walletBalance || 0) < numAmount) {
+      return res.status(400).json({ message: "Insufficient balance" });
+    }
+
+    // Deduct immediately
+    user.walletBalance = (user.walletBalance || 0) - numAmount;
+    await user.save();
+
+    const transaction = await Transaction.create({
+      id: uuidv4(),
+      userId,
+      amount: numAmount,
+      type: 'withdrawal',
+      status: 'pending',
+      desc: `Withdrawal to ${bankName} (${accountNumber}) - ${accountName}`,
+      method: 'Bank Transfer',
+      reference: `WITHDRAW-${Date.now()}`,
+      date: new Date()
+    });
+
+    res.json({ 
+      message: "Withdrawal request submitted successfully",
+      balance: user.walletBalance,
+      transaction 
+    });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 export default router;

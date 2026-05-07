@@ -157,6 +157,11 @@ const io = new Server(server, {
 io.on("connection", (socket: any) => {
   console.log("New client connected", socket.id);
 
+  socket.on("join_user", (userId: string) => {
+    socket.join(`user_${userId}`);
+    console.log(`Socket ${socket.id} joined user_${userId}`);
+  });
+
   socket.on("join_order", (orderId: string) => {
     socket.join(`order_${orderId}`);
     console.log(`Socket ${socket.id} joined order_${orderId}`);
@@ -172,10 +177,15 @@ io.on("connection", (socket: any) => {
     if (data.orderId) {
       io.to(`order_${data.orderId}`).emit("new_message", data);
     }
+    
     if (data.senderId && data.receiverId) {
       // Create a unique conversation room name by sorting IDs
       const conversationId = [data.senderId, data.receiverId].sort().join("_");
       io.to(`conv_${conversationId}`).emit("new_message", data);
+      
+      // Also notify both users specifically for their conversation list updates
+      io.to(`user_${data.receiverId}`).emit("new_message", data);
+      io.to(`user_${data.senderId}`).emit("new_message", data);
     }
   });
 
@@ -337,8 +347,8 @@ const startServer = async () => {
                   }
                 }
 
-                freshOrder.status = 'completed (Refunded/Auto-Timeout)';
-                freshOrder.color = 'bg-error/20 text-error';
+                freshOrder.status = 'completed';
+                freshOrder.color = 'bg-success/20 text-success';
                 freshOrder.refundAmount = freshOrder.totalPrice;
                 freshOrder.completedAt = new Date();
                 isNoTransaction ? await freshOrder.save() : await freshOrder.save({ session });

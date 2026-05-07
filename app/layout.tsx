@@ -23,16 +23,20 @@ import BottomNav from '@/components/shared/BottomNav';
 import Footer from '@/components/shared/Footer';
 import { AuthProvider } from '@/hooks/use-auth';
 
+import { Suspense } from 'react';
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${plusJakartaSans.variable} ${manrope.variable}`}>
       <body suppressHydrationWarning className="bg-surface text-on-surface antialiased">
         <AuthProvider>
-          <main className="min-h-screen">
-            {children}
-          </main>
-          <Footer />
-          <BottomNav />
+          <Suspense fallback={<div className="min-h-screen bg-surface flex items-center justify-center"><div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" /></div>}>
+            <main className="min-h-screen">
+              {children}
+            </main>
+            <Footer />
+            <BottomNav />
+          </Suspense>
         </AuthProvider>
       </body>
     </html>

@@ -1,6 +1,7 @@
 import express from "express";
 import Message from "../models/Message";
 import Order from "../models/Order";
+import User from "../models/User";
 
 const router = express.Router();
 
@@ -9,7 +10,20 @@ router.get("/order/:orderId", async (req, res) => {
   try {
     const { orderId } = req.params;
     const messages = await Message.find({ orderId }).sort({ createdAt: 1 });
-    res.json(messages);
+    
+    // Enrich with senderName if missing
+    const enrichedMessages = await Promise.all(messages.map(async (msg: any) => {
+      const msgObj = msg.toObject();
+      if (!msgObj.senderName) {
+        const user = await User.findOne({ uid: msgObj.senderId });
+        if (user) {
+          msgObj.senderName = user.fullName;
+        }
+      }
+      return msgObj;
+    }));
+
+    res.json(enrichedMessages);
   } catch (err: any) {
     res.status(500).json({ message: err.message });
   }
@@ -26,7 +40,20 @@ router.get("/conversation/:userA/:userB", async (req, res) => {
       ],
       orderId: { $exists: false }
     }).sort({ createdAt: 1 });
-    res.json(messages);
+
+    // Enrich with senderName if missing
+    const enrichedMessages = await Promise.all(messages.map(async (msg: any) => {
+      const msgObj = msg.toObject();
+      if (!msgObj.senderName) {
+        const user = await User.findOne({ uid: msgObj.senderId });
+        if (user) {
+          msgObj.senderName = user.fullName;
+        }
+      }
+      return msgObj;
+    }));
+
+    res.json(enrichedMessages);
   } catch (err: any) {
     res.status(500).json({ message: err.message });
   }
@@ -47,12 +74,35 @@ router.get("/conversations/:userId", async (req, res) => {
     const seenUsers = new Set();
 
     for (const msg of messages) {
-      const otherUser = msg.senderId === userId ? msg.receiverId : msg.senderId;
-      if (otherUser && !seenUsers.has(otherUser)) {
-        seenUsers.add(otherUser);
+      const isSender = msg.senderId === userId;
+      const otherUserId = isSender ? msg.receiverId : msg.senderId;
+      
+      if (otherUserId && !seenUsers.has(otherUserId)) {
+        seenUsers.add(otherUserId);
+        
+        // Fetch other user details
+        const otherUser = await User.findOne({ uid: otherUserId });
+        
+        // Robust name detection:
+        // 1. Database name
+        // 2. Name stored in message (if other user was the sender)
+        // 3. Name stored in message as receiver (if authenticated user was the sender)
+        // 4. Fallback to ID
+        let detectedName = otherUser ? otherUser.fullName : null;
+        
+        if (!detectedName) {
+          if (!isSender) {
+            detectedName = msg.senderName;
+          } else {
+            detectedName = (msg as any).receiverName;
+          }
+        }
+
         chats.push({
           lastMessage: msg,
-          otherUserId: otherUser
+          otherUserId: otherUserId,
+          otherUserName: detectedName || `User ${otherUserId.slice(0, 8)}`,
+          otherUserRole: otherUser ? otherUser.role : (isSender ? (msg as any).receiverRole : msg.senderRole) || 'unknown'
         });
       }
     }
@@ -66,17 +116,38 @@ router.get("/conversations/:userId", async (req, res) => {
 // Send a message
 router.post("/", async (req, res) => {
   try {
-    const { orderId, senderId, receiverId, senderRole, text, image } = req.body;
+    const { orderId, senderId, senderName, receiverId, receiverName, receiverRole, senderRole, text, image } = req.body;
     
     if (orderId) {
       const order = await Order.findOne({ id: orderId });
       if (!order) return res.status(404).json({ message: "Order not found" });
     }
 
+    let finalSenderName = senderName;
+    if (!finalSenderName) {
+      const user = await User.findOne({ uid: senderId });
+      if (user) {
+        finalSenderName = user.fullName;
+      }
+    }
+
+    let finalReceiverName = receiverName;
+    let finalReceiverRole = receiverRole;
+    if (receiverId && (!finalReceiverName || !finalReceiverRole)) {
+      const rUser = await User.findOne({ uid: receiverId });
+      if (rUser) {
+        finalReceiverName = rUser.fullName;
+        finalReceiverRole = rUser.role;
+      }
+    }
+
     const newMessage = new Message({
       orderId,
       senderId,
+      senderName: finalSenderName,
       receiverId,
+      receiverName: finalReceiverName,
+      receiverRole: finalReceiverRole,
       senderRole,
       text,
       image

@@ -10,6 +10,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { formatRelativeTime } from '@/lib/time';
 import { api, Order, UserData } from '@/lib/ApiService';
 import ChatWindow from '@/components/shared/ChatWindow';
+import WithdrawalModal from '@/components/shared/WithdrawalModal';
 import { 
   X, History, Wallet, ShoppingBag, MapPin, Navigation, Package, CheckCircle, 
   Clock, Phone, ArrowRight, Bike, Zap, AlertTriangle, MessageCircle, ShieldAlert,
@@ -47,6 +48,7 @@ export default function RiderDashboard() {
   const [activeChatOrder, setActiveChatOrder] = React.useState<Order | null>(null);
   const [isProcessing, setIsProcessing] = React.useState(false);
   const [isReturnModalOpen, setIsReturnModalOpen] = React.useState(false);
+  const [isWithdrawModalOpen, setIsWithdrawModalOpen] = React.useState(false);
   const [returnReason, setReturnReason] = React.useState('');
   const [selectedOrderId, setSelectedOrderId] = React.useState<string | null>(null);
   const [timeRange, setTimeRange] = React.useState<'today' | '7d' | '14d' | '30d' | '2m' | 'custom'>('30d');
@@ -293,22 +295,8 @@ export default function RiderDashboard() {
     checkCodes();
   }, [handoverInput, tasks, handleVerifyPickup, handleVerifyPickupDelivery]);
 
-  const handleWithdrawal = async () => {
-    if (stats.walletBalance < 2000) return;
-    setIsProcessing(true);
-    
-    if (currentUser?.uid) {
-      await api.updateUser(currentUser.uid, { withdrawalRequested: true });
-      await api.recordTransaction(currentUser.uid, {
-        type: 'withdrawal',
-        amount: stats.walletBalance,
-        desc: 'Withdrawal Request'
-      });
-      setNotification({ message: "Withdrawal request submitted!", type: 'success' });
-      setTimeout(() => setNotification(null), 3000);
-      window.dispatchEvent(new Event('storage'));
-    }
-    setIsProcessing(false);
+  const handleWithdrawal = () => {
+    setIsWithdrawModalOpen(true);
   };
 
   const handleStartNavigation = (landmark: string) => {
@@ -1000,7 +988,7 @@ export default function RiderDashboard() {
                             "font-headline font-black text-lg",
                             tx.type === 'deposit' ? "text-success" : "text-error"
                           )}>
-                            {tx.type === 'deposit' ? '+' : '-'}₦{Math.abs(tx.amount).toLocaleString()}
+                            {tx.type === 'deposit' ? '+' : '-'}₦{Math.abs(tx.amount || 0).toLocaleString()}
                           </p>
                         </div>
                       ))
@@ -1118,6 +1106,14 @@ export default function RiderDashboard() {
           </div>
         )}
       </AnimatePresence>
+      
+      <WithdrawalModal 
+        isOpen={isWithdrawModalOpen}
+        onClose={() => setIsWithdrawModalOpen(false)}
+        balance={stats.walletBalance}
+        userId={currentUser?.uid || ''}
+        onSuccess={refreshData}
+      />
       
       {/* Profile Edit Modal */}
       <AnimatePresence>

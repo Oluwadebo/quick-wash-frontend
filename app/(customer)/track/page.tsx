@@ -26,9 +26,13 @@ export default function TrackListPage() {
     setIsLoading(true);
     try {
       const limit = 20;
-      const fetchedOrders = await api.getOrders(authUser.uid, 'customer', limit, pageNum);
+      const fetchedOrders = await api.getOrders(authUser.uid, 'customer', limit, pageNum, {
+        timeRange: timeRange,
+        start: customRange.start,
+        end: customRange.end
+      });
       
-      if (isNewFilter) {
+      if (isNewFilter || pageNum === 1) {
         setOrders(fetchedOrders);
       } else {
         setOrders(prev => [...prev, ...fetchedOrders]);
@@ -40,14 +44,15 @@ export default function TrackListPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [authUser?.uid, isLoading]);
+  }, [authUser?.uid, isLoading, timeRange, customRange.start, customRange.end]);
 
   React.useEffect(() => {
     if (authUser?.uid) {
       api.getUser(authUser.uid).then(setUser);
+      setPage(1);
       fetchOrders(1, true);
     }
-  }, [authUser?.uid, fetchOrders]);
+  }, [authUser?.uid, timeRange, customRange.start, customRange.end]);
 
   const handlePageChange = () => {
     const nextPage = page + 1;
@@ -64,27 +69,7 @@ export default function TrackListPage() {
   };
 
   const now = new Date();
-  const filteredOrders = orders.filter((o: any) => {
-    const itemDate = new Date(o.createdAt || o.time);
-    if (isNaN(itemDate.getTime())) return true;
-    
-    if (timeRange === 'all') return true;
-    if (timeRange === 'today') return itemDate.toDateString() === now.toDateString();
-    if (timeRange === 'custom') {
-      if (!customRange.start || !customRange.end) return true;
-      const start = new Date(customRange.start);
-      const end = new Date(customRange.end);
-      end.setHours(23, 59, 59, 999);
-      return itemDate >= start && itemDate <= end;
-    }
-
-    const diffInDays = (now.getTime() - itemDate.getTime()) / (1000 * 60 * 60 * 24);
-    if (timeRange === '7d') return diffInDays <= 7;
-    if (timeRange === '14d') return diffInDays <= 14;
-    if (timeRange === '30d') return diffInDays <= 30;
-    if (timeRange === '2m') return diffInDays <= 60;
-    return true;
-  });
+  const filteredOrders = orders;
 
   return (
     <ProtectedRoute allowedRoles={['customer']}>
