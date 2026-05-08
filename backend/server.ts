@@ -26,17 +26,29 @@ import transactionRoutes from "./routes/transactionRoutes";
 import inviteRoutes from "./routes/inviteRoutes";
 import draftRoutes from "./routes/draftRoutes";
 import chatRoutes from "./routes/chatRoutes";
+import deliveryRoutes from "./routes/deliveryRoutes";
 
 dotenv.config();
+
+console.log("[Backend] Process starting...");
+console.log(`[Backend] ENV PORT: ${process.env.PORT}`);
+console.log(`[Backend] ENV BACKEND_PORT: ${process.env.BACKEND_PORT}`);
 
 const app = express();
 // Robust trust proxy setting for AI Studio/Cloud Run environment
 app.set("trust proxy", 1); 
-const rawPort = process.env.PORT;
-const PORT = 5005;
-console.log(`[Config] Using PORT: ${PORT}`);
+
+// In AI Studio, PORT is typically 3000 (used by frontend).
+// We default the backend to 5005 to avoid conflicts.
+// In production (like Render), we honor the environment's PORT if it's not 3000.
+let PORT = process.env.BACKEND_PORT || "5005";
+if (process.env.PORT && process.env.PORT !== "3000") {
+  PORT = process.env.PORT;
+}
+
+console.log(`[Config] Backend starting on PORT: ${PORT}`);
 const MONGODB_URI =
-  process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/quick-wash";
+   process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/quick-wash";
 
 // Process level handlers for backend stability
 process.on('unhandledRejection', (reason, promise) => {
@@ -98,6 +110,7 @@ app.use("/api/transactions", transactionRoutes);
 app.use("/api/system", systemRoutes);
 app.use("/api/drafts", draftRoutes);
 app.use("/api/chat", chatRoutes);
+app.use("/api/delivery", deliveryRoutes);
 // Mount systemRoutes at root to allow /api/stats and /api/settings
 app.use("/api", systemRoutes); 
 
@@ -373,7 +386,7 @@ const startServer = async () => {
     setInterval(checkOrderTimeouts, 5 * 60 * 1000);
     // ---------------------------------------------------
 
-    console.log(`Starting backend server on port ${PORT}...`);
+    console.log(`[Status] Starting backend server on port ${PORT}...`);
     server.listen(Number(PORT), "0.0.0.0", () => {
       console.log(
         `✅ Backend server successfully running on http://0.0.0.0:${PORT}`,
@@ -385,12 +398,11 @@ const startServer = async () => {
       "Please verify that your database is running and the URI is correct. Continuing server start for proxy health...",
     );
     // Do not exit, keep process alive so proxy doesn't ECONNREFUSED
-    // process.exit(1);
     
-    console.log(`Starting backend server on port ${PORT} (DB OFFLINE)...`);
+    console.log(`[Status] Starting backend server on port ${PORT} (DB OFFLINE/Degraded Mode)...`);
     server.listen(Number(PORT), "0.0.0.0", () => {
       console.log(
-        `✅ Backend server successfully running on http://0.0.0.0:${PORT} (Degraded Mode)`,
+        `✅ Backend server running on http://0.0.0.0:${PORT} (DEGRADED MODE)`,
       );
     });
   }

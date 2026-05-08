@@ -736,6 +736,17 @@ class ApiService {
     throw new Error('Settings update failed');
   }
 
+  async getDeliveryFee(from: string, to: string): Promise<{ fee: number, isDefault: boolean }> {
+    await this.delay();
+    try {
+      const resp = await fetch(`${API_URLS.base}/delivery/fee?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+      if (resp.ok) return await this.safeJson(resp) || { fee: 1000, isDefault: true };
+    } catch (e) {
+      console.error('Failed to fetch delivery fee:', e);
+    }
+    return { fee: 1000, isDefault: true };
+  }
+
   // --- CHAT ---
   async getMessages(orderId: string): Promise<any[]> {
     if (typeof window !== 'undefined') {

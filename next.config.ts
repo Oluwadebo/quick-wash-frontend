@@ -30,11 +30,11 @@ const nextConfig: NextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: `http://127.0.0.1:5005/api/:path*`, 
+        destination: `http://localhost:5005/api/:path*`, 
       },
       {
         source: '/socket.io/:path*',
-        destination: `http://127.0.0.1:5005/socket.io/:path*`,
+        destination: `http://localhost:5005/socket.io/:path*`,
       },
     ]
   },

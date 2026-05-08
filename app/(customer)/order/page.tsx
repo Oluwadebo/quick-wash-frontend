@@ -328,9 +328,16 @@ function OrderPageContent() {
 
   // Update rider fee when landmark or vendor changes
   React.useEffect(() => {
-    if (pickupLandmark || vendor?.landmark) {
-      setRiderFee(calculateRiderFee(pickupLandmark, vendor?.landmark, siteSettings));
-    }
+    const updateFee = async () => {
+      if (pickupLandmark && vendor?.landmark) {
+        const result = await api.getDeliveryFee(vendor.landmark, pickupLandmark);
+        setRiderFee(result.fee);
+      } else {
+        // Fallback or default
+        setRiderFee(calculateRiderFee(pickupLandmark, vendor?.landmark, siteSettings));
+      }
+    };
+    updateFee();
   }, [pickupLandmark, vendor, siteSettings]);
 
   // Load existing order details if any
