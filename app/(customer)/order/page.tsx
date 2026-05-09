@@ -82,37 +82,73 @@ const LANDMARK_COORDINATES: { [key: string]: { x: number, y: number } } = {
   'Under-G': { x: 1.2, y: 0.8 },
   'Adenike': { x: 0.5, y: 2.5 },
   'Isale-General': { x: -1.5, y: 3.5 },
-  'Stadium': { x: 2.5, y: 1.5 },
+  'Stadium': { x: 2.8, y: 1.2 },
   'Bovina': { x: 3.5, y: 4.0 },
   'LAUTECH Gate': { x: 0, y: 0 },
   'Arowomole': { x: -2.0, y: 1.0 },
   'General': { x: -1.0, y: 3.0 },
-  'Sabo': { x: 4.0, y: -2.0 }
+  'Sabo': { x: 4.0, y: -2.0 },
+  'Aba': { x: 6.5, y: -4.5 },
+  'NOC': { x: -0.5, y: -1.5 },
+  'Iwasun': { x: -2.5, y: -0.5 },
+  'Molete': { x: 1.5, y: -2.5 },
+  'Takie': { x: 0.0, y: 6.0 },
+  'California': { x: 2.0, y: -1.0 },
+  'Star-Light': { x: 1.0, y: -3.0 },
+  'High-School': { x: -3.0, y: 2.0 },
+  'Arada': { x: 5.0, y: 5.0 },
+  'Randa': { x: -4.0, y: -4.0 },
+  'Caretaker': { x: -5.0, y: 2.0 },
+  'Owode': { x: 6.0, y: 1.0 }
+};
+
+const calculateDistance = (customerLandmark?: string, vendorLandmark?: string, settings?: any) => {
+  const getCoord = (name?: string, isVendor = false) => {
+    if (!name || typeof name !== 'string' || name.trim() === '') {
+      // Default vendor to LAUTECH Gate, customer to slightly offset if matching default
+      return isVendor ? LANDMARK_COORDINATES['LAUTECH Gate'] : { x: 0.1, y: 0.1 };
+    }
+    
+    const cleanName = name.trim().toLowerCase();
+    
+    // Check settings first
+    const fromSettings = settings?.landmarks?.find((l: any) => 
+      (typeof l === 'string' ? l : l.name)?.toLowerCase() === cleanName
+    );
+    
+    if (fromSettings && typeof fromSettings !== 'string' && fromSettings.x !== undefined && fromSettings.y !== undefined) {
+      return { x: fromSettings.x, y: fromSettings.y };
+    }
+    
+    // Case-insensitive lookup in LANDMARK_COORDINATES
+    const key = Object.keys(LANDMARK_COORDINATES).find(k => k.toLowerCase() === cleanName);
+    if (key) return LANDMARK_COORDINATES[key];
+    
+    // If not found, return default with slight offset for uniqueness if needed
+    return isVendor ? LANDMARK_COORDINATES['LAUTECH Gate'] : { x: 0.05, y: 0.05 };
+  };
+
+  const cCoord = getCoord(customerLandmark, false);
+  const vCoord = getCoord(vendorLandmark, true);
+  
+  if (!cCoord || !vCoord) return 0;
+  
+  // Straight line distance
+  const dist = Math.sqrt(Math.pow(vCoord.x - cCoord.x, 2) + Math.pow(vCoord.y - cCoord.y, 2));
+  // Scale units to km (assuming 1 unit = 3.5km for Ogbomoso area)
+  return dist * 3.5;
 };
 
 const calculateRiderFee = (customerLandmark?: string, vendorLandmark?: string, settings?: any) => {
-  const getCoord = (name?: string) => {
-    const fromSettings = settings?.landmarks?.find((l: any) => l.name === name);
-    if (fromSettings && fromSettings.x !== undefined && fromSettings.y !== undefined) {
-      return { x: fromSettings.x, y: fromSettings.y };
-    }
-    return name ? LANDMARK_COORDINATES[name] : LANDMARK_COORDINATES['LAUTECH Gate'];
-  };
+  const distance = calculateDistance(customerLandmark, vendorLandmark, settings);
+  
+  const pricePerKm = settings?.pricePerKm || 10; 
+  const baseFee = settings?.baseRiderFee || 300;
 
-  const cCoord = getCoord(customerLandmark);
-  const vCoord = getCoord(vendorLandmark);
+  if (distance === 0) return baseFee;
   
-  const pricePerKm = settings?.pricePerKm || 150;
-  const baseFee = settings?.baseRiderFee || 400;
-
-  if (!cCoord || !vCoord) return baseFee;
-  
-  // Straight line distance
-  const distance = Math.sqrt(Math.pow(vCoord.x - cCoord.x, 2) + Math.pow(vCoord.y - cCoord.y, 2));
-  
-  // Formula: baseFee + (distance * pricePerKm * 2)
-  // Times 2 because one for pickup and one for delivery
-  const totalFee = baseFee + (distance * pricePerKm * 2);
+  // Formula: baseFee + (distance * pricePerKm)
+  const totalFee = baseFee + (distance * pricePerKm);
   
   // Return rounded to nearest 50
   return Math.round(totalFee / 50) * 50;
@@ -324,11 +360,15 @@ function OrderPageContent() {
   const totalItems = cart.reduce((acc, item) => acc + (Number(item.count) || 0), 0);
   const itemsPrice = cart.reduce((acc, item) => acc + (Number(getItemPrice(item)) || 0), 0);
   const [riderFee, setRiderFee] = React.useState(0);
+  const [distance, setDistance] = React.useState(0);
   const totalPrice = totalItems > 0 ? (Number(itemsPrice) || 0) + (Number(riderFee) || 0) : 0;
 
   // Update rider fee when landmark or vendor changes
   React.useEffect(() => {
     const updateFee = async () => {
+      const d = calculateDistance(pickupLandmark, vendor?.landmark, siteSettings);
+      setDistance(d);
+
       if (pickupLandmark && vendor?.landmark) {
         const result = await api.getDeliveryFee(vendor.landmark, pickupLandmark);
         setRiderFee(result.fee);
@@ -742,11 +782,15 @@ function OrderPageContent() {
                 </div>
                 <div>
                   <h3 className="font-headline font-black text-on-surface text-xl">Express Pickup</h3>
-                  <p className="font-medium text-on-surface-variant">Rider arrives in less than 15 mins</p>
+                  <p className="font-medium text-on-surface-variant">
+                    {pickupLandmark && vendor?.landmark 
+                      ? `${pickupLandmark} to ${vendor.landmark} is ${distance.toFixed(1)}` 
+                      : pickupLandmark ? `Customer Location to Vendor is ${distance.toFixed(1)}` : 'Select landmark to see distance'}
+                  </p>
                 </div>
               </div>
               <div className="bg-primary text-white px-4 py-2 rounded-xl font-headline font-black text-xs">
-                FREE
+                ₦{(riderFee || 0).toLocaleString()}
               </div>
             </section>
 
@@ -954,7 +998,14 @@ function OrderPageContent() {
                   </div>
                 ))}
                 <div className="pt-3 border-t border-primary/10 flex justify-between text-sm">
-                  <span className="font-headline font-black text-on-surface-variant">Rider Fee (Express)</span>
+                  <div className="flex flex-col">
+                    <span className="font-headline font-black text-on-surface-variant leading-none">Rider Fee (Express)</span>
+                    <span className="text-[10px] font-bold text-primary/60 uppercase tracking-widest mt-1">
+                      {pickupLandmark && vendor?.landmark 
+                        ? `${pickupLandmark} to ${vendor.landmark} is ${distance.toFixed(1)}` 
+                        : 'Calculating distance...'}
+                    </span>
+                  </div>
                   <span className="font-headline font-black text-on-surface">₦{(riderFee || 0).toLocaleString()}</span>
                 </div>
               </div>
@@ -1067,21 +1118,91 @@ function OrderPageContent() {
                   {paymentMethod === 'wallet' && <Check className="w-5 h-5 text-primary" />}
                 </button>
 
-                <p className="text-center text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mt-4">
-                  Note: Top up your wallet to pay for orders
-                </p>
+                {(() => {
+                  const isBalanceInsufficient = paymentMethod === 'wallet' && (currentUser?.walletBalance || 0) < totalPrice;
+                  return (
+                    <>
+                      {isBalanceInsufficient && (
+                        <motion.div 
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          className="bg-error/10 border-4 border-error p-8 rounded-[2.5rem] text-center shadow-2xl shadow-error/20"
+                        >
+                          <AlertTriangle className="w-12 h-12 text-error mx-auto mb-4 animate-bounce" />
+                          <h4 className="text-error font-headline font-black text-xl mb-2">INSUFFICIENT BALANCE!</h4>
+                          <p className="text-on-surface-variant font-medium text-sm mb-6">Your wallet needs a quick boost to cover this order.</p>
+                          
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setIsPaymentModalOpen(false);
+                              router.push('/wallet');
+                            }}
+                            className="w-full bg-error text-white py-5 rounded-2xl font-headline font-black text-sm uppercase tracking-widest shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3"
+                          >
+                            <Plus className="w-5 h-5" />
+                            TOP UP WALLET NOW
+                          </button>
+                        </motion.div>
+                      )}
 
-                <button 
-                  onClick={() => {
-                    setIsPaymentModalOpen(false);
-                    handlePayment();
-                  }}
-                  disabled={isPaying || (paymentMethod === 'wallet' && (currentUser?.walletBalance || 0) < totalPrice)}
-                  className="w-full h-16 bg-primary text-white rounded-2xl font-headline font-black text-lg shadow-xl active:scale-[0.98] transition-all disabled:opacity-50"
-                >
-                  {isPaying ? 'PROCESSING...' : 
-                   (paymentMethod === 'wallet' && (currentUser?.walletBalance || 0) < totalPrice) ? 'INSUFFICIENT BALANCE' : `PAY ₦${(totalPrice || 0).toLocaleString()}`}
-                </button>
+                      <div className="bg-surface-container rounded-3xl p-6 flex flex-col items-center gap-4 mt-8 border-4 border-primary/20 shadow-2xl relative overflow-hidden group">
+                        <div className="absolute top-0 left-0 w-2 h-full bg-primary animate-pulse" />
+                        <div className="absolute top-0 right-0 w-2 h-full bg-primary animate-pulse" />
+                        
+                        <div className="flex items-center gap-3 mb-1">
+                          <Wallet className="w-6 h-6 text-primary animate-bounce" />
+                          <h4 className="font-headline font-black text-lg text-on-surface">WALLET TOP UP</h4>
+                        </div>
+
+                        <p className="text-[11px] font-black text-on-surface-variant uppercase tracking-[0.25em] text-center px-4 leading-relaxed">
+                          PROMPT: PLEASE TOP UP YOUR WALLET TO SETTLE YOUR ORDER PAYMENTS.
+                        </p>
+                        
+                        <button 
+                          onClick={() => {
+                            setIsPaymentModalOpen(false);
+                            router.push('/wallet');
+                          }}
+                          className={cn(
+                            "w-full py-5 rounded-[2rem] font-headline font-black text-sm uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3 shadow-2xl active:scale-[0.98] border-b-4 border-black/20",
+                            isBalanceInsufficient 
+                              ? "bg-error text-white ring-8 ring-error/20 animate-[pulse_1s_infinite] shadow-error/40 scale-105" 
+                              : "signature-gradient text-white shadow-primary/40 hover:scale-[1.02]"
+                          )}
+                        >
+                          <Plus className="w-5 h-5" />
+                          TOP UP WALLET NOW
+                        </button>
+                        
+                        <p className="text-[9px] font-bold text-primary/70 uppercase tracking-[0.3em] flex items-center gap-2">
+                          <Check className="w-3 h-3" /> SECURED PAYMENT GATEWAY
+                        </p>
+                      </div>
+
+                      <button 
+                        onClick={() => {
+                          if (isBalanceInsufficient) {
+                            setIsPaymentModalOpen(false);
+                            router.push('/wallet');
+                          } else {
+                            handlePayment();
+                          }
+                        }}
+                        disabled={isPaying}
+                        className={cn(
+                          "w-full h-16 rounded-2xl font-headline font-black text-lg shadow-xl active:scale-[0.98] transition-all",
+                          isBalanceInsufficient 
+                            ? "bg-[#A3C4B2] text-white cursor-pointer" 
+                            : "bg-primary text-white hover:bg-primary/90"
+                        )}
+                      >
+                        {isPaying ? 'PROCESSING...' : 
+                        isBalanceInsufficient ? 'INSUFFICIENT BALANCE' : `PAY ₦${(totalPrice || 0).toLocaleString()}`}
+                      </button>
+                    </>
+                  );
+                })()}
               </div>
             </motion.div>
           </div>
@@ -1113,7 +1234,7 @@ function OrderPageContent() {
                 <div>
                   <label className="block font-label text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-3">Select Landmark</label>
                   <div className="grid grid-cols-2 gap-3">
-                    {(siteSettings?.landmarks || ['Under-G', 'Adenike', 'Isale-General', 'Stadium', 'Bovina', 'LAUTECH Gate']).filter((l: any) => typeof l === 'string' || l.active).map((l: any) => {
+                    {(siteSettings?.landmarks || ['Under-G', 'Adenike', 'Isale-General', 'Stadium', 'Bovina', 'LAUTECH Gate', 'Aba']).filter((l: any) => typeof l === 'string' || l.active).map((l: any) => {
                       const name = typeof l === 'string' ? l : l.name;
                       return (
                         <button
