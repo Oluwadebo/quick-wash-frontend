@@ -82,32 +82,18 @@ const LANDMARK_COORDINATES: { [key: string]: { x: number, y: number } } = {
   'Under-G': { x: 1.2, y: 0.8 },
   'Adenike': { x: 0.5, y: 2.5 },
   'Isale-General': { x: -1.5, y: 3.5 },
-  'Stadium': { x: 2.8, y: 1.2 },
+  'Stadium': { x: 2.5, y: 1.5 },
   'Bovina': { x: 3.5, y: 4.0 },
   'LAUTECH Gate': { x: 0, y: 0 },
   'Arowomole': { x: -2.0, y: 1.0 },
   'General': { x: -1.0, y: 3.0 },
   'Sabo': { x: 4.0, y: -2.0 },
-  'Aba': { x: 6.5, y: -4.5 },
-  'NOC': { x: -0.5, y: -1.5 },
-  'Iwasun': { x: -2.5, y: -0.5 },
-  'Molete': { x: 1.5, y: -2.5 },
-  'Takie': { x: 0.0, y: 6.0 },
-  'California': { x: 2.0, y: -1.0 },
-  'Star-Light': { x: 1.0, y: -3.0 },
-  'High-School': { x: -3.0, y: 2.0 },
-  'Arada': { x: 5.0, y: 5.0 },
-  'Randa': { x: -4.0, y: -4.0 },
-  'Caretaker': { x: -5.0, y: 2.0 },
-  'Owode': { x: 6.0, y: 1.0 }
+  'Aba': { x: 5.5, y: -3.0 } // Moved Aba further away to ensure distance is visible
 };
 
 const calculateDistance = (customerLandmark?: string, vendorLandmark?: string, settings?: any) => {
-  const getCoord = (name?: string, isVendor = false) => {
-    if (!name || typeof name !== 'string' || name.trim() === '') {
-      // Default vendor to LAUTECH Gate, customer to slightly offset if matching default
-      return isVendor ? LANDMARK_COORDINATES['LAUTECH Gate'] : { x: 0.1, y: 0.1 };
-    }
+  const getCoord = (name?: string) => {
+    if (!name || typeof name !== 'string') return LANDMARK_COORDINATES['LAUTECH Gate'];
     
     const cleanName = name.trim().toLowerCase();
     
@@ -122,14 +108,11 @@ const calculateDistance = (customerLandmark?: string, vendorLandmark?: string, s
     
     // Case-insensitive lookup in LANDMARK_COORDINATES
     const key = Object.keys(LANDMARK_COORDINATES).find(k => k.toLowerCase() === cleanName);
-    if (key) return LANDMARK_COORDINATES[key];
-    
-    // If not found, return default with slight offset for uniqueness if needed
-    return isVendor ? LANDMARK_COORDINATES['LAUTECH Gate'] : { x: 0.05, y: 0.05 };
+    return key ? LANDMARK_COORDINATES[key] : LANDMARK_COORDINATES['LAUTECH Gate'];
   };
 
-  const cCoord = getCoord(customerLandmark, false);
-  const vCoord = getCoord(vendorLandmark, true);
+  const cCoord = getCoord(customerLandmark);
+  const vCoord = getCoord(vendorLandmark);
   
   if (!cCoord || !vCoord) return 0;
   
@@ -1124,61 +1107,38 @@ function OrderPageContent() {
                     <>
                       {isBalanceInsufficient && (
                         <motion.div 
-                          initial={{ opacity: 0, scale: 0.9 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          className="bg-error/10 border-4 border-error p-8 rounded-[2.5rem] text-center shadow-2xl shadow-error/20"
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="bg-error/10 border-2 border-error/20 p-6 rounded-2xl text-center"
                         >
-                          <AlertTriangle className="w-12 h-12 text-error mx-auto mb-4 animate-bounce" />
-                          <h4 className="text-error font-headline font-black text-xl mb-2">INSUFFICIENT BALANCE!</h4>
-                          <p className="text-on-surface-variant font-medium text-sm mb-6">Your wallet needs a quick boost to cover this order.</p>
-                          
+                          <AlertTriangle className="w-8 h-8 text-error mx-auto mb-3" />
+                          <p className="text-error font-headline font-black text-sm mb-4">INSUFFICIENT BALANCE</p>
                           <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
+                            onClick={() => {
                               setIsPaymentModalOpen(false);
                               router.push('/wallet');
                             }}
-                            className="w-full bg-error text-white py-5 rounded-2xl font-headline font-black text-sm uppercase tracking-widest shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3"
+                            className="bg-primary text-white px-8 py-3 rounded-xl font-headline font-black text-xs uppercase tracking-widest shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
                           >
-                            <Plus className="w-5 h-5" />
-                            TOP UP WALLET NOW
+                            TOP UP YOUR WALLET NOW
                           </button>
                         </motion.div>
                       )}
 
-                      <div className="bg-surface-container rounded-3xl p-6 flex flex-col items-center gap-4 mt-8 border-4 border-primary/20 shadow-2xl relative overflow-hidden group">
-                        <div className="absolute top-0 left-0 w-2 h-full bg-primary animate-pulse" />
-                        <div className="absolute top-0 right-0 w-2 h-full bg-primary animate-pulse" />
-                        
-                        <div className="flex items-center gap-3 mb-1">
-                          <Wallet className="w-6 h-6 text-primary animate-bounce" />
-                          <h4 className="font-headline font-black text-lg text-on-surface">WALLET TOP UP</h4>
-                        </div>
-
-                        <p className="text-[11px] font-black text-on-surface-variant uppercase tracking-[0.25em] text-center px-4 leading-relaxed">
-                          PROMPT: PLEASE TOP UP YOUR WALLET TO SETTLE YOUR ORDER PAYMENTS.
-                        </p>
-                        
-                        <button 
+                      <p className="text-center text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mt-6">
+                        NOTE: <span 
                           onClick={() => {
                             setIsPaymentModalOpen(false);
                             router.push('/wallet');
                           }}
                           className={cn(
-                            "w-full py-5 rounded-[2rem] font-headline font-black text-sm uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3 shadow-2xl active:scale-[0.98] border-b-4 border-black/20",
+                            "cursor-pointer hover:underline underline-offset-4 decoration-2 transition-all p-2 rounded-lg border-2",
                             isBalanceInsufficient 
-                              ? "bg-error text-white ring-8 ring-error/20 animate-[pulse_1s_infinite] shadow-error/40 scale-105" 
-                              : "signature-gradient text-white shadow-primary/40 hover:scale-[1.02]"
+                              ? "text-error border-error animate-[pulse_1s_infinite] bg-error/5 shadow-lg shadow-error/10 font-black scale-110" 
+                              : "text-primary border-primary/20 bg-primary/5"
                           )}
-                        >
-                          <Plus className="w-5 h-5" />
-                          TOP UP WALLET NOW
-                        </button>
-                        
-                        <p className="text-[9px] font-bold text-primary/70 uppercase tracking-[0.3em] flex items-center gap-2">
-                          <Check className="w-3 h-3" /> SECURED PAYMENT GATEWAY
-                        </p>
-                      </div>
+                        >TOP UP YOUR WALLET</span> TO PAY FOR ORDERS
+                      </p>
 
                       <button 
                         onClick={() => {
